@@ -1,4 +1,4 @@
-import { SettlementStatus, DocumentType } from './enums';
+import { SettlementStatus } from './enums';
 
 export interface CreateBatchRequest {
   agencyId: string;
