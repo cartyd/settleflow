@@ -2,6 +2,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { AppConfig } from '@settleflow/shared-config';
@@ -36,6 +37,13 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   await app.register(rateLimit, {
     max: config.rateLimit.max,
     timeWindow: config.rateLimit.window,
+  });
+
+  // Multipart for file uploads
+  await app.register(multipart, {
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50MB limit
+    },
   });
 
   // Swagger documentation

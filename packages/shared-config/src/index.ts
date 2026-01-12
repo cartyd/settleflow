@@ -33,6 +33,11 @@ export interface AppConfig {
   cors: {
     origin: string;
   };
+  ocr: {
+    enabled: boolean;
+    serverUrl: string;
+    model: string;
+  };
 }
 
 function getEnvVar(key: string, defaultValue?: string): string {
@@ -98,6 +103,11 @@ export function loadConfig(): AppConfig {
     },
     cors: {
       origin: getEnvVar('CORS_ORIGIN', 'http://localhost:3001'),
+    },
+    ocr: {
+      enabled: getEnvVar('OCR_ENABLED', 'true') === 'true',
+      serverUrl: getEnvVar('OCR_SERVER_URL', 'http://10.147.17.205:11434/api/generate'),
+      model: getEnvVar('OCR_MODEL', 'gemma3:27b'),
     },
   };
 }
