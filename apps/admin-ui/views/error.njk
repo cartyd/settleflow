@@ -1,0 +1,52 @@
+{% extends "layout.njk" %}
+
+{% block title %}{{ pageTitle | escape }}{% endblock %}
+
+{# Override header block to prevent empty h1 #}
+{% block header %}{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-box severity-{{ severity | escape }}">
+        <div class="error-header">
+            {% if statusCode %}
+                <div class="error-status-code" role="img" aria-label="Error code {{ statusCode }}">{{ statusCode }}</div>
+            {% endif %}
+            <h1 class="error-title">{{ title | escape }}</h1>
+        </div>
+
+        <p class="error-message" role="alert">{{ userMessage | escape }}</p>
+
+        {% if errorId or timestamp %}
+        <div class="error-details">
+            {% if errorId %}
+            <div class="error-detail-item">
+                <span class="error-detail-label">{{ config.messages.errorId | escape }}:</span>
+                <span class="error-detail-value">{{ errorId | escape }}</span>
+            </div>
+            {% endif %}
+            {% if timestamp %}
+            <div class="error-detail-item">
+                <span class="error-detail-label">{{ config.messages.timestamp | escape }}:</span>
+                <span class="error-detail-value">{{ timestamp | date('MMM D, YYYY h:mm A') }}</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="error-actions">
+            <a href="{{ config.actions.backToBatches.href | escape }}" class="error-button">
+                {{ config.actions.backToBatches.label | escape }}
+            </a>
+            <a href="{{ config.actions.home.href | escape }}" class="error-button secondary">
+                {{ config.actions.home.label | escape }}
+            </a>
+            {% if showSupportLink %}
+            <a href="{{ config.actions.contactSupport.href | escape }}" class="error-button secondary">
+                {{ config.actions.contactSupport.label | escape }}
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

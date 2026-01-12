@@ -1,0 +1,47 @@
+{% import "macros.njk" as macros %}
+
+{% if batches and batches.length > 0 %}
+<table>
+    <caption class="sr-only">Settlement Batches List</caption>
+    <thead>
+        <tr>
+            <th scope="col">{{ config.columns.agency | escape }}</th>
+            <th scope="col">{{ config.columns.nvlPaymentRef | escape }}</th>
+            <th scope="col">{{ config.columns.weekPeriod | escape }}</th>
+            <th scope="col">{{ config.columns.status | escape }}</th>
+            <th scope="col">{{ config.columns.netAmount | escape }}</th>
+            <th scope="col">{{ config.columns.actions | escape }}</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for batch in batches %}
+        <tr>
+            <td data-label="{{ config.columns.agency | escape }}">{{ macros.safeValue(batch.agencyName) }}</td>
+            <td data-label="{{ config.columns.nvlPaymentRef | escape }}">{{ macros.safeValue(batch.nvlPaymentRef) }}</td>
+            <td data-label="{{ config.columns.weekPeriod | escape }}">
+                {{ macros.dateRange(batch.weekStartDate, batch.weekEndDate, config.dateFormat.startDate, config.dateFormat.endDate) }}
+            </td>
+            <td data-label="{{ config.columns.status | escape }}">
+                {{ macros.statusBadge(batch.status, statusClasses) }}
+            </td>
+            <td data-label="{{ config.columns.netAmount | escape }}">
+                {{ macros.formatCurrency(batch.netAmount, config.currency.symbol, config.currency.decimalPlaces) }}
+            </td>
+            <td data-label="{{ config.columns.actions | escape }}">
+                {% if batch.detailUrl %}
+                    <a href="{{ batch.detailUrl | escape }}" aria-label="View details for batch {{ batch.id | escape }}">
+                        {{ config.actionLabels.view | escape }}
+                    </a>
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state" role="status">
+    <p>{{ config.emptyMessage | escape }}</p>
+</div>
+{% endif %}

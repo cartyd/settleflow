@@ -1,0 +1,232 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Agency {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  drivers          Driver[]
+  settlementBatches SettlementBatch[]
+
+  @@map("agencies")
+}
+
+model Driver {
+  id        String   @id @default(uuid())
+  agencyId  String
+  firstName String
+  lastName  String
+  email     String
+  phone     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agency              Agency                @relation(fields: [agencyId], references: [id])
+  revenueDistributions RevenueDistribution[]
+  advances            Advance[]
+  deductions          Deduction[]
+  driverRequests      DriverRequest[]
+
+  @@map("drivers")
+}
+
+model SettlementBatch {
+  id              String   @id @default(uuid())
+  agencyId        String
+  nvlPaymentRef   String
+  status          String   @default("CREATED")
+  weekStartDate   DateTime
+  weekEndDate     DateTime
+  totalRevenue    Float    @default(0)
+  totalAdvances   Float    @default(0)
+  totalDeductions Float    @default(0)
+  netAmount       Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lockedAt        DateTime?
+  fundsClearedAt  DateTime?
+  paidAt          DateTime?
+
+  agency              Agency                @relation(fields: [agencyId], references: [id])
+  importFiles         ImportFile[]
+  revenueDistributions RevenueDistribution[]
+  advances            Advance[]
+  deductions          Deduction[]
+  driverRequests      DriverRequest[]
+  adjustments         Adjustment[]
+  auditLogs           AuditLog[]
+
+  @@unique([agencyId, nvlPaymentRef])
+  @@map("settlement_batches")
+}
+
+model ImportFile {
+  id          String    @id @default(uuid())
+  batchId     String
+  fileName    String
+  fileSize    Int
+  uploadedAt  DateTime  @default(now())
+  approvedAt  DateTime?
+  approvedBy  String?
+
+  batch             SettlementBatch   @relation(fields: [batchId], references: [id])
+  importDocuments   ImportDocument[]
+
+  @@map("import_files")
+}
+
+model ImportDocument {
+  id            String    @id @default(uuid())
+  importFileId  String
+  documentType  String
+  pageNumber    Int
+  rawText       String
+  parsedAt      DateTime?
+
+  importFile    ImportFile      @relation(fields: [importFileId], references: [id])
+  importLines   ImportLine[]
+
+  @@map("import_documents")
+}
+
+model ImportLine {
+  id                String    @id @default(uuid())
+  importDocumentId  String
+  driverId          String?
+  lineType          String
+  description       String
+  amount            Float
+  date              DateTime?
+  reference         String?
+  rawData           String
+  createdAt         DateTime  @default(now())
+
+  importDocument       ImportDocument         @relation(fields: [importDocumentId], references: [id])
+  revenueDistributions RevenueDistribution[]
+  advances             Advance[]
+  deductions           Deduction[]
+
+  @@map("import_lines")
+}
+
+model RevenueDistribution {
+  id            String   @id @default(uuid())
+  batchId       String
+  driverId      String
+  importLineId  String?
+  grossRevenue  Float
+  commission    Float
+  netRevenue    Float
+  createdAt     DateTime @default(now())
+
+  batch       SettlementBatch @relation(fields: [batchId], references: [id])
+  driver      Driver          @relation(fields: [driverId], references: [id])
+  importLine  ImportLine?     @relation(fields: [importLineId], references: [id])
+
+  @@map("revenue_distributions")
+}
+
+model Advance {
+  id            String    @id @default(uuid())
+  batchId       String
+  driverId      String
+  importLineId  String?
+  amount        Float
+  date          DateTime
+  reference     String?
+  description   String?
+  createdAt     DateTime  @default(now())
+
+  batch       SettlementBatch @relation(fields: [batchId], references: [id])
+  driver      Driver          @relation(fields: [driverId], references: [id])
+  importLine  ImportLine?     @relation(fields: [importLineId], references: [id])
+
+  @@map("advances")
+}
+
+model Deduction {
+  id            String    @id @default(uuid())
+  batchId       String
+  driverId      String
+  importLineId  String?
+  category      String
+  amount        Float
+  date          DateTime
+  reference     String?
+  description   String?
+  createdAt     DateTime  @default(now())
+
+  batch       SettlementBatch @relation(fields: [batchId], references: [id])
+  driver      Driver          @relation(fields: [driverId], references: [id])
+  importLine  ImportLine?     @relation(fields: [importLineId], references: [id])
+
+  @@map("deductions")
+}
+
+model DriverRequest {
+  id            String    @id @default(uuid())
+  batchId       String
+  driverId      String
+  requestType   String
+  amount        Float
+  description   String?
+  status        String    @default("PENDING")
+  submittedAt   DateTime  @default(now())
+  reviewedAt    DateTime?
+  reviewedBy    String?
+  reviewNotes   String?
+
+  batch   SettlementBatch @relation(fields: [batchId], references: [id])
+  driver  Driver          @relation(fields: [driverId], references: [id])
+
+  @@map("driver_requests")
+}
+
+model Adjustment {
+  id              String    @id @default(uuid())
+  batchId         String
+  targetTable     String
+  targetRecordId  String
+  targetField     String
+  originalValue   String
+  adjustedValue   String
+  reason          String
+  status          String    @default("PENDING")
+  createdBy       String
+  createdAt       DateTime  @default(now())
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectedBy      String?
+  rejectedAt      DateTime?
+  rejectionReason String?
+
+  batch SettlementBatch @relation(fields: [batchId], references: [id])
+
+  @@map("adjustments")
+}
+
+model AuditLog {
+  id              String   @id @default(uuid())
+  batchId         String
+  action          String
+  performedBy     String
+  performedAt     DateTime @default(now())
+  beforeSnapshot  String?
+  afterSnapshot   String?
+  metadata        String?
+
+  batch SettlementBatch @relation(fields: [batchId], references: [id])
+
+  @@map("audit_logs")
+}

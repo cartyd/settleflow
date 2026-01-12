@@ -1,0 +1,50 @@
+{# Format currency with symbol and decimal places #}
+{% macro formatCurrency(amount, symbol='$', decimals=2, fallback='N/A') %}
+  {%- if amount is defined -%}
+    {{ symbol }}{{ amount | number(decimals) }}
+  {%- else -%}
+    {{ fallback }}
+  {%- endif -%}
+{% endmacro %}
+
+{# Render status badge with proper styling #}
+{% macro statusBadge(status, statusClasses, fallback='Unknown') %}
+  {%- if status -%}
+    <span class="status {{ statusClasses[status] or 'status-created' }}" role="status" aria-label="Status: {{ status }}">
+      {{ status }}
+    </span>
+  {%- else -%}
+    <span class="status">{{ fallback }}</span>
+  {%- endif -%}
+{% endmacro %}
+
+{# Format date range #}
+{% macro dateRange(startDate, endDate, startFormat, endFormat, fallback='N/A') %}
+  {%- if startDate and endDate -%}
+    {{ startDate | date(startFormat) }} - {{ endDate | date(endFormat) }}
+  {%- else -%}
+    {{ fallback }}
+  {%- endif -%}
+{% endmacro %}
+
+{# Safe value with fallback #}
+{% macro safeValue(value, fallback='N/A') %}
+  {{- value or fallback -}}
+{% endmacro %}
+
+{# Info card for detail view #}
+{% macro infoCard(label, value) %}
+<div class="info-item">
+    <div class="info-label">{{ label }}</div>
+    <div class="info-value">{{ value }}</div>
+</div>
+{% endmacro %}
+
+{# Format date with fallback #}
+{% macro formatDate(date, format, fallback='Unknown Date') %}
+  {%- if date -%}
+    {{ date | date(format) }}
+  {%- else -%}
+    {{ fallback }}
+  {%- endif -%}
+{% endmacro %}

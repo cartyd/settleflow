@@ -1,0 +1,63 @@
+{% extends "layout.njk" %}
+{% import "macros.njk" as macros %}
+
+{% block title %}{{ pageTitle | escape }}{% endblock %}
+
+{# Override header to prevent empty h1 #}
+{% block header %}{% endblock %}
+
+{% block content %}
+<div class="detail-header">
+    <a href="{{ config.listViewPath | escape }}" class="back-link">{{ config.actionLabels.backToBatches | escape }}</a>
+    <h1>{{ config.headingPrefix | escape }} {{ macros.safeValue(batch.nvlPaymentRef) }}</h1>
+    <div class="detail-header-info">
+        <span>
+            <strong>{{ config.agencyLabel | escape }}:</strong>
+            {{ macros.safeValue(batch.agency.name if batch.agency) }}
+        </span>
+        <span>
+            <strong>{{ config.statusLabel | escape }}:</strong>
+            {{ macros.statusBadge(batch.status, statusClasses) }}
+        </span>
+    </div>
+</div>
+
+{# Info grid using macro for consistency #}
+<div class="info-grid">
+    {{ macros.infoCard(
+        config.infoItems.totalRevenue.label,
+        macros.formatCurrency(batch.totalRevenue, config.currency.symbol, config.currency.decimalPlaces)
+    ) }}
+    {{ macros.infoCard(
+        config.infoItems.totalAdvances.label,
+        macros.formatCurrency(batch.totalAdvances, config.currency.symbol, config.currency.decimalPlaces)
+    ) }}
+    {{ macros.infoCard(
+        config.infoItems.netAmount.label,
+        macros.formatCurrency(batch.netAmount, config.currency.symbol, config.currency.decimalPlaces)
+    ) }}
+</div>
+
+<section aria-labelledby="import-files-heading">
+    <h2 id="import-files-heading" class="section-heading">{{ config.importFiles.heading | escape }}</h2>
+    {% if batch.importFiles and batch.importFiles.length > 0 %}
+        <ul class="file-list">
+            {% for file in batch.importFiles %}
+                <li class="file-list-item">
+                    <div class="file-info">
+                        <div class="file-name">{{ macros.safeValue(file.fileName, 'Unnamed File') }}</div>
+                        <div class="file-date">
+                            <strong>{{ config.importFiles.uploadDateLabel | escape }}:</strong>
+                            {{ macros.formatDate(file.uploadedAt, config.dateFormat.fileUploadDate) }}
+                        </div>
+                    </div>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <div class="empty-state" role="status">
+            <p>{{ config.importFiles.emptyMessage | escape }}</p>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}
