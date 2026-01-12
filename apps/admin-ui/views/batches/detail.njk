@@ -39,25 +39,173 @@
 </div>
 
 <section aria-labelledby="import-files-heading">
-    <h2 id="import-files-heading" class="section-heading">{{ config.importFiles.heading | escape }}</h2>
+    <div class="section-header">
+        <h2 id="import-files-heading" class="section-heading">{{ config.importFiles.heading | escape }}</h2>
+        <button type="button" class="btn-primary" onclick="document.getElementById('upload-form').style.display='block'">Upload PDF</button>
+    </div>
+
+    {# Upload Form #}
+    <div id="upload-form" class="upload-form" style="display: none;">
+        <form id="pdf-upload-form" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="pdf-file">Select PDF file:</label>
+                <input type="file" id="pdf-file" name="file" accept=".pdf" required>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn-primary">Upload and Process</button>
+                <button type="button" class="btn-secondary" onclick="document.getElementById('upload-form').style.display='none'">Cancel</button>
+            </div>
+            <div id="upload-progress" class="upload-progress" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <p id="progress-text">Processing PDF...</p>
+            </div>
+            <div id="upload-error" class="alert-error" style="display: none;"></div>
+        </form>
+    </div>
+
     {% if batch.importFiles and batch.importFiles.length > 0 %}
-        <ul class="file-list">
+        <div class="import-files-grid">
             {% for file in batch.importFiles %}
-                <li class="file-list-item">
-                    <div class="file-info">
-                        <div class="file-name">{{ macros.safeValue(file.fileName, 'Unnamed File') }}</div>
-                        <div class="file-date">
-                            <strong>{{ config.importFiles.uploadDateLabel | escape }}:</strong>
-                            {{ macros.formatDate(file.uploadedAt, config.dateFormat.fileUploadDate) }}
+                <div class="import-file-card">
+                    <div class="import-file-header">
+                        <h3 class="import-file-name">{{ macros.safeValue(file.fileName, 'Unnamed File') }}</h3>
+                        {% if file.approvedAt %}
+                            <span class="badge badge-success">Approved</span>
+                        {% else %}
+                            <span class="badge badge-pending">Pending</span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="import-file-meta">
+                        <div class="meta-item">
+                            <span class="meta-label">Uploaded:</span>
+                            <span class="meta-value">{{ macros.formatDate(file.uploadedAt, config.dateFormat.fileUploadDate) }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Size:</span>
+                            <span class="meta-value">{{ (file.fileSize / 1024) | round(1) }} KB</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Pages:</span>
+                            <span class="meta-value">{{ file.importDocuments.length if file.importDocuments else 0 }}</span>
                         </div>
                     </div>
-                </li>
+
+                    {% if file.importDocuments and file.importDocuments.length > 0 %}
+                        <div class="document-types">
+                            <h4>Document Types:</h4>
+                            <div class="document-type-chips">
+                                {% set docTypes = {} %}
+                                {% for doc in file.importDocuments %}
+                                    {% set count = docTypes[doc.documentType] or 0 %}
+                                    {% set _ = docTypes.update({doc.documentType: count + 1}) %}
+                                {% endfor %}
+                                {% for type, count in docTypes.items() %}
+                                    <span class="chip chip-{{ type | lower }}">{{ type }} ({{ count }})</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <details class="import-documents-details">
+                            <summary>View Pages ({{ file.importDocuments.length }})</summary>
+                            <div class="documents-list">
+                                {% for doc in file.importDocuments %}
+                                    <div class="document-item">
+                                        <div class="document-header">
+                                            <span class="document-page">Page {{ doc.pageNumber }}</span>
+                                            <span class="chip chip-{{ doc.documentType | lower }}">{{ doc.documentType }}</span>
+                                        </div>
+                                        <div class="document-text">
+                                            {{ doc.rawText[:200] | escape }}{% if doc.rawText.length > 200 %}...{% endif %}
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </details>
+                    {% endif %}
+                </div>
             {% endfor %}
-        </ul>
+        </div>
     {% else %}
         <div class="empty-state" role="status">
             <p>{{ config.importFiles.emptyMessage | escape }}</p>
+            <p class="empty-state-hint">Click "Upload PDF" to import a settlement file.</p>
         </div>
     {% endif %}
 </section>
+
+<script>
+(function() {
+    const form = document.getElementById('pdf-upload-form');
+    const progressDiv = document.getElementById('upload-progress');
+    const progressFill = document.getElementById('progress-fill');
+    const progressText = document.getElementById('progress-text');
+    const errorDiv = document.getElementById('upload-error');
+    const batchId = '{{ batch.id }}';
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('pdf-file');
+        const file = fileInput.files[0];
+        
+        if (!file) {
+            alert('Please select a file');
+            return;
+        }
+
+        // Hide error, show progress
+        errorDiv.style.display = 'none';
+        progressDiv.style.display = 'block';
+        progressFill.style.width = '0%';
+        progressText.textContent = 'Uploading PDF...';
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            // Simulate progress (since we can't get real progress easily)
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 5;
+                if (progress >= 90) {
+                    clearInterval(progressInterval);
+                    progressText.textContent = 'Processing with OCR... This may take several minutes.';
+                }
+                progressFill.style.width = progress + '%';
+            }, 1000);
+
+            const response = await fetch(`http://localhost:3000/batches/${batchId}/upload`, {
+                method: 'POST',
+                body: formData
+            });
+
+            clearInterval(progressInterval);
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Upload failed');
+            }
+
+            const result = await response.json();
+            
+            // Success!
+            progressFill.style.width = '100%';
+            progressText.textContent = `Success! Processed ${result.documentsDetected} documents.`;
+            
+            // Reload page after 2 seconds
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+
+        } catch (error) {
+            progressDiv.style.display = 'none';
+            errorDiv.textContent = 'Error: ' + error.message;
+            errorDiv.style.display = 'block';
+        }
+    });
+})();
+</script>
 {% endblock %}
