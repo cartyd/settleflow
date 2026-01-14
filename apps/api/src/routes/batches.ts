@@ -1,6 +1,8 @@
 import { FastifyPluginAsync } from 'fastify';
 import * as batchService from '../services/batch.service.js';
 import * as importService from '../services/import.service.js';
+import * as importLineService from '../services/import-line.service.js';
+import * as driverMatcherService from '../services/driver-matcher.service.js';
 import { loadConfig } from '@settleflow/shared-config';
 import {
   CreateBatchSchema,
@@ -129,6 +131,185 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
         fastify.log.error(error);
         return reply.status(500).send({
           error: 'Failed to process PDF',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
+  fastify.post('/import-files/:importFileId/parse', {
+    schema: {
+      description: 'Parse import file documents and create ImportLine records',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { importFileId } = request.params as { importFileId: string };
+
+      try {
+        const result = await importLineService.parseImportFile(importFileId);
+        reply.send(result);
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to parse import file',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
+  fastify.get('/import-files/:importFileId/summary', {
+    schema: {
+      description: 'Get summary of parsed import lines',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { importFileId } = request.params as { importFileId: string };
+
+      try {
+        const summary = await importLineService.getImportLineSummary(importFileId);
+        reply.send(summary);
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to get import summary',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
+  fastify.post('/import-files/:importFileId/match-drivers', {
+    schema: {
+      description: 'Match driver names to Driver records',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { importFileId } = request.params as { importFileId: string };
+
+      try {
+        const result = await driverMatcherService.matchDriversForImportFile(importFileId);
+        return reply.send(result);
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to match drivers',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
+  fastify.post('/import-files/:importFileId/reset', {
+    schema: {
+      description: 'Reset parsed status to allow re-parsing',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { importFileId } = request.params as { importFileId: string };
+
+      try {
+        // Delete existing import lines
+        await fastify.prisma.importLine.deleteMany({
+          where: {
+            importDocument: {
+              importFileId,
+            },
+          },
+        });
+
+        // Reset parsedAt timestamps
+        await fastify.prisma.importDocument.updateMany({
+          where: { importFileId },
+          data: { parsedAt: null },
+        });
+
+        return reply.send({
+          success: true,
+          message: 'Import file reset successfully',
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to reset import file',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
+  fastify.get('/import-files/:importFileId/lines', {
+    schema: {
+      description: 'Get all parsed import lines for an import file',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { importFileId } = request.params as { importFileId: string };
+
+      try {
+        const lines = await fastify.prisma.importLine.findMany({
+          where: {
+            importDocument: {
+              importFileId,
+            },
+          },
+          include: {
+            importDocument: {
+              select: {
+                pageNumber: true,
+                documentType: true,
+              },
+            },
+          },
+          orderBy: [
+            { importDocument: { pageNumber: 'asc' } },
+            { createdAt: 'asc' },
+          ],
+        });
+
+        // Manually fetch driver info for lines that have driverId
+        const linesWithDrivers = await Promise.all(
+          lines.map(async (line) => {
+            if (line.driverId) {
+              const driver = await fastify.prisma.driver.findUnique({
+                where: { id: line.driverId },
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              });
+              return { ...line, driver };
+            }
+            return { ...line, driver: null };
+          })
+        );
+
+        return reply.send({
+          success: true,
+          lines: linesWithDrivers.map(line => ({
+            id: line.id,
+            pageNumber: line.importDocument?.pageNumber,
+            documentType: line.importDocument?.documentType,
+            category: line.category,
+            lineType: line.lineType,
+            date: line.date,
+            description: line.description,
+            amount: line.amount,
+            driver: line.driver ? {
+              id: line.driver.id,
+              name: `${line.driver.firstName} ${line.driver.lastName}`,
+            } : null,
+            reference: line.reference,
+            accountNumber: line.accountNumber,
+            tripNumber: line.tripNumber,
+            billOfLading: line.billOfLading,
+          })),
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to get import lines',
           message: error instanceof Error ? error.message : String(error),
         });
       }

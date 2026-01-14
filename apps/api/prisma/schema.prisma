@@ -104,11 +104,15 @@ model ImportLine {
   id                String    @id @default(uuid())
   importDocumentId  String
   driverId          String?
+  category          String?
   lineType          String
   description       String
   amount            Float
   date              DateTime?
   reference         String?
+  accountNumber     String?
+  tripNumber        String?
+  billOfLading      String?
   rawData           String
   createdAt         DateTime  @default(now())
 

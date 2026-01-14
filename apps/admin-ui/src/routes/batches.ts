@@ -41,8 +41,24 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
         batch.nvlPaymentRef || 'Unknown'
       );
       
+      // Pre-compute document type counts for each import file
+      const batchWithCounts = {
+        ...batch,
+        importFiles: batch.importFiles?.map(file => {
+          const docTypeCounts: Record<string, number> = {};
+          file.importDocuments?.forEach(doc => {
+            const type = doc.documentType || 'UNKNOWN';
+            docTypeCounts[type] = (docTypeCounts[type] || 0) + 1;
+          });
+          return {
+            ...file,
+            docTypeCounts,
+          };
+        }),
+      };
+      
       return reply.view('batches/detail.njk', {
-        batch,
+        batch: batchWithCounts,
         config: batchDetailConfig,
         statusClasses,
         pageTitle,
@@ -51,6 +67,66 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error(error);
       throw error;
+    }
+  });
+
+  fastify.post('/import-files/:importFileId/parse', async (request, reply) => {
+    const { importFileId } = request.params as { importFileId: string };
+    try {
+      const result = await apiClient.parseImportFile(importFileId);
+      return reply.send(result);
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({
+        error: 'Failed to parse import file',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  fastify.get('/import-files/:importFileId/summary', async (request, reply) => {
+    const { importFileId } = request.params as { importFileId: string };
+    try {
+      const summary = await apiClient.getImportFileSummary(importFileId);
+      return reply.send(summary);
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({
+        error: 'Failed to get import summary',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  fastify.post('/import-files/:importFileId/reset', async (request, reply) => {
+    const { importFileId } = request.params as { importFileId: string };
+    try {
+      const response = await fetch(`http://localhost:3000/batches/import-files/${importFileId}/reset`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+      return reply.send(result);
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({
+        error: 'Failed to reset import file',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  fastify.get('/import-files/:importFileId/lines', async (request, reply) => {
+    const { importFileId } = request.params as { importFileId: string };
+    try {
+      const response = await fetch(`http://localhost:3000/batches/import-files/${importFileId}/lines`);
+      const result = await response.json();
+      return reply.send(result);
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({
+        error: 'Failed to get parsed lines',
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
   });
 };

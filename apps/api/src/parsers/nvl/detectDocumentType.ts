@@ -15,7 +15,7 @@ export function detectDocumentType(text: string): DocumentType {
     return DocumentType.REVENUE_DISTRIBUTION;
   }
 
-  if (upperText.includes('ADVANCE ADVICE') || upperText.includes('CASH ADVANCE')) {
+  if (upperText.includes('ADVANCE ADVICE') || upperText.includes('ADVANCE CHARGEBACK') || upperText.includes('CASH ADVANCE')) {
     return DocumentType.ADVANCE_ADVICE;
   }
 

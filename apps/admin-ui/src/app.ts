@@ -52,6 +52,14 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
         env.addFilter('number', (value: number, decimals: number = 2) => {
           return value.toFixed(decimals);
         });
+
+        // Add keys filter
+        env.addFilter('keys', (obj: any) => {
+          if (obj && typeof obj === 'object') {
+            return Object.keys(obj);
+          }
+          return [];
+        });
       },
     },
   });

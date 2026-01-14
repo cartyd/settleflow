@@ -93,17 +93,33 @@
                         </div>
                     </div>
 
+                    {# Parse Actions #}
+                    <div class="import-file-actions">
+                        <button type="button" class="btn-secondary btn-sm" onclick="parseImportFile('{{ file.id }}')">
+                            Parse Transactions
+                        </button>
+                        <button type="button" class="btn-secondary btn-sm" onclick="resetAndReparse('{{ file.id }}')">
+                            Reset & Reparse
+                        </button>
+                        <button type="button" class="btn-secondary btn-sm" onclick="viewParseSummary('{{ file.id }}')">
+                            View Summary
+                        </button>
+                        <button type="button" class="btn-secondary btn-sm" onclick="viewParsedLines('{{ file.id }}')">
+                            View Parsed Lines
+                        </button>
+                    </div>
+
+                    {# Parse Results Display #}
+                    <div id="parse-result-{{ file.id }}" class="parse-result" style="display: none;"></div>
+                    <div id="parse-summary-{{ file.id }}" class="parse-summary" style="display: none;"></div>
+                    <div id="parse-lines-{{ file.id }}" class="parse-lines" style="display: none;"></div>
+
                     {% if file.importDocuments and file.importDocuments.length > 0 %}
                         <div class="document-types">
                             <h4>Document Types:</h4>
                             <div class="document-type-chips">
-                                {% set docTypes = {} %}
-                                {% for doc in file.importDocuments %}
-                                    {% set count = docTypes[doc.documentType] or 0 %}
-                                    {% set _ = docTypes.update({doc.documentType: count + 1}) %}
-                                {% endfor %}
-                                {% for type, count in docTypes.items() %}
-                                    <span class="chip chip-{{ type | lower }}">{{ type }} ({{ count }})</span>
+                                {% for type in file.docTypeCounts | keys %}
+                                    <span class="chip chip-{{ type | lower }}">{{ type }} ({{ file.docTypeCounts[type] }})</span>
                                 {% endfor %}
                             </div>
                         </div>
@@ -118,7 +134,7 @@
                                             <span class="chip chip-{{ doc.documentType | lower }}">{{ doc.documentType }}</span>
                                         </div>
                                         <div class="document-text">
-                                            {{ doc.rawText[:200] | escape }}{% if doc.rawText.length > 200 %}...{% endif %}
+                                            {{ doc.rawText | truncate(200) | escape }}
                                         </div>
                                     </div>
                                 {% endfor %}
@@ -207,5 +223,269 @@
         }
     });
 })();
+
+// Parse import file transactions
+window.parseImportFile = async function(importFileId) {
+    const resultDiv = document.getElementById(`parse-result-${importFileId}`);
+    const button = event.target;
+    
+    button.disabled = true;
+    button.textContent = 'Parsing...';
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<p class="loading">Parsing documents...</p>';
+    
+    try {
+        const response = await fetch(`/admin/batches/import-files/${importFileId}/parse`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            throw new Error('Parse request failed');
+        }
+        
+        const result = await response.json();
+        
+        let html = '<div class="parse-success">';
+        html += `<h4>✓ Parse Complete</h4>`;
+        html += `<p><strong>Documents Processed:</strong> ${result.documentsProcessed}</p>`;
+        html += `<p><strong>Lines Created:</strong> ${result.totalLinesCreated}</p>`;
+        
+        if (result.errors && result.errors.length > 0) {
+            html += '<div class="parse-errors">';
+            html += '<h5>Errors:</h5><ul>';
+            result.errors.forEach(err => {
+                html += `<li>${err}</li>`;
+            });
+            html += '</ul></div>';
+        }
+        
+        html += '</div>';
+        resultDiv.innerHTML = html;
+        
+        button.textContent = 'Parse Complete';
+        
+    } catch (error) {
+        resultDiv.innerHTML = `<p class="alert-error">Error: ${error.message}</p>`;
+        button.disabled = false;
+        button.textContent = 'Parse Transactions';
+    }
+};
+
+// Reset and reparse import file
+window.resetAndReparse = async function(importFileId) {
+    if (!confirm('This will delete all existing parsed lines and reparse the documents. Continue?')) {
+        return;
+    }
+    
+    const resultDiv = document.getElementById(`parse-result-${importFileId}`);
+    const button = event.target;
+    
+    button.disabled = true;
+    button.textContent = 'Resetting...';
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<p class="loading">Resetting and reparsing...</p>';
+    
+    try {
+        // Step 1: Reset
+        const resetResponse = await fetch(`/admin/batches/import-files/${importFileId}/reset`, {
+            method: 'POST'
+        });
+        
+        if (!resetResponse.ok) {
+            throw new Error('Reset request failed');
+        }
+        
+        button.textContent = 'Parsing...';
+        
+        // Step 2: Parse
+        const parseResponse = await fetch(`/admin/batches/import-files/${importFileId}/parse`, {
+            method: 'POST'
+        });
+        
+        if (!parseResponse.ok) {
+            throw new Error('Parse request failed');
+        }
+        
+        const result = await parseResponse.json();
+        
+        let html = '<div class="parse-success">';
+        html += `<h4>✓ Reset & Parse Complete</h4>`;
+        html += `<p><strong>Documents Processed:</strong> ${result.documentsProcessed}</p>`;
+        html += `<p><strong>Lines Created:</strong> ${result.totalLinesCreated}</p>`;
+        
+        if (result.errors && result.errors.length > 0) {
+            html += '<div class="parse-errors">';
+            html += '<h5>Errors:</h5><ul>';
+            result.errors.forEach(err => {
+                html += `<li>${err}</li>`;
+            });
+            html += '</ul></div>';
+        }
+        
+        html += '</div>';
+        resultDiv.innerHTML = html;
+        
+        button.disabled = false;
+        button.textContent = 'Reset & Reparse';
+        
+    } catch (error) {
+        resultDiv.innerHTML = `<p class="alert-error">Error: ${error.message}</p>`;
+        button.disabled = false;
+        button.textContent = 'Reset & Reparse';
+    }
+};
+
+// View parse summary
+window.viewParseSummary = async function(importFileId) {
+    const summaryDiv = document.getElementById(`parse-summary-${importFileId}`);
+    const button = event.target;
+    
+    // Toggle display
+    if (summaryDiv.style.display === 'block') {
+        summaryDiv.style.display = 'none';
+        return;
+    }
+    
+    button.disabled = true;
+    button.textContent = 'Loading...';
+    summaryDiv.style.display = 'block';
+    summaryDiv.innerHTML = '<p class="loading">Loading summary...</p>';
+    
+    try {
+        const response = await fetch(`/admin/batches/import-files/${importFileId}/summary`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to load summary');
+        }
+        
+        const summary = await response.json();
+        
+        let html = '<div class="summary-content">';
+        html += '<h4>Parsed Lines Summary</h4>';
+        html += `<p><strong>Total Lines:</strong> ${summary.totalLines}</p>`;
+        
+        if (summary.totalLines > 0) {
+            html += '<div class="summary-grid">';
+            html += `<div class="summary-item">`;
+            html += `<span class="summary-label">Revenue:</span>`;
+            html += `<span class="summary-value">$${summary.totalRevenue.toFixed(2)}</span>`;
+            html += `<span class="summary-count">(${summary.byLineType.REVENUE || 0} lines)</span>`;
+            html += `</div>`;
+            
+            html += `<div class="summary-item">`;
+            html += `<span class="summary-label">Advances:</span>`;
+            html += `<span class="summary-value">$${summary.totalAdvances.toFixed(2)}</span>`;
+            html += `<span class="summary-count">(${summary.byLineType.ADVANCE || 0} lines)</span>`;
+            html += `</div>`;
+            
+            html += `<div class="summary-item">`;
+            html += `<span class="summary-label">Deductions:</span>`;
+            html += `<span class="summary-value">$${summary.totalDeductions.toFixed(2)}</span>`;
+            html += `<span class="summary-count">(${summary.byLineType.DEDUCTION || 0} lines)</span>`;
+            html += `</div>`;
+            html += '</div>';
+        } else {
+            html += '<p class="empty-message">No parsed lines yet. Click "Parse Transactions" first.</p>';
+        }
+        
+        html += '</div>';
+        summaryDiv.innerHTML = html;
+        
+        button.disabled = false;
+        button.textContent = 'View Summary';
+        
+    } catch (error) {
+        summaryDiv.innerHTML = `<p class="alert-error">Error: ${error.message}</p>`;
+        button.disabled = false;
+        button.textContent = 'View Summary';
+    }
+};
+
+// View parsed lines
+window.viewParsedLines = async function(importFileId) {
+    const linesDiv = document.getElementById(`parse-lines-${importFileId}`);
+    const button = event.target;
+    
+    // Toggle display
+    if (linesDiv.style.display === 'block') {
+        linesDiv.style.display = 'none';
+        return;
+    }
+    
+    button.disabled = true;
+    button.textContent = 'Loading...';
+    linesDiv.style.display = 'block';
+    linesDiv.innerHTML = '<p class="loading">Loading parsed lines...</p>';
+    
+    try {
+        const response = await fetch(`/admin/batches/import-files/${importFileId}/lines`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to load lines');
+        }
+        
+        const data = await response.json();
+        const lines = data.lines || [];
+        
+        if (lines.length === 0) {
+            linesDiv.innerHTML = '<p class="empty-message">No parsed lines yet. Click "Parse Transactions" first.</p>';
+            button.disabled = false;
+            button.textContent = 'View Parsed Lines';
+            return;
+        }
+        
+        let html = '<div class="lines-table-container">';
+        html += `<h4>Parsed Lines (${lines.length})</h4>`;
+        html += '<table class="lines-table">';
+        html += '<thead><tr>';
+        html += '<th>Page</th>';
+        html += '<th>Category</th>';
+        html += '<th>Type</th>';
+        html += '<th>Acct</th>';
+        html += '<th>Date</th>';
+        html += '<th>Description</th>';
+        html += '<th>Amount</th>';
+        html += '<th>Driver</th>';
+        html += '<th>Ref</th>';
+        html += '<th>Trip#</th>';
+        html += '<th>B/L</th>';
+        html += '</tr></thead>';
+        html += '<tbody>';
+        
+        lines.forEach(line => {
+            const date = line.date ? new Date(line.date).toLocaleDateString() : '-';
+            const driver = line.driver ? line.driver.name : '-';
+            const amount = line.amount.toFixed(2);
+            const amountClass = line.amount < 0 ? 'negative' : 'positive';
+            
+            html += '<tr>';
+            html += `<td>${line.pageNumber || '-'}</td>`;
+            html += `<td>${line.category || '-'}</td>`;
+            html += `<td><span class="line-type-badge ${line.lineType ? line.lineType.toLowerCase() : 'unknown'}">${line.lineType || 'UNKNOWN'}</span></td>`;
+            html += `<td>${line.accountNumber || '-'}</td>`;
+            html += `<td>${date}</td>`;
+            html += `<td>${line.description}</td>`;
+            html += `<td class="amount ${amountClass}">$${amount}</td>`;
+            html += `<td>${driver}</td>`;
+            html += `<td>${line.reference || '-'}</td>`;
+            html += `<td>${line.tripNumber || '-'}</td>`;
+            html += `<td>${line.billOfLading || '-'}</td>`;
+            html += '</tr>';
+        });
+        
+        html += '</tbody></table>';
+        html += '</div>';
+        
+        linesDiv.innerHTML = html;
+        
+        button.disabled = false;
+        button.textContent = 'View Parsed Lines';
+        
+    } catch (error) {
+        linesDiv.innerHTML = `<p class="alert-error">Error: ${error.message}</p>`;
+        button.disabled = false;
+        button.textContent = 'View Parsed Lines';
+    }
+};
 </script>
 {% endblock %}
