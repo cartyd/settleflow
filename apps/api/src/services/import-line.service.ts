@@ -4,6 +4,8 @@ import { parseSettlementDetail } from '../parsers/nvl/settlement-detail.parser.j
 import { parseRevenueDistribution } from '../parsers/nvl/revenue-distribution.parser.js';
 import { parseCreditDebit } from '../parsers/nvl/credit-debit.parser.js';
 import { parseRemittance } from '../parsers/nvl/remittance.parser.js';
+import { parseAdvance } from '../parsers/nvl/advance.parser.js';
+import { parsePostingTicket } from '../parsers/nvl/posting-ticket.parser.js';
 
 const prisma = new PrismaClient();
 
@@ -311,10 +313,85 @@ export async function parseAndSaveImportLines(
       break;
     }
 
-    case DocumentType.ADVANCE_ADVICE:
-      // Not yet implemented
-      errors.push(`Parser for ${document.documentType} not yet implemented`);
+    case DocumentType.ADVANCE_ADVICE: {
+      // Advance Advice pages are the PRIMARY source for advance/comdata transactions.
+      const parseResult = parseAdvance(document.rawText);
+      errors.push(...parseResult.errors);
+
+      // Create ImportLine records for advances
+      for (const line of parseResult.lines) {
+        await prisma.importLine.create({
+          data: {
+            importDocumentId: document.id,
+            driverId: null,
+            category: 'ADVANCE',
+            lineType: 'ADVANCE',
+            description: line.description || 'COMDATA',
+            amount: line.advanceAmount,
+            date: line.date ? parseISODateLocal(line.date) : null,
+            reference: line.tripNumber,
+            accountNumber: line.accountNumber,
+            tripNumber: line.tripNumber,
+            rawData: JSON.stringify({
+              tripNumber: line.tripNumber,
+              accountNumber: line.accountNumber,
+              driverName: line.driverName,
+              advanceAmount: line.advanceAmount,
+              description: line.description,
+            }),
+          },
+        });
+        linesCreated++;
+      }
+
+      if (linesCreated > 0) {
+        await prisma.importDocument.update({
+          where: { id: document.id },
+          data: { parsedAt: new Date() },
+        });
+      }
+
       break;
+    }
+
+    case DocumentType.POSTING_TICKET: {
+      // Posting Ticket pages are the PRIMARY source for posting ticket deductions.
+      const parseResult = parsePostingTicket(document.rawText);
+      errors.push(...parseResult.errors);
+
+      // Create ImportLine records for posting tickets
+      for (const line of parseResult.lines) {
+        await prisma.importLine.create({
+          data: {
+            importDocumentId: document.id,
+            driverId: null,
+            category: 'POSTING TICKET',
+            lineType: 'DEDUCTION',
+            description: line.description || 'OTHER CHARGES',
+            amount: line.debitAmount,
+            date: line.date ? parseISODateLocal(line.date) : null,
+            reference: line.ptNumber,
+            accountNumber: line.accountNumber,
+            rawData: JSON.stringify({
+              ptNumber: line.ptNumber,
+              accountNumber: line.accountNumber,
+              debitAmount: line.debitAmount,
+              description: line.description,
+            }),
+          },
+        });
+        linesCreated++;
+      }
+
+      if (linesCreated > 0) {
+        await prisma.importDocument.update({
+          where: { id: document.id },
+          data: { parsedAt: new Date() },
+        });
+      }
+
+      break;
+    }
 
     default:
       errors.push(`Unknown document type: ${document.documentType}`);

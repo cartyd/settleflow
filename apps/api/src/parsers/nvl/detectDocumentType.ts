@@ -19,7 +19,11 @@ export function detectDocumentType(text: string): DocumentType {
     return DocumentType.REVENUE_DISTRIBUTION;
   }
 
-  if (upperText.includes('ADVANCE ADVICE') || upperText.includes('ADVANCE CHARGEBACK') || upperText.includes('CASH ADVANCE')) {
+  if (upperText.includes('POSTING TICKET') || upperText.includes('PT NUMBER')) {
+    return DocumentType.POSTING_TICKET;
+  }
+
+  if (upperText.includes('ADVANCE') && (upperText.includes('CHARGEBACK') || upperText.includes('REQUEST FOR ADVANCE'))) {
     return DocumentType.ADVANCE_ADVICE;
   }
 

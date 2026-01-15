@@ -330,15 +330,26 @@ function extractServiceItems(text: string): Array<{
 /**
  * Extract net balance
  * Pattern: "NET BALANCE" followed by amount (may have DUE NVL or just the amount)
+ * Handles multiple formats:
+ * - Single line: "NET BALANCE DUE N/V.L 3890.63"
+ * - Multi-line: "NET BALANCE DUE NVL\n*RATES...\n314.83\nDUE ACCOUNT"
  */
 function extractNetBalance(text: string): number {
   // Try single-line format: "NET BALANCE DUE NVL 3890.63" (most common)
-  let match = text.match(/NET\s+BALANCE\s+DUE\s+(?:N\.?V\.?L\.?|ACCOUNT)\s+(\d+(?:,\d+)*\.\d{2})/i);
+  let match = text.match(/NET\s+BALANCE\s+DUE\s+(?:N[.\/]?V[.\/]?L[.\/]?|ACCOUNT)\s+(\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
     return parseFloat(match[1].replace(/,/g, ''));
   }
   
-  // Try "NET BALANCE\nDUE NVL\n3,890.63" format (multi-line)
+  // Try format where amount appears after "NET BALANCE DUE NVL" with content in between
+  // Example: "NET BALANCE DUE NVL\n*RATES...\n314.83\nDUE ACCOUNT"
+  // Look for standalone amount on a line after NET BALANCE
+  match = text.match(/NET\s+BALANCE[\s\S]{0,500}?^\s*(\d+(?:,\d+)*\.\d{2})\s*$/m);
+  if (match) {
+    return parseFloat(match[1].replace(/,/g, ''));
+  }
+  
+  // Try "NET BALANCE\nDUE NVL\n3,890.63" format (multi-line, direct)
   match = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+(?:N\.?V\.?L\.?|ACCOUNT)\s*\n(\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
     return parseFloat(match[1].replace(/,/g, ''));
@@ -346,12 +357,6 @@ function extractNetBalance(text: string): number {
   
   // Try simple "NET BALANCE\n3,890.63" format
   match = text.match(/NET\s+BALANCE\s*\n(\d+(?:,\d+)*\.\d{2})/i);
-  if (match) {
-    return parseFloat(match[1].replace(/,/g, ''));
-  }
-  
-  // Try "NET BALANCE\nDUE NVL\nDUE ACCOUNT\n3,890.63" format
-  match = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+[^\n]+\n\s*DUE\s+[^\n]+\n(\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
     return parseFloat(match[1].replace(/,/g, ''));
   }
