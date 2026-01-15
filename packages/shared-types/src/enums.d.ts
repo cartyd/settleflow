@@ -13,6 +13,7 @@ export declare enum DocumentType {
     REVENUE_DISTRIBUTION = "REVENUE_DISTRIBUTION",
     ADVANCE_ADVICE = "ADVANCE_ADVICE",
     CREDIT_DEBIT = "CREDIT_DEBIT",
+    POSTING_TICKET = "POSTING_TICKET",
     UNKNOWN = "UNKNOWN"
 }
 export declare enum DriverRequestStatus {

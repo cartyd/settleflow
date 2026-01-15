@@ -18,6 +18,7 @@ var DocumentType;
     DocumentType["REVENUE_DISTRIBUTION"] = "REVENUE_DISTRIBUTION";
     DocumentType["ADVANCE_ADVICE"] = "ADVANCE_ADVICE";
     DocumentType["CREDIT_DEBIT"] = "CREDIT_DEBIT";
+    DocumentType["POSTING_TICKET"] = "POSTING_TICKET";
     DocumentType["UNKNOWN"] = "UNKNOWN";
 })(DocumentType || (exports.DocumentType = DocumentType = {}));
 var DriverRequestStatus;

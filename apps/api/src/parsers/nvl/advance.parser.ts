@@ -55,13 +55,21 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
     const driverMatch = ocrText.match(/DRIVER[-\s]+>?\s*([A-Z,\s]+)/i);
     const driverName = driverMatch ? driverMatch[1].trim() : undefined;
 
-    // Extract advance amount (look for TOTAL field or amount after ADVANCE)
+    // Extract advance amount
+    // The amount appears on the last line after the G/L #
+    // Format: "3101 071 1855 2032-01 518.00" (last number on last line)
     let advanceAmount = 0;
-    const totalMatch = ocrText.match(/TOTAL\s*\n?[^\d]*(\d+(?:,\d+)*\.?\d{0,2})/i);
-    if (totalMatch) {
-      advanceAmount = parseFloat(totalMatch[1].replace(/,/g, ''));
+    
+    // Split into lines and get last line
+    const textLines = ocrText.trim().split('\n');
+    const lastLine = textLines[textLines.length - 1];
+    
+    // Extract last decimal number from last line
+    const amountMatch = lastLine.match(/(\d+\.\d{2})\s*$/);
+    if (amountMatch) {
+      advanceAmount = parseFloat(amountMatch[1]);
     } else {
-      errors.push('Could not extract advance amount');
+      errors.push('Could not extract advance amount from last line: ' + lastLine);
       return { lines, errors };
     }
 

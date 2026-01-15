@@ -431,7 +431,8 @@ export async function parseImportFile(importFileId: string): Promise<{
     if (
       document.documentType === DocumentType.REVENUE_DISTRIBUTION ||
       document.documentType === DocumentType.CREDIT_DEBIT ||
-      document.documentType === DocumentType.ADVANCE_ADVICE
+      document.documentType === DocumentType.ADVANCE_ADVICE ||
+      document.documentType === DocumentType.POSTING_TICKET
     ) {
       try {
         const result = await parseAndSaveImportLines(document.id);
