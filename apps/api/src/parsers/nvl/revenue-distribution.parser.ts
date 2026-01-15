@@ -164,19 +164,22 @@ function extractTripNumber(text: string): string | undefined {
 
 /**
  * Extract bill of lading
- * Pattern: "BILL OF LADING" followed by supplier number
- * Format: 356985/357175 (we only want 356985)
+ * Pattern: "BILL OF LADING" followed by supplier number (format: 356985/357175)
+ * We extract the first number before the slash
  */
 function extractBillOfLading(text: string): string | undefined {
-  const match = text.match(/BILL\s+OF\s+LADING\s*\n[^\n]*\n[^\n]*\n[^\n]*\n(\d+)/i);
+  // Look for pattern like "356985/357175" or just "356985" after BILL OF LADING section
+  const match = text.match(/BILL\s+OF\s+LADING[\s\S]{0,200}?(\d{6})\s*\/\s*\d{6}/i);
   if (match) {
-    let bol = match[1];
-    // Remove supplier number if present
-    if (bol.includes('/')) {
-      bol = bol.split('/')[0].trim();
-    }
-    return bol;
+    return match[1];
   }
+  
+  // Fallback: try to find just a 6-digit number in the BOL section
+  const simpleMatch = text.match(/BILL\s+OF\s+LADING[\s\S]{0,200}?(\d{6})/i);
+  if (simpleMatch) {
+    return simpleMatch[1];
+  }
+  
   return undefined;
 }
 

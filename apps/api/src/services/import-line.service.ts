@@ -34,9 +34,10 @@ export async function parseAndSaveImportLines(
 ): Promise<ParseDocumentResult> {
   const errors: string[] = [];
 
-  // Fetch the document
+  // Fetch the document with importFile relation (needed for batch lookup)
   const document = await prisma.importDocument.findUnique({
     where: { id: importDocumentId },
+    include: { importFile: true },
   });
 
   if (!document) {
@@ -60,8 +61,42 @@ export async function parseAndSaveImportLines(
       const parseResult = parseSettlementDetail(document.rawText);
       errors.push(...parseResult.errors);
 
+      // Get all Revenue Distribution documents in same batch (for linking)
+      const revDistDocs = await prisma.importDocument.findMany({
+        where: {
+          importFile: {
+            batchId: document.importFile?.batchId,
+          },
+          documentType: DocumentType.REVENUE_DISTRIBUTION,
+          parsedAt: { not: null },
+          metadata: { not: null },
+        },
+        include: {
+          importFile: true,
+        },
+      });
+
+      // Index Revenue Distribution data by Bill of Lading for quick lookup
+      const revDistByBOL = new Map<string, any>();
+      for (const revDoc of revDistDocs) {
+        try {
+          const metadata = JSON.parse(revDoc.metadata!);
+          if (metadata.billOfLading) {
+            revDistByBOL.set(metadata.billOfLading, metadata);
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+
       // Create ImportLine records for each parsed line
       for (const line of parseResult.lines) {
+        // For "RD REVENUE DISTR" lines, try to link with Revenue Distribution detail
+        let revenueDistributionDetail = null;
+        if (line.transactionCode === 'RD' && line.billOfLading) {
+          revenueDistributionDetail = revDistByBOL.get(line.billOfLading) || null;
+        }
+
         await prisma.importLine.create({
           data: {
             importDocumentId: document.id,
@@ -84,6 +119,8 @@ export async function parseAndSaveImportLines(
               accountNumber: parseResult.accountNumber,
               accountName: parseResult.accountName,
               checkNumber: parseResult.checkNumber,
+              // Link to Revenue Distribution detail if available
+              revenueDistributionDetail,
             }),
           },
         });
@@ -100,53 +137,26 @@ export async function parseAndSaveImportLines(
     }
 
     case DocumentType.REVENUE_DISTRIBUTION: {
+      // Revenue Distribution detail pages are supporting documentation only.
+      // The actual transactions are already captured in the Settlement Detail page
+      // as "RD REVENUE DISTR" line items. Creating import lines from these pages
+      // would result in duplicate revenue entries.
+      // 
+      // Instead, we parse and store the detailed information in the document's
+      // metadata field so it can be linked to Settlement Detail lines by B/L number.
       const parseResult = parseRevenueDistribution(document.rawText);
       errors.push(...parseResult.errors);
 
-      // Create ImportLine records for revenue distribution
-      for (const line of parseResult.lines) {
-        await prisma.importLine.create({
-          data: {
-            importDocumentId: document.id,
-            driverId: null, // Will be matched later
-            category: 'REV DIST',
-            lineType: 'REVENUE',
-            description: `Trip ${line.tripNumber} - ${line.origin} to ${line.destination}`,
-            amount: -Math.abs(line.netBalance), // Revenue is negative (owed to driver)
-            date: line.entryDate ? parseISODateLocal(line.entryDate) : null,
-            reference: line.tripNumber,
-            accountNumber: line.accountNumber,
-            tripNumber: line.tripNumber,
-            billOfLading: line.billOfLading,
-            rawData: JSON.stringify({
-              driverName: line.driverName,
-              driverFirstName: line.driverFirstName,
-              driverLastName: line.driverLastName,
-              accountNumber: line.accountNumber,
-              tripNumber: line.tripNumber,
-              billOfLading: line.billOfLading,
-              shipperName: line.shipperName,
-              entryDate: line.entryDate,
-              origin: line.origin,
-              destination: line.destination,
-              deliveryDate: line.deliveryDate,
-              weight: line.weight,
-              miles: line.miles,
-              overflowWeight: line.overflowWeight,
-              serviceItems: line.serviceItems,
-              netBalance: line.netBalance,
-            }),
-          },
-        });
-        linesCreated++;
-      }
-
-      if (linesCreated > 0) {
-        await prisma.importDocument.update({
-          where: { id: document.id },
-          data: { parsedAt: new Date() },
-        });
-      }
+      // Store parsed data as document metadata (for linking to Settlement Detail)
+      const metadata = parseResult.lines.length > 0 ? parseResult.lines[0] : null;
+      
+      await prisma.importDocument.update({
+        where: { id: document.id },
+        data: { 
+          parsedAt: new Date(),
+          metadata: metadata ? JSON.stringify(metadata) : null,
+        },
+      });
 
       break;
     }
@@ -269,6 +279,9 @@ export async function parseAndSaveImportLines(
 
 /**
  * Parse all documents in an ImportFile
+ * Two-pass approach:
+ * 1. First parse Revenue Distribution docs (to extract and store metadata)
+ * 2. Then parse Settlement Detail docs (which can link to Revenue Distribution by B/L)
  */
 export async function parseImportFile(importFileId: string): Promise<{
   importFileId: string;
@@ -285,15 +298,33 @@ export async function parseImportFile(importFileId: string): Promise<{
     orderBy: { pageNumber: 'asc' },
   });
 
+  // FIRST PASS: Parse Revenue Distribution documents to store metadata
   for (const document of documents) {
-    try {
-      const result = await parseAndSaveImportLines(document.id);
-      totalLinesCreated += result.linesCreated;
-      allErrors.push(...result.errors);
-    } catch (error) {
-      allErrors.push(
-        `Failed to parse document ${document.id} (page ${document.pageNumber}): ${error}`
-      );
+    if (document.documentType === DocumentType.REVENUE_DISTRIBUTION) {
+      try {
+        const result = await parseAndSaveImportLines(document.id);
+        totalLinesCreated += result.linesCreated;
+        allErrors.push(...result.errors);
+      } catch (error) {
+        allErrors.push(
+          `Failed to parse Revenue Distribution document ${document.id} (page ${document.pageNumber}): ${error}`
+        );
+      }
+    }
+  }
+
+  // SECOND PASS: Parse all other documents (Settlement Detail can now link to Revenue Distribution)
+  for (const document of documents) {
+    if (document.documentType !== DocumentType.REVENUE_DISTRIBUTION) {
+      try {
+        const result = await parseAndSaveImportLines(document.id);
+        totalLinesCreated += result.linesCreated;
+        allErrors.push(...result.errors);
+      } catch (error) {
+        allErrors.push(
+          `Failed to parse document ${document.id} (page ${document.pageNumber}): ${error}`
+        );
+      }
     }
   }
 

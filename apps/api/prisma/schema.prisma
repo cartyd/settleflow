@@ -93,6 +93,7 @@ model ImportDocument {
   pageNumber    Int
   rawText       String
   parsedAt      DateTime?
+  metadata      String?   // JSON string storing parsed document metadata for linking
 
   importFile    ImportFile      @relation(fields: [importFileId], references: [id])
   importLines   ImportLine[]
