@@ -1,5 +1,5 @@
 /**
- * AI-based parser for CREDIT_DEBIT document type
+ * Regex-based parser for CREDIT_DEBIT document type
  * 
  * These are form-based documents showing individual charges or credits
  * 
@@ -7,64 +7,9 @@
  * - Transaction type: SAFETY CHARGEBACKS, PROFILE SEO, ELD SRVC FEE
  * - Description: MOTOR VEH REP, PROFILE SEO, ELD SRVC FEE
  * - Amount: Debit or Credit
- * - Date: Entry date and process date
+ * - Date: Entry date and process date (MMDDYY format like 121625)
  * - Account info
  */
-
-import { loadConfig } from '@settleflow/shared-config';
-
-/**
- * Parse date string to valid Date or null
- * Handles: YYYY-MM-DD, MM/DD/YY, MMDDYY formats
- */
-function parseDate(dateStr: string | undefined): Date | null {
-  if (!dateStr) return null;
-  
-  const cleanStr = dateStr.trim();
-  
-  // Try MMDDYY format (6 digits, no separators) - e.g., 121625 = 12/16/25
-  const compactMatch = cleanStr.match(/^(\d{2})(\d{2})(\d{2})$/);
-  if (compactMatch) {
-    const [, month, day, year] = compactMatch;
-    const fullYear = parseInt(`20${year}`, 10);
-    const monthNum = parseInt(month, 10);
-    const dayNum = parseInt(day, 10);
-    // Create date in local timezone to avoid UTC offset issues
-    const date = new Date(fullYear, monthNum - 1, dayNum);
-    if (!isNaN(date.getTime()) && date.getFullYear() >= 1900 && date.getFullYear() <= 2100) {
-      return date;
-    }
-  }
-  
-  // Try YYYY-MM-DD format
-  const isoMatch = cleanStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) {
-    const [, year, month, day] = isoMatch;
-    const yearNum = parseInt(year, 10);
-    const monthNum = parseInt(month, 10);
-    const dayNum = parseInt(day, 10);
-    const date = new Date(yearNum, monthNum - 1, dayNum);
-    // Check if valid date and year is reasonable (1900-2100)
-    if (!isNaN(date.getTime()) && date.getFullYear() >= 1900 && date.getFullYear() <= 2100) {
-      return date;
-    }
-  }
-  
-  // Try MM/DD/YY format
-  const slashMatch = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
-  if (slashMatch) {
-    const [, month, day, year] = slashMatch;
-    const fullYear = parseInt(`20${year}`, 10);
-    const monthNum = parseInt(month, 10);
-    const dayNum = parseInt(day, 10);
-    const date = new Date(fullYear, monthNum - 1, dayNum);
-    if (!isNaN(date.getTime())) {
-      return date;
-    }
-  }
-  
-  return null;
-}
 
 export interface CreditDebitLine {
   transactionType?: string;
@@ -84,97 +29,236 @@ export interface CreditDebitParseResult {
 }
 
 /**
- * Use Ollama to extract structured data from CREDIT_DEBIT document
+ * Parse date string to ISO format
+ * Handles: YYYY-MM-DD, MM/DD/YY, MMDDYY (6 digits) formats
  */
-async function parseWithAI(ocrText: string, serverUrl: string, model: string): Promise<any> {
-  const prompt = `Extract the following information from this credit/debit notification document and return ONLY valid JSON (no markdown, no explanations):
-
-{
-  "transactionType": "transaction type (e.g., SAFETY CHARGEBACKS, PROFILE SEO)",
-  "description": "item description",
-  "amount": number (positive number),
-  "isDebit": boolean (true if debit/charge, false if credit),
-  "entryDate": "entry date (keep as-is, e.g., 121625 for MMDDYY format)",
-  "processDate": "process date (keep as-is, e.g., 121625 for MMDDYY format)",
-  "accountNumber": "account number if shown",
-  "reference": "any reference number or unit number"
-}
-
-IMPORTANT: For dates shown as 6 digits like 121625, return them exactly as shown. Do NOT convert to other formats.
-
-Document text:
-${ocrText}
-
-Return ONLY the JSON object, no other text.`;
-
-  const response = await fetch(serverUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      prompt,
-      stream: false,
-      options: {
-        temperature: 0.1,
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Ollama API error: ${response.statusText}`);
-  }
-
-  const result = await response.json();
+function parseDate(dateStr: string | undefined): string | undefined {
+  if (!dateStr) return undefined;
   
-  // Extract JSON from response
-  let jsonText = result.response.trim();
-  jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+  const cleanStr = dateStr.trim();
   
-  const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('No JSON found in AI response');
+  // Try MMDDYY format (6 digits, no separators) - e.g., 121625 = 12/16/25
+  const compactMatch = cleanStr.match(/^(\d{2})(\d{2})(\d{2})$/);
+  if (compactMatch) {
+    const [, month, day, year] = compactMatch;
+    const fullYear = `20${year}`;
+    return `${fullYear}-${month}-${day}`;
   }
-
-  return JSON.parse(jsonMatch[0]);
+  
+  // Try YYYY-MM-DD format
+  const isoMatch = cleanStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return cleanStr;
+  }
+  
+  // Try MM/DD/YY format
+  const slashMatch = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+  if (slashMatch) {
+    const [, month, day, year] = slashMatch;
+    const fullYear = `20${year}`;
+    return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+  
+  return undefined;
 }
 
 /**
- * Parse CREDIT_DEBIT document using AI
+ * Extract transaction type from the document
+ * Pattern: Line after "TRANSACTION TYPE" header
  */
-export async function parseCreditDebit(
-  ocrText: string
-): Promise<CreditDebitParseResult> {
-  const errors: string[] = [];
-  const lines: CreditDebitLine[] = [];
-  const config = loadConfig();
+function extractTransactionType(text: string): string | undefined {
+  const match = text.match(/TRANSACTION\s+TYPE[\s\t]*\n\s*([^\n\t]+)/i);
+  if (match) {
+    return match[1].trim();
+  }
+  return undefined;
+}
 
-  if (!config.ocr.enabled) {
-    errors.push('OCR service is not enabled');
-    return { lines, errors };
+/**
+ * Extract description from the document
+ * Pattern: First non-empty value after "DESCRIPTION" header or in DEBITS/CREDITS section
+ */
+function extractDescription(text: string): string {
+  // Try to find description in tab-separated format (DESCRIPTION\tDEBITS\tCREDITS\nVALUE\t...)
+  const tabMatch = text.match(/DESCRIPTION[\s\t]+DEBITS[\s\t]+CREDITS[\s\t]*\n([^\t\n]+)[\s\t]+\d+\.\d{2}/i);
+  if (tabMatch && tabMatch[1].trim()) {
+    return tabMatch[1].trim();
   }
 
-  try {
-    const parsed = await parseWithAI(ocrText, config.ocr.serverUrl, config.ocr.model);
+  // Try to find description after "DESCRIPTION" label on separate line
+  const descMatch = text.match(/DESCRIPTION[\s\t]*\n\s*([^\n\t]+)/i);
+  if (descMatch && descMatch[1].trim() && !descMatch[1].match(/DEBITS|CREDITS/i)) {
+    return descMatch[1].trim();
+  }
 
-    // Parse dates safely
-    const entryDate = parseDate(parsed.entryDate);
-    const processDate = parseDate(parsed.processDate);
+  // Fallback: use transaction type if available
+  const transType = extractTransactionType(text);
+  if (transType) {
+    return transType;
+  }
+
+  return 'Unknown';
+}
+
+/**
+ * Extract entry date from the document
+ * Pattern: Date after "N.V.L ENTRY" or "NVL ENTRY" label (MMDDYY format)
+ */
+function extractEntryDate(text: string): string | undefined {
+  const match = text.match(/N\.?V\.?L\.?\s+ENTRY[\s\t]*\n?[\s\t]*(\d{6})/i);
+  if (match) {
+    return parseDate(match[1]);
+  }
+  return undefined;
+}
+
+/**
+ * Extract process date from the document
+ * Pattern: Date after "PROCESS DATE" or "PROCESS" label (MMDDYY format)
+ */
+function extractProcessDate(text: string): string | undefined {
+  // Try "PROCESS DATE" pattern
+  let match = text.match(/PROCESS\s+DATE[\s\t]*\n?[\s\t]*(\d{6})/i);
+  if (match) {
+    return parseDate(match[1]);
+  }
+
+  // Try standalone "PROCESS" label followed by date
+  match = text.match(/PROCESS[\s\t]*\n?[\s\t]*(\d{6})/i);
+  if (match) {
+    return parseDate(match[1]);
+  }
+
+  return undefined;
+}
+
+/**
+ * Extract account number from the document
+ * Pattern: Number after "ACCOUNT NUMBER" label
+ */
+function extractAccountNumber(text: string): string | undefined {
+  const match = text.match(/ACCOUNT\s+NUMBER[\s\t]*\n?[\s\t]*(\d+)/i);
+  if (match) {
+    return match[1];
+  }
+  return undefined;
+}
+
+/**
+ * Extract amount and determine if debit or credit
+ * Pattern: Amount in DEBITS or CREDITS column
+ */
+function extractAmountAndType(text: string): { amount: number; isDebit: boolean } {
+  // Look for amount in DEBITS column
+  const debitMatch = text.match(/DEBITS[\s\t]+CREDITS[\s\t]*\n[^\n]*[\s\t]+(\d+\.\d{2})/i);
+  if (debitMatch) {
+    return {
+      amount: parseFloat(debitMatch[1]),
+      isDebit: true,
+    };
+  }
+
+  // Look for amount after DEBITS label (tab-separated format)
+  const debitTabMatch = text.match(/DEBITS[\s\t]*\n[^\n\t]+[\s\t]+(\d+\.\d{2})/i);
+  if (debitTabMatch) {
+    return {
+      amount: parseFloat(debitTabMatch[1]),
+      isDebit: true,
+    };
+  }
+
+  // Look for standalone DEBITS amount (single column)
+  const debitSingleMatch = text.match(/DEBITS[\s\t]*\n(\d+\.\d{2})/i);
+  if (debitSingleMatch) {
+    return {
+      amount: parseFloat(debitSingleMatch[1]),
+      isDebit: true,
+    };
+  }
+
+  // Look for amount in CREDITS column
+  const creditMatch = text.match(/CREDITS[\s\t]*\n[^\n]*[\s\t]+(\d+\.\d{2})/i);
+  if (creditMatch) {
+    return {
+      amount: -parseFloat(creditMatch[1]), // Credits are negative
+      isDebit: false,
+    };
+  }
+
+  // Fallback: look for NET BALANCE amount
+  const balanceMatch = text.match(/NET\s+BALANCE[\s\t]*\n?[\s\t]*(\d+\.\d{2})/i);
+  if (balanceMatch) {
+    return {
+      amount: parseFloat(balanceMatch[1]),
+      isDebit: true, // Assume debit if found in balance
+    };
+  }
+
+  return { amount: 0, isDebit: true };
+}
+
+/**
+ * Extract reference number (unit number or payment info)
+ * Pattern: Numbers after "UNIT #" or in payment line
+ */
+function extractReference(text: string): string | undefined {
+  // Try unit number
+  const unitMatch = text.match(/UNIT\s*#[\s\t]*\n?[\s\t]*(\d+)/i);
+  if (unitMatch && unitMatch[1] !== '0000') {
+    return unitMatch[1];
+  }
+
+  // Try payment reference (e.g., "PAYMENT 46 OF 47")
+  const paymentMatch = text.match(/PAYMENT[\s\t]+(\d+)[\s\t]+OF[\s\t]+(\d+)/i);
+  if (paymentMatch) {
+    return `${paymentMatch[1]} OF ${paymentMatch[2]}`;
+  }
+
+  // Try long reference number (e.g., "112147005360")
+  const longRefMatch = text.match(/(\d{10,})/);
+  if (longRefMatch) {
+    return longRefMatch[1];
+  }
+
+  return undefined;
+}
+
+/**
+ * Parse CREDIT_DEBIT document using regex patterns
+ */
+export function parseCreditDebit(ocrText: string): CreditDebitParseResult {
+  const errors: string[] = [];
+  const lines: CreditDebitLine[] = [];
+
+  try {
+    const transactionType = extractTransactionType(ocrText);
+    const description = extractDescription(ocrText);
+    const entryDate = extractEntryDate(ocrText);
+    const processDate = extractProcessDate(ocrText);
+    const accountNumber = extractAccountNumber(ocrText);
+    const { amount, isDebit } = extractAmountAndType(ocrText);
+    const reference = extractReference(ocrText);
+
+    // Validate that we extracted essential fields
+    if (amount === 0) {
+      errors.push('Could not extract amount from credit/debit document');
+    }
 
     const line: CreditDebitLine = {
-      transactionType: parsed.transactionType,
-      description: parsed.description || 'Unknown',
-      amount: parsed.isDebit ? parsed.amount : -parsed.amount, // Store debits as positive, credits as negative
-      isDebit: parsed.isDebit !== false, // Default to debit if not specified
-      entryDate: entryDate?.toISOString().split('T')[0],
-      processDate: processDate?.toISOString().split('T')[0],
-      accountNumber: parsed.accountNumber,
-      reference: parsed.reference,
+      transactionType,
+      description,
+      amount,
+      isDebit,
+      entryDate,
+      processDate,
+      accountNumber,
+      reference,
       rawText: ocrText,
     };
 
     lines.push(line);
   } catch (error) {
-    errors.push(`AI parsing failed: ${error instanceof Error ? error.message : String(error)}`);
+    errors.push(`Parsing failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   return { lines, errors };
