@@ -185,12 +185,21 @@ function extractAmountAndType(text: string): { amount: number; isDebit: boolean 
     };
   }
 
-  // Fallback: look for NET BALANCE amount
+  // Try NET BALANCE with multi-line format (DUE NVL / DUE ACCOUNT)
+  const balanceMultiMatch = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+[^\n]+\n\s*DUE\s+[^\n]+\n(\d+\.\d{2})/i);
+  if (balanceMultiMatch) {
+    return {
+      amount: parseFloat(balanceMultiMatch[1]),
+      isDebit: true,
+    };
+  }
+
+  // Try simple NET BALANCE format
   const balanceMatch = text.match(/NET\s+BALANCE[\s\t]*\n?[\s\t]*(\d+\.\d{2})/i);
   if (balanceMatch) {
     return {
       amount: parseFloat(balanceMatch[1]),
-      isDebit: true, // Assume debit if found in balance
+      isDebit: true,
     };
   }
 

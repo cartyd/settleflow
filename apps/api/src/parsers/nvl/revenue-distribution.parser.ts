@@ -145,9 +145,17 @@ function extractAccountNumber(text: string): string | undefined {
 /**
  * Extract trip number
  * Pattern: "TRIP" followed by "NUMBER" and the value
+ * Also handles "TRIP NUMBER" on same line or "ACCOUNT NUMBER TRIP NUMBER"
  */
 function extractTripNumber(text: string): string | undefined {
-  const match = text.match(/TRIP\s*\n?\s*NUMBER\s*\n?\s*(\d+)/i);
+  // Try "ACCOUNT NUMBER TRIP NUMBER\n3101 416" format
+  let match = text.match(/TRIP\s+NUMBER\s*\n\s*\d+\s+(\d+)/i);
+  if (match) {
+    return match[1];
+  }
+  
+  // Try "TRIP\nNUMBER\n1854" format
+  match = text.match(/TRIP\s*\n?\s*NUMBER\s*\n?\s*(\d+)/i);
   if (match) {
     return match[1];
   }
@@ -318,13 +326,27 @@ function extractServiceItems(text: string): Array<{
 
 /**
  * Extract net balance
- * Pattern: "NET BALANCE" followed by "DUE" and amount
+ * Pattern: "NET BALANCE" followed by amount (may have DUE NVL or just the amount)
  */
 function extractNetBalance(text: string): number {
-  const match = text.match(/NET\s+BALANCE\s*\n?\s*DUE\s+(?:NVL|ACCOUNT)\s*\n?[\s\w]*?\n?(\d+(?:,\d+)*\.\d{2})/i);
+  // Try "NET BALANCE\nDUE NVL\n3,890.63" format
+  let match = text.match(/NET\s+BALANCE\s*\n?\s*DUE\s+(?:N\.?V\.?L\.?|ACCOUNT)\s*\n?(\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
     return parseFloat(match[1].replace(/,/g, ''));
   }
+  
+  // Try simple "NET BALANCE\n3,890.63" format
+  match = text.match(/NET\s+BALANCE\s*\n(\d+(?:,\d+)*\.\d{2})/i);
+  if (match) {
+    return parseFloat(match[1].replace(/,/g, ''));
+  }
+  
+  // Try "NET BALANCE\nDUE NVL\nDUE ACCOUNT\n3,890.63" format
+  match = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+[^\n]+\n\s*DUE\s+[^\n]+\n(\d+(?:,\d+)*\.\d{2})/i);
+  if (match) {
+    return parseFloat(match[1].replace(/,/g, ''));
+  }
+  
   return 0;
 }
 
