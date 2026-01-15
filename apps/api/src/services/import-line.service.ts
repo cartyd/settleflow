@@ -58,76 +58,95 @@ export async function parseAndSaveImportLines(
   // Route to appropriate parser based on document type
   switch (document.documentType) {
     case DocumentType.SETTLEMENT_DETAIL: {
+      // Settlement Detail is a VALIDATION document, not the primary source.
+      // It contains a summary of transactions that should match the detail from
+      // supporting documents (Revenue Distribution, Credit/Debit, etc.).
       const parseResult = parseSettlementDetail(document.rawText);
       errors.push(...parseResult.errors);
 
-      // Get all Revenue Distribution documents in same batch (for linking)
-      const revDistDocs = await prisma.importDocument.findMany({
+      // Get all import lines already created from supporting documents in this batch
+      const existingLines = await prisma.importLine.findMany({
         where: {
-          importFile: {
-            batchId: document.importFile?.batchId,
+          importDocument: {
+            importFile: {
+              batchId: document.importFile?.batchId,
+            },
           },
-          documentType: DocumentType.REVENUE_DISTRIBUTION,
-          parsedAt: { not: null },
-          metadata: { not: null },
-        },
-        include: {
-          importFile: true,
         },
       });
 
-      // Index Revenue Distribution data by Bill of Lading for quick lookup
-      const revDistByBOL = new Map<string, any>();
-      for (const revDoc of revDistDocs) {
-        try {
-          const metadata = JSON.parse(revDoc.metadata!);
-          if (metadata.billOfLading) {
-            revDistByBOL.set(metadata.billOfLading, metadata);
+      // Validate that Settlement Detail matches existing import lines
+      for (const settlementLine of parseResult.lines) {
+        let matched = false;
+
+        // Match RD (Revenue Distribution) lines by B/L
+        if (settlementLine.transactionCode === 'RD' && settlementLine.billOfLading) {
+          const matchingLine = existingLines.find(
+            (el) => el.lineType === 'REVENUE' && el.billOfLading === settlementLine.billOfLading
+          );
+          
+          if (matchingLine) {
+            matched = true;
+            // Validate amounts match (within 0.01 tolerance for rounding)
+            if (Math.abs(Math.abs(matchingLine.amount) - Math.abs(settlementLine.amount)) > 0.01) {
+              errors.push(
+                `Revenue mismatch for B/L ${settlementLine.billOfLading}: ` +
+                `Settlement Detail shows $${Math.abs(settlementLine.amount).toFixed(2)}, ` +
+                `but Revenue Distribution shows $${Math.abs(matchingLine.amount).toFixed(2)}`
+              );
+            }
+          } else {
+            errors.push(
+              `Settlement Detail references Revenue Distribution B/L ${settlementLine.billOfLading}, ` +
+              `but no matching Revenue Distribution document was found`
+            );
           }
-        } catch (e) {
-          // Ignore parse errors
+        }
+        
+        // Match MC (Miscellaneous Charge) lines by description and amount
+        else if (settlementLine.transactionCode === 'MC') {
+          const matchingLine = existingLines.find(
+            (el) =>
+              el.lineType === 'DEDUCTION' &&
+              el.description.toUpperCase().includes(settlementLine.description.toUpperCase()) &&
+              Math.abs(el.amount - settlementLine.amount) < 0.01
+          );
+          
+          if (matchingLine) {
+            matched = true;
+          } else {
+            errors.push(
+              `Settlement Detail shows MC deduction "${settlementLine.description}" ($${settlementLine.amount}), ` +
+              `but no matching Credit/Debit document was found`
+            );
+          }
+        }
+        
+        // Match CM (Comdata/Advance) lines
+        else if (settlementLine.transactionCode === 'CM') {
+          const matchingLine = existingLines.find(
+            (el) =>
+              el.lineType === 'ADVANCE' &&
+              Math.abs(el.amount - settlementLine.amount) < 0.01 &&
+              el.tripNumber === settlementLine.tripNumber
+          );
+          
+          if (matchingLine) {
+            matched = true;
+          } else {
+            // This is expected - CM advances might not have supporting docs
+            // Just note it, don't error
+          }
+        }
+        
+        // Match PT (Posting Ticket) lines
+        else if (settlementLine.transactionCode === 'PT') {
+          // PT lines might not have supporting docs either
+          matched = true; // Accept as-is for now
         }
       }
 
-      // Create ImportLine records for each parsed line
-      for (const line of parseResult.lines) {
-        // For "RD REVENUE DISTR" lines, try to link with Revenue Distribution detail
-        let revenueDistributionDetail = null;
-        if (line.transactionCode === 'RD' && line.billOfLading) {
-          revenueDistributionDetail = revDistByBOL.get(line.billOfLading) || null;
-        }
-
-        await prisma.importLine.create({
-          data: {
-            importDocumentId: document.id,
-            driverId: null, // Will be matched later
-            category: 'STLMT DET',
-            lineType: line.lineType,
-            description: line.description,
-            amount: line.amount,
-            date: line.date ? parseISODateLocal(line.date) : null,
-            reference: line.referenceNumber || line.tripNumber,
-            accountNumber: parseResult.accountNumber,
-            tripNumber: line.tripNumber,
-            billOfLading: line.billOfLading,
-            rawData: JSON.stringify({
-              billOfLading: line.billOfLading,
-              tripNumber: line.tripNumber,
-              referenceNumber: line.referenceNumber,
-              transactionCode: line.transactionCode,
-              rawLine: line.rawLine,
-              accountNumber: parseResult.accountNumber,
-              accountName: parseResult.accountName,
-              checkNumber: parseResult.checkNumber,
-              // Link to Revenue Distribution detail if available
-              revenueDistributionDetail,
-            }),
-          },
-        });
-        linesCreated++;
-      }
-
-      // Mark document as parsed
+      // Mark document as parsed (validation complete)
       await prisma.importDocument.update({
         where: { id: document.id },
         data: { parsedAt: new Date() },
@@ -137,31 +156,62 @@ export async function parseAndSaveImportLines(
     }
 
     case DocumentType.REVENUE_DISTRIBUTION: {
-      // Revenue Distribution detail pages are supporting documentation only.
-      // The actual transactions are already captured in the Settlement Detail page
-      // as "RD REVENUE DISTR" line items. Creating import lines from these pages
-      // would result in duplicate revenue entries.
-      // 
-      // Instead, we parse and store the detailed information in the document's
-      // metadata field so it can be linked to Settlement Detail lines by B/L number.
+      // Revenue Distribution pages are the PRIMARY source for revenue transactions.
+      // They contain full trip details: driver, route, service breakdown, net balance.
       const parseResult = parseRevenueDistribution(document.rawText);
       errors.push(...parseResult.errors);
 
-      // Store parsed data as document metadata (for linking to Settlement Detail)
-      const metadata = parseResult.lines.length > 0 ? parseResult.lines[0] : null;
-      
-      await prisma.importDocument.update({
-        where: { id: document.id },
-        data: { 
-          parsedAt: new Date(),
-          metadata: metadata ? JSON.stringify(metadata) : null,
-        },
-      });
+      // Create ImportLine records for revenue distribution
+      for (const line of parseResult.lines) {
+        await prisma.importLine.create({
+          data: {
+            importDocumentId: document.id,
+            driverId: null, // Will be matched later
+            category: 'REV DIST',
+            lineType: 'REVENUE',
+            description: `Trip ${line.tripNumber} - ${line.origin || 'Unknown'} to ${line.destination || 'Unknown'}`,
+            amount: -Math.abs(line.netBalance), // Revenue is negative (owed to driver)
+            date: line.entryDate ? parseISODateLocal(line.entryDate) : null,
+            reference: line.tripNumber,
+            accountNumber: line.accountNumber,
+            tripNumber: line.tripNumber,
+            billOfLading: line.billOfLading,
+            rawData: JSON.stringify({
+              driverName: line.driverName,
+              driverFirstName: line.driverFirstName,
+              driverLastName: line.driverLastName,
+              accountNumber: line.accountNumber,
+              tripNumber: line.tripNumber,
+              billOfLading: line.billOfLading,
+              shipperName: line.shipperName,
+              entryDate: line.entryDate,
+              origin: line.origin,
+              destination: line.destination,
+              deliveryDate: line.deliveryDate,
+              weight: line.weight,
+              miles: line.miles,
+              overflowWeight: line.overflowWeight,
+              serviceItems: line.serviceItems,
+              netBalance: line.netBalance,
+            }),
+          },
+        });
+        linesCreated++;
+      }
+
+      if (linesCreated > 0) {
+        await prisma.importDocument.update({
+          where: { id: document.id },
+          data: { parsedAt: new Date() },
+        });
+      }
 
       break;
     }
 
     case DocumentType.CREDIT_DEBIT: {
+      // Credit/Debit Notification pages are the PRIMARY source for deduction transactions.
+      // They contain full deduction details: transaction type, dates, amounts.
       const parseResult = parseCreditDebit(document.rawText);
       errors.push(...parseResult.errors);
 
@@ -280,8 +330,8 @@ export async function parseAndSaveImportLines(
 /**
  * Parse all documents in an ImportFile
  * Two-pass approach:
- * 1. First parse Revenue Distribution docs (to extract and store metadata)
- * 2. Then parse Settlement Detail docs (which can link to Revenue Distribution by B/L)
+ * 1. First parse supporting documents (Revenue Distribution, Credit/Debit, Advance) to create import lines
+ * 2. Then parse Settlement Detail as validation (cross-check totals and flag discrepancies)
  */
 export async function parseImportFile(importFileId: string): Promise<{
   importFileId: string;
@@ -298,24 +348,34 @@ export async function parseImportFile(importFileId: string): Promise<{
     orderBy: { pageNumber: 'asc' },
   });
 
-  // FIRST PASS: Parse Revenue Distribution documents to store metadata
+  // FIRST PASS: Parse supporting documents to create import lines
+  // These are the PRIMARY source of transaction data
   for (const document of documents) {
-    if (document.documentType === DocumentType.REVENUE_DISTRIBUTION) {
+    if (
+      document.documentType === DocumentType.REVENUE_DISTRIBUTION ||
+      document.documentType === DocumentType.CREDIT_DEBIT ||
+      document.documentType === DocumentType.ADVANCE_ADVICE
+    ) {
       try {
         const result = await parseAndSaveImportLines(document.id);
         totalLinesCreated += result.linesCreated;
         allErrors.push(...result.errors);
       } catch (error) {
         allErrors.push(
-          `Failed to parse Revenue Distribution document ${document.id} (page ${document.pageNumber}): ${error}`
+          `Failed to parse ${document.documentType} document ${document.id} (page ${document.pageNumber}): ${error}`
         );
       }
     }
   }
 
-  // SECOND PASS: Parse all other documents (Settlement Detail can now link to Revenue Distribution)
+  // SECOND PASS: Parse validation documents (Settlement Detail, Remittance)
+  // Settlement Detail validates that supporting docs match the summary
   for (const document of documents) {
-    if (document.documentType !== DocumentType.REVENUE_DISTRIBUTION) {
+    if (
+      document.documentType === DocumentType.SETTLEMENT_DETAIL ||
+      document.documentType === DocumentType.REMITTANCE ||
+      document.documentType === DocumentType.UNKNOWN
+    ) {
       try {
         const result = await parseAndSaveImportLines(document.id);
         totalLinesCreated += result.linesCreated;
