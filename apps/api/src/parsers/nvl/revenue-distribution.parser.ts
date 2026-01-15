@@ -329,8 +329,14 @@ function extractServiceItems(text: string): Array<{
  * Pattern: "NET BALANCE" followed by amount (may have DUE NVL or just the amount)
  */
 function extractNetBalance(text: string): number {
-  // Try "NET BALANCE\nDUE NVL\n3,890.63" format
-  let match = text.match(/NET\s+BALANCE\s*\n?\s*DUE\s+(?:N\.?V\.?L\.?|ACCOUNT)\s*\n?(\d+(?:,\d+)*\.\d{2})/i);
+  // Try single-line format: "NET BALANCE DUE NVL 3890.63" (most common)
+  let match = text.match(/NET\s+BALANCE\s+DUE\s+(?:N\.?V\.?L\.?|ACCOUNT)\s+(\d+(?:,\d+)*\.\d{2})/i);
+  if (match) {
+    return parseFloat(match[1].replace(/,/g, ''));
+  }
+  
+  // Try "NET BALANCE\nDUE NVL\n3,890.63" format (multi-line)
+  match = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+(?:N\.?V\.?L\.?|ACCOUNT)\s*\n(\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
     return parseFloat(match[1].replace(/,/g, ''));
   }

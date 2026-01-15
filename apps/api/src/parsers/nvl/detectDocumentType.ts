@@ -12,6 +12,10 @@ export function detectDocumentType(text: string): DocumentType {
   }
 
   if (upperText.includes('REVENUE DISTRIBUTION') || upperText.includes('REVENUE SPLIT')) {
+    // Skip summary pages - they don't contain transaction details
+    if (upperText.includes('SUMMARY OF ITEMS')) {
+      return DocumentType.UNKNOWN;
+    }
     return DocumentType.REVENUE_DISTRIBUTION;
   }
 

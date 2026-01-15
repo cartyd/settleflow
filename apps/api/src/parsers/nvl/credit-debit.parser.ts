@@ -149,7 +149,16 @@ function extractAccountNumber(text: string): string | undefined {
  * Pattern: Amount in DEBITS or CREDITS column
  */
 function extractAmountAndType(text: string): { amount: number; isDebit: boolean } {
-  // Look for amount in DEBITS column
+  // Look for amount after DESCRIPTION\nDEBITS\nCREDITS\nDESCRIPTION_TEXT\nAMOUNT format
+  const newlineMatch = text.match(/DESCRIPTION\s*\n\s*DEBITS\s*\n\s*CREDITS\s*\n[^\n]+\n(\d+\.\d{2})/i);
+  if (newlineMatch) {
+    return {
+      amount: parseFloat(newlineMatch[1]),
+      isDebit: true,
+    };
+  }
+  
+  // Look for amount in DEBITS column (tab-separated)
   const debitMatch = text.match(/DEBITS[\s\t]+CREDITS[\s\t]*\n[^\n]*[\s\t]+(\d+\.\d{2})/i);
   if (debitMatch) {
     return {
