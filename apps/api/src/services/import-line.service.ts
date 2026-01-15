@@ -100,7 +100,7 @@ export async function parseAndSaveImportLines(
     }
 
     case DocumentType.REVENUE_DISTRIBUTION: {
-      const parseResult = await parseRevenueDistribution(document.rawText);
+      const parseResult = parseRevenueDistribution(document.rawText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for revenue distribution
@@ -152,7 +152,7 @@ export async function parseAndSaveImportLines(
     }
 
     case DocumentType.CREDIT_DEBIT: {
-      const parseResult = await parseCreditDebit(document.rawText);
+      const parseResult = parseCreditDebit(document.rawText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for credit/debit
@@ -210,7 +210,7 @@ export async function parseAndSaveImportLines(
     }
 
     case DocumentType.REMITTANCE: {
-      const parseResult = await parseRemittance(document.rawText);
+      const parseResult = parseRemittance(document.rawText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for remittance (metadata, not transactions)
