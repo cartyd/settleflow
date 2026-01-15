@@ -51,13 +51,16 @@ export function parsePostingTicket(ocrText: string): PostingTicketParseResult {
     const accountNumber = accountMatch ? accountMatch[1] : undefined;
 
     // Extract debit amount
-    const debitMatch = ocrText.match(/DEBIT\s*\n?[^\d]*(\d+(?:,\d+)*\.?\d{0,2})/i);
+    // Format: "DEBIT\nCICEROS' MOVING & ST\t3101\t10.00"
+    // The debit amount appears after the account number on the same line
+    // Look for decimal amount (xx.xx) after "DEBIT" header
+    const debitMatch = ocrText.match(/DEBIT[\s\S]{0,200}?(\d+\.\d{2})/i);
     if (!debitMatch) {
       errors.push('Could not extract debit amount from posting ticket');
       return { lines, errors };
     }
     
-    const debitAmount = parseFloat(debitMatch[1].replace(/,/g, ''));
+    const debitAmount = parseFloat(debitMatch[1]);
 
     // Extract description (look for common patterns like "OTHER CHARGES")
     const descMatch = ocrText.match(/OTHER\s+CHARGES|DESCRIPTION\s*\n([^\n]+)/i);
