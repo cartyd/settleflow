@@ -8,7 +8,7 @@
 
 {% block content %}
 <div class="detail-header">
-    <a href="{{ config.listViewPath | escape }}" class="back-link">{{ config.actionLabels.backToBatches | escape }}</a>
+    <a href="{{ (config.listViewPath or '/admin/batches') | escape }}" class="back-link">{{ (config.actionLabels and config.actionLabels.backToBatches) or '← Back to Batches' }}</a>
     <h1>{{ config.headingPrefix | escape }} {{ macros.safeValue(batch.nvlPaymentRef) }}</h1>
     <div class="detail-header-info">
         <span>
