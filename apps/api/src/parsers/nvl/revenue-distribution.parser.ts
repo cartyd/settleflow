@@ -327,13 +327,22 @@ function extractDestination(text: string): string | undefined {
     }
     
     // If origin and destination are on separate lines
-    if (originLineIdx >= 0 && originLineIdx + 2 < lines.length) {
-      const city = lines[originLineIdx + 1].trim();
-      const state = lines[originLineIdx + 2].trim();
-      
-      // Validate it looks like a city name and state abbreviation
-      if (city.match(/^[A-Z]+$/) && state.match(/^[A-Z]{2}$/)) {
-        return `${city}, ${state}`;
+    if (originLineIdx >= 0) {
+      // Look for next city name (all caps, might be multiple words)
+      for (let i = originLineIdx + 1; i < Math.min(originLineIdx + 5, lines.length); i++) {
+        const city = lines[i].trim();
+        if (!city || city.length < 2) continue;
+        
+        // Check if this looks like a city name (all caps)
+        if (city.match(/^[A-Z\s]+$/)) {
+          // Next line should be state abbreviation
+          if (i + 1 < lines.length) {
+            const state = lines[i + 1].trim();
+            if (state.match(/^[A-Z]{2}$/)) {
+              return `${city}, ${state}`;
+            }
+          }
+        }
       }
     }
   }
@@ -347,8 +356,8 @@ function extractDestination(text: string): string | undefined {
  * Must appear after origin/destination info to avoid picking up wrong date
  */
 function extractDeliveryDate(text: string): string | undefined {
-  // Try "MM.DD Y" format (dot separator)
-  const dotMatch = text.match(/([A-Z]{2})\s*\n(\d{1,2})\.(\d{1,2})\s+(\d{1})\s*\n/i);
+  // Try "MM.DD Y" format (dot separator) - appears after ORIGIN section
+  const dotMatch = text.match(/ORIGIN[^\n]*\n[\s\S]*?([A-Z]{2})\s*\n?(\d{1,2})\.(\d{1,2})\s+(\d{1})/i);
   if (dotMatch) {
     const month = dotMatch[2];
     const day = dotMatch[3];
@@ -517,6 +526,12 @@ function extractNetBalance(text: string): number {
 export function parseRevenueDistribution(ocrText: string): RevenueDistributionParseResult {
   const errors: string[] = [];
   const lines: RevenueDistributionLine[] = [];
+
+  // Handle empty input
+  if (!ocrText || ocrText.trim().length === 0) {
+    errors.push('Empty document provided');
+    return { lines, errors };
+  }
 
   try {
     const servicePerformedBy = extractServicePerformedBy(ocrText);
