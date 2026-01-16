@@ -33,6 +33,39 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  // PDF endpoint must come before /:id to avoid being caught by the generic route
+  fastify.get('/:id/pdf', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const response = await fetch(`http://localhost:3000/batches/${id}/pdf`);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        return reply.status(response.status).send(error);
+      }
+
+      // Forward the PDF stream
+      const contentType = response.headers.get('content-type');
+      const contentDisposition = response.headers.get('content-disposition');
+      
+      if (contentType) {
+        reply.type(contentType);
+      }
+      if (contentDisposition) {
+        reply.header('Content-Disposition', contentDisposition);
+      }
+
+      const buffer = await response.arrayBuffer();
+      return reply.send(Buffer.from(buffer));
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({
+        error: 'Failed to get PDF',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
   fastify.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
@@ -109,38 +142,6 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
       fastify.log.error(error);
       return reply.status(500).send({
         error: 'Failed to get parsed lines',
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-
-  fastify.get('/:id/pdf', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    try {
-      const response = await fetch(`http://localhost:3000/batches/${id}/pdf`);
-      
-      if (!response.ok) {
-        const error = await response.json();
-        return reply.status(response.status).send(error);
-      }
-
-      // Forward the PDF stream
-      const contentType = response.headers.get('content-type');
-      const contentDisposition = response.headers.get('content-disposition');
-      
-      if (contentType) {
-        reply.type(contentType);
-      }
-      if (contentDisposition) {
-        reply.header('Content-Disposition', contentDisposition);
-      }
-
-      const buffer = await response.arrayBuffer();
-      return reply.send(Buffer.from(buffer));
-    } catch (error) {
-      fastify.log.error(error);
-      return reply.status(500).send({
-        error: 'Failed to get PDF',
         message: error instanceof Error ? error.message : String(error),
       });
     }
