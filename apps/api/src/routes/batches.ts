@@ -4,6 +4,7 @@ import * as batchDetailService from '../services/batch-detail.service.js';
 import * as importService from '../services/import.service.js';
 import * as importLineService from '../services/import-line.service.js';
 import * as driverMatcherService from '../services/driver-matcher.service.js';
+import * as autoBatchImportService from '../services/auto-batch-import.service.js';
 import { loadConfig } from '@settleflow/shared-config';
 import path from 'path';
 import fs from 'fs';
@@ -149,9 +150,68 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
     },
   });
 
+  // New auto-upload endpoint - creates batch automatically from PDF
+  fastify.post('/upload', {
+    schema: {
+      description: 'Upload PDF and auto-create batch from remittance data',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const config = loadConfig();
+
+      if (!config.ocr.enabled) {
+        return reply.status(503).send({
+          error: 'OCR service is not enabled',
+        });
+      }
+
+      // Get uploaded file
+      const data = await request.file();
+
+      if (!data) {
+        return reply.status(400).send({
+          error: 'No file uploaded',
+        });
+      }
+
+      // Validate file type
+      if (!data.mimetype.includes('pdf')) {
+        return reply.status(400).send({
+          error: 'Only PDF files are supported',
+        });
+      }
+
+      // Read file buffer
+      const buffer = await data.toBuffer();
+
+      // Upload PDF and auto-create batch
+      try {
+        const result = await autoBatchImportService.uploadPdfAndCreateBatch(
+          fastify.prisma,
+          data.filename,
+          buffer,
+          {
+            model: config.ocr.model,
+            serverUrl: config.ocr.serverUrl,
+          },
+          'system' // TODO: Get actual user ID from auth
+        );
+
+        reply.status(201).send(result);
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to process PDF',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
+  // Legacy endpoint - kept for backwards compatibility
   fastify.post('/:id/upload', {
     schema: {
-      description: 'Upload and process PDF settlement file',
+      description: 'Upload and process PDF settlement file (legacy)',
       tags: ['batches'],
     },
     handler: async (request, reply) => {

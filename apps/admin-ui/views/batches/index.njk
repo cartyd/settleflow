@@ -5,5 +5,105 @@
 {% block heading %}{{ config.heading }}{% endblock %}
 
 {% block content %}
+<div class="page-actions">
+    <button type="button" class="btn-primary" onclick="document.getElementById('upload-form').style.display='block'">
+        Upload Settlement PDF
+    </button>
+</div>
+
+{# Upload Form #}
+<div id="upload-form" class="upload-form" style="display: none;">
+    <form id="pdf-upload-form" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="pdf-file">Select Settlement PDF:</label>
+            <input type="file" id="pdf-file" name="file" accept=".pdf" required>
+            <p class="form-hint">The batch will be created automatically from the remittance data.</p>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">Upload and Process</button>
+            <button type="button" class="btn-secondary" onclick="document.getElementById('upload-form').style.display='none'">Cancel</button>
+        </div>
+        <div id="upload-progress" class="upload-progress" style="display: none;">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <p id="progress-text">Processing PDF...</p>
+        </div>
+        <div id="upload-error" class="alert-error" style="display: none;"></div>
+    </form>
+</div>
+
 {% include "batches/table.njk" %}
+
+<script>
+(function() {
+    const form = document.getElementById('pdf-upload-form');
+    const progressDiv = document.getElementById('upload-progress');
+    const progressFill = document.getElementById('progress-fill');
+    const progressText = document.getElementById('progress-text');
+    const errorDiv = document.getElementById('upload-error');
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('pdf-file');
+        const file = fileInput.files[0];
+        
+        if (!file) {
+            alert('Please select a file');
+            return;
+        }
+
+        // Hide error, show progress
+        errorDiv.style.display = 'none';
+        progressDiv.style.display = 'block';
+        progressFill.style.width = '0%';
+        progressText.textContent = 'Uploading PDF...';
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            // Simulate progress (since we can't get real progress easily)
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 5;
+                if (progress >= 90) {
+                    clearInterval(progressInterval);
+                    progressText.textContent = 'Processing with OCR... This may take several minutes.';
+                }
+                progressFill.style.width = progress + '%';
+            }, 1000);
+
+            const response = await fetch('http://localhost:3000/batches/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            clearInterval(progressInterval);
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Upload failed');
+            }
+
+            const result = await response.json();
+            
+            // Success!
+            progressFill.style.width = '100%';
+            progressText.textContent = `Success! Created batch ${result.nvlPaymentRef} with ${result.documentsDetected} pages.`;
+            
+            // Redirect to batch detail page after 2 seconds
+            setTimeout(() => {
+                window.location.href = `/admin/batches/${result.batchId}`;
+            }, 2000);
+
+        } catch (error) {
+            progressDiv.style.display = 'none';
+            errorDiv.textContent = 'Error: ' + error.message;
+            errorDiv.style.display = 'block';
+        }
+    });
+})();
+</script>
 {% endblock %}
