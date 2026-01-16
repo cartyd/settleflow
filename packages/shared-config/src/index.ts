@@ -1,7 +1,45 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as fs from 'fs';
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// Find the monorepo root by looking for package.json with workspaces
+function findMonorepoRoot(): string {
+  let currentDir = process.cwd();
+  
+  while (currentDir !== path.parse(currentDir).root) {
+    const packageJsonPath = path.join(currentDir, 'package.json');
+    
+    if (fs.existsSync(packageJsonPath)) {
+      try {
+        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+        // Check if this is the monorepo root (has workspaces)
+        if (packageJson.workspaces) {
+          return currentDir;
+        }
+      } catch (e) {
+        // Continue searching if package.json is invalid
+      }
+    }
+    
+    currentDir = path.dirname(currentDir);
+  }
+  
+  // Fallback to process.cwd() if no monorepo root found
+  return process.cwd();
+}
+
+const MONOREPO_ROOT = findMonorepoRoot();
+
+dotenv.config({ path: path.resolve(MONOREPO_ROOT, '.env') });
+
+// Resolve DATABASE_URL if it's a relative file: URL
+if (process.env.DATABASE_URL?.startsWith('file:')) {
+  const dbPath = process.env.DATABASE_URL.substring(5); // Remove 'file:' prefix
+  if (!path.isAbsolute(dbPath)) {
+    const resolvedDbPath = path.resolve(MONOREPO_ROOT, dbPath);
+    process.env.DATABASE_URL = `file:${resolvedDbPath}`;
+  }
+}
 
 export interface AppConfig {
   nodeEnv: string;
@@ -77,11 +115,11 @@ export function loadConfig(): AppConfig {
     throw new Error('DATABASE_PROVIDER must be either "sqlite" or "postgres"');
   }
 
-  // Resolve PDF storage path relative to project root (where .env is located)
+  // Resolve PDF storage path relative to monorepo root
   const pdfStoragePath = getEnvVar('PDF_STORAGE_PATH', './uploads/pdfs');
   const resolvedPdfPath = path.isAbsolute(pdfStoragePath)
     ? pdfStoragePath
-    : path.resolve(process.cwd(), pdfStoragePath);
+    : path.resolve(MONOREPO_ROOT, pdfStoragePath);
 
   return {
     nodeEnv,

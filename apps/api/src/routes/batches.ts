@@ -92,17 +92,37 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
           },
         });
 
+        fastify.log.info({ 
+          batchFound: !!batch, 
+          importFilesCount: batch?.importFiles?.length || 0,
+          importFile: batch?.importFiles?.[0] 
+        }, 'Batch query result');
+
         if (!batch || !batch.importFiles[0]) {
-          return reply.status(404).send({ error: 'Batch or PDF file not found' });
+          return reply.status(404).send({ 
+            error: 'Batch or PDF file not found',
+            debug: { batchFound: !!batch, importFilesCount: batch?.importFiles?.length || 0 }
+          });
         }
 
         const config = loadConfig();
         const fileName = batch.importFiles[0].fileName;
         const filePath = path.join(config.storage.pdfPath, fileName);
 
+        // Debug logging
+        fastify.log.info({
+          pdfPath: config.storage.pdfPath,
+          fileName,
+          filePath,
+          fileExists: fs.existsSync(filePath),
+        }, 'PDF file lookup');
+
         // Check if file exists
         if (!fs.existsSync(filePath)) {
-          return reply.status(404).send({ error: 'PDF file not found on disk' });
+          return reply.status(404).send({ 
+            error: 'PDF file not found on disk',
+            debug: { pdfPath: config.storage.pdfPath, fileName, filePath }
+          });
         }
 
         // Send the PDF file
