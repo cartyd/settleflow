@@ -120,7 +120,7 @@
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
                                 <td>{{ line.tripNumber or '-' }}</td>
-                                <td>{{ shipper }} | {{ origin }} to {{ destination }}</td>
+                                <td>{{ shipper }} : {{ origin }} -> {{ destination }}</td>
                                 <td>{{ driverLast }}{{ (', ' + driverFirst) if driverFirst else '' }}</td>
                                 <td>{{ deliveryDate | date('MM/DD/YYYY') if deliveryDate != '-' else '-' }}</td>
                                 <td class="amount-cell negative">${{ line.amount | abs | number(2) }}</td>

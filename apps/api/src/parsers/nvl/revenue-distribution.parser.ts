@@ -214,29 +214,62 @@ function extractEntryDate(text: string): string | undefined {
 
 /**
  * Extract origin city and state
- * Pattern: City name followed by state abbreviation in the ORIGIN section
- * Format: "WESTBOROUGH MA" on one line
+ * Pattern: Line with city name followed by 2-letter state, appears after ORIGIN header
+ * Example: "WESTBOROUGH MA"
  */
 function extractOrigin(text: string): string | undefined {
-  // Look for origin line that has city and state (e.g., "WESTBOROUGH MA")
-  const match = text.match(/ORIGIN[\s\S]{0,200}?\n([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s*\n/i);
-  if (match) {
-    return `${match[1].trim()} ${match[2]}`;
+  // Split into lines and find the origin line (has city + state abbreviation)
+  const lines = text.split('\n');
+  const originIdx = lines.findIndex(l => l.trim() === 'ORIGIN');
+  
+  if (originIdx >= 0) {
+    // Look in the next 10 lines for a line with "CITY ST" pattern
+    for (let i = originIdx + 1; i < Math.min(originIdx + 10, lines.length); i++) {
+      const line = lines[i].trim();
+      // Match lines like "WESTBOROUGH MA" (city name followed by 2-letter state)
+      const match = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})$/);
+      if (match && match[2].length === 2) {
+        return `${match[1].trim()} ${match[2]}`;
+      }
+    }
   }
+  
   return undefined;
 }
 
 /**
  * Extract destination city and state
- * Pattern: City name followed by state abbreviation in the DESTINATION section
- * Format: "AKRON        OH" on one line (multiple spaces between)
+ * Pattern: City on one line, state abbreviation on next line after origin
+ * Example: Line "AKRON" followed by line "OH"
  */
 function extractDestination(text: string): string | undefined {
-  // Look for destination line that has city and state (e.g., "AKRON        OH")
-  const match = text.match(/DESTINATION[\s\S]{0,200}?\n([A-Z][A-Z\s]+?)\s{2,}([A-Z]{2})\s*\n/i);
-  if (match) {
-    return `${match[1].trim()}, ${match[2]}`;
+  // Split into lines
+  const lines = text.split('\n');
+  const originIdx = lines.findIndex(l => l.trim() === 'ORIGIN');
+  
+  if (originIdx >= 0) {
+    // Find the origin city+state line first
+    let originLineIdx = -1;
+    for (let i = originIdx + 1; i < Math.min(originIdx + 10, lines.length); i++) {
+      const line = lines[i].trim();
+      if (line.match(/^[A-Z][A-Z\s]+\s+[A-Z]{2}$/)) {
+        originLineIdx = i;
+        break;
+      }
+    }
+    
+    // Destination city is on the next line, state on the line after that
+    if (originLineIdx >= 0 && originLineIdx + 2 < lines.length) {
+      const city = lines[originLineIdx + 1].trim();
+      const state = lines[originLineIdx + 2].trim();
+      
+      // Validate it looks like a city name and state abbreviation
+      if (city.match(/^[A-Z]+$/) && state.match(/^[A-Z]{2}$/)) {
+        return `${city}, ${state}`;
+      }
+    }
   }
+  
   return undefined;
 }
 
