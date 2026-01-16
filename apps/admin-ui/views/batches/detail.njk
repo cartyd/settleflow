@@ -242,7 +242,7 @@
         </div>
         <iframe 
             id="pdf-viewer" 
-            src="/admin/batches/{{ batch.id }}/pdf#page=1" 
+            src="/admin/batches/{{ batch.id }}/pdf?page=1" 
             class="pdf-iframe"
             title="Settlement Document PDF">
         </iframe>
@@ -373,8 +373,8 @@
         const container = document.getElementById('pdf-viewer-container');
         
         if (viewer && container) {
-            // Update iframe src with page anchor
-            viewer.src = `/admin/batches/${batchId}/pdf#page=${pageNumber}`;
+            // Update iframe src with page query parameter
+            viewer.src = `/admin/batches/${batchId}/pdf?page=${pageNumber}`;
             
             // Scroll to PDF viewer
             container.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -404,13 +404,7 @@
         link.addEventListener('click', (e) => {
             e.preventDefault();
             const pageNumber = parseInt(link.getAttribute('href').replace('#page-', ''));
-            
-            // Try updating iframe first
             showPdfPage(pageNumber);
-            
-            // Also open in new tab as fallback (works better in some browsers)
-            const pdfUrl = `/admin/batches/${batchId}/pdf#page=${pageNumber}`;
-            window.open(pdfUrl, '_blank');
         });
     });
     

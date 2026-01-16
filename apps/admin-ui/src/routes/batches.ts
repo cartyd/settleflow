@@ -36,8 +36,16 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
   // PDF endpoint must come before /:id to avoid being caught by the generic route
   fastify.get('/:id/pdf', async (request, reply) => {
     const { id } = request.params as { id: string };
+    const query = request.query as { page?: string };
+    
     try {
-      const response = await fetch(`http://localhost:3000/batches/${id}/pdf`);
+      // Build URL with query parameters
+      const url = new URL(`http://localhost:3000/batches/${id}/pdf`);
+      if (query.page) {
+        url.searchParams.set('page', query.page);
+      }
+      
+      const response = await fetch(url.toString());
       
       if (!response.ok) {
         const error = await response.json();
