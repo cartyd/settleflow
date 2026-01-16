@@ -307,10 +307,11 @@ a:focus {
   background-color: #e9ecef;
 }
 
-.breakdown-category summary h3 {
+.breakdown-category summary .category-title {
   margin: 0;
   font-size: 16px;
-  display: inline;
+  font-weight: 600;
+  color: #333;
 }
 
 .category-count {

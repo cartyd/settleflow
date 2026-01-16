@@ -94,7 +94,7 @@
     {% if batch.lineItems.revenueDistribution and batch.lineItems.revenueDistribution.length > 0 %}
         <details class="breakdown-category" open>
             <summary>
-                <h3>Revenue Distribution</h3>
+                <span class="category-title">Revenue Distribution</span>
                 <span class="category-count">{{ batch.lineItems.revenueDistribution.length }} items</span>
             </summary>
             <div class="breakdown-table-container">
@@ -136,7 +136,7 @@
     {% if batch.lineItems.advances and batch.lineItems.advances.length > 0 %}
         <details class="breakdown-category">
             <summary>
-                <h3>Advances</h3>
+                <span class="category-title">Advances</span>
                 <span class="category-count">{{ batch.lineItems.advances.length }} items</span>
             </summary>
             <div class="breakdown-table-container">
@@ -170,7 +170,7 @@
     {% if batch.lineItems.creditDebit and batch.lineItems.creditDebit.length > 0 %}
         <details class="breakdown-category">
             <summary>
-                <h3>Deductions (Credit/Debit)</h3>
+                <span class="category-title">Deductions (Credit/Debit)</span>
                 <span class="category-count">{{ batch.lineItems.creditDebit.length }} items</span>
             </summary>
             <div class="breakdown-table-container">
@@ -202,7 +202,7 @@
     {% if batch.lineItems.postingTicket and batch.lineItems.postingTicket.length > 0 %}
         <details class="breakdown-category">
             <summary>
-                <h3>Posting Ticket</h3>
+                <span class="category-title">Posting Ticket</span>
                 <span class="category-count">{{ batch.lineItems.postingTicket.length }} items</span>
             </summary>
             <div class="breakdown-table-container">
