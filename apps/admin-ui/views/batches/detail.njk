@@ -102,19 +102,29 @@
                     <thead>
                         <tr>
                             <th>Page</th>
-                            <th>Description</th>
                             <th>Trip #</th>
-                            <th>B/L</th>
+                            <th>Description</th>
+                            <th>Driver</th>
+                            <th>RDD</th>
                             <th>Amount</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for line in batch.lineItems.revenueDistribution %}
+                            {% set rawData = line.rawData | safe %}
+                            {% set parsedData = rawData | fromjson if rawData else {} %}
+                            {% set shipper = parsedData.shipperName or 'Unknown' %}
+                            {% set origin = parsedData.origin or 'Unknown' %}
+                            {% set destination = parsedData.destination or 'Unknown' %}
+                            {% set driverLast = parsedData.driverLastName or parsedData.driverName or '-' %}
+                            {% set driverFirst = parsedData.driverFirstName or '' %}
+                            {% set deliveryDate = parsedData.deliveryDate or '-' %}
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
-                                <td>{{ line.description }}</td>
                                 <td>{{ line.tripNumber or '-' }}</td>
-                                <td>{{ line.billOfLading or '-' }}</td>
+                                <td>{{ shipper }} | {{ origin }} to {{ destination }}</td>
+                                <td>{{ driverLast }}{{ (', ' + driverFirst) if driverFirst else '' }}</td>
+                                <td>{{ deliveryDate | date('MM/DD/YYYY') if deliveryDate != '-' else '-' }}</td>
                                 <td class="amount-cell negative">${{ line.amount | abs | number(2) }}</td>
                             </tr>
                         {% endfor %}

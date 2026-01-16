@@ -185,12 +185,17 @@ function extractBillOfLading(text: string): string | undefined {
 
 /**
  * Extract shipper name
- * Pattern: "SHIPPER NAME" followed by the name
+ * Pattern: "SHIPPER NAME" followed by the name (appears after NVL info)
  */
 function extractShipperName(text: string): string | undefined {
-  const match = text.match(/SHIPPER\s+NAME\s*\n[^\n]*\n([A-Z\s]+)/i);
+  // Look for shipper name that appears after SHIPPER NAME and before ORIGIN
+  const match = text.match(/SHIPPER\s+NAME[\s\S]{0,100}?\n([A-ZÀ-ÿ\s']+)\s*\n+(?:ORIGIN|COD)/i);
   if (match) {
-    return match[1].trim();
+    const name = match[1].trim();
+    // Filter out common header words
+    if (name && !name.match(/^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN)$/i)) {
+      return name;
+    }
   }
   return undefined;
 }
@@ -209,22 +214,26 @@ function extractEntryDate(text: string): string | undefined {
 
 /**
  * Extract origin city and state
- * Pattern: "ORIGIN" followed by city and state
+ * Pattern: City name followed by state abbreviation in the ORIGIN section
+ * Format: "WESTBOROUGH MA" on one line
  */
 function extractOrigin(text: string): string | undefined {
-  const match = text.match(/ORIGIN\s*\n[^\n]*\n([A-Z\s]+)\s+([A-Z]{2})/i);
+  // Look for origin line that has city and state (e.g., "WESTBOROUGH MA")
+  const match = text.match(/ORIGIN[\s\S]{0,200}?\n([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s*\n/i);
   if (match) {
-    return `${match[1].trim()}, ${match[2]}`;
+    return `${match[1].trim()} ${match[2]}`;
   }
   return undefined;
 }
 
 /**
  * Extract destination city and state
- * Pattern: "DESTINATION" followed by city and state
+ * Pattern: City name followed by state abbreviation in the DESTINATION section
+ * Format: "AKRON        OH" on one line (multiple spaces between)
  */
 function extractDestination(text: string): string | undefined {
-  const match = text.match(/DESTINATION\s*\n[^\n]*\n([A-Z\s]+)\s+([A-Z]{2})/i);
+  // Look for destination line that has city and state (e.g., "AKRON        OH")
+  const match = text.match(/DESTINATION[\s\S]{0,200}?\n([A-Z][A-Z\s]+?)\s{2,}([A-Z]{2})\s*\n/i);
   if (match) {
     return `${match[1].trim()}, ${match[2]}`;
   }
@@ -233,9 +242,19 @@ function extractDestination(text: string): string | undefined {
 
 /**
  * Extract delivery date
- * Pattern: "DELIVERY" followed by "DATE" and date in "MM DD Y" format
+ * Pattern: Date appears after origin/destination, format "11.19        5" or "11 19 5"
  */
 function extractDeliveryDate(text: string): string | undefined {
+  // Look for date pattern after origin/destination: "11.19" followed by spaces and "5"
+  const dotMatch = text.match(/([A-Z]{2})\s*\n(\d{1,2})\.(\d{1,2})\s+(\d{1})\s*\n/i);
+  if (dotMatch) {
+    const month = dotMatch[2];
+    const day = dotMatch[3];
+    const year = dotMatch[4];
+    return parseDate(`${month} ${day} ${year}`);
+  }
+  
+  // Fallback: original pattern
   const match = text.match(/DELIVERY\s*\n?DATE\s*\n(\d+\s+\d+\s+\d+)/i);
   if (match) {
     return parseDate(match[1]);
