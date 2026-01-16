@@ -36,29 +36,13 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
-      const batch = await apiClient.getBatchById(id);
+      const batchDetails = await apiClient.getBatchDetails(id);
       const pageTitle = batchDetailConfig.pageTitle(
-        batch.nvlPaymentRef || 'Unknown'
+        batchDetails.nvlPaymentRef || 'Unknown'
       );
       
-      // Pre-compute document type counts for each import file
-      const batchWithCounts = {
-        ...batch,
-        importFiles: batch.importFiles?.map(file => {
-          const docTypeCounts: Record<string, number> = {};
-          file.importDocuments?.forEach(doc => {
-            const type = doc.documentType || 'UNKNOWN';
-            docTypeCounts[type] = (docTypeCounts[type] || 0) + 1;
-          });
-          return {
-            ...file,
-            docTypeCounts,
-          };
-        }),
-      };
-      
       return reply.view('batches/detail.njk', {
-        batch: batchWithCounts,
+        batch: batchDetails,
         config: batchDetailConfig,
         statusClasses,
         pageTitle,

@@ -29,6 +29,16 @@ export interface RemittanceLine {
 export interface RemittanceParseResult {
   lines: RemittanceLine[];
   errors: string[];
+  metadata?: BatchMetadata;
+}
+
+export interface BatchMetadata {
+  nvlPaymentRef: string;
+  agencyCode: string;
+  agencyName: string;
+  checkDate: string;
+  weekStartDate?: string;
+  weekEndDate?: string;
 }
 
 /**
@@ -194,11 +204,37 @@ function extractAccountNumber(text: string): string | undefined {
 }
 
 /**
+ * Calculate week start and end dates from check date
+ * Assumes settlement is for the week ending ~1 week before check date
+ */
+function calculateWeekDates(checkDate: string): { weekStartDate: string; weekEndDate: string } | undefined {
+  try {
+    const check = new Date(checkDate);
+    // Settlement is typically for week ending 7-14 days before check
+    // We'll use 7 days before check as the week end
+    const weekEnd = new Date(check);
+    weekEnd.setDate(weekEnd.getDate() - 7);
+    
+    // Week starts 6 days before week end (Sunday to Saturday)
+    const weekStart = new Date(weekEnd);
+    weekStart.setDate(weekStart.getDate() - 6);
+    
+    return {
+      weekStartDate: weekStart.toISOString().split('T')[0],
+      weekEndDate: weekEnd.toISOString().split('T')[0],
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Parse REMITTANCE document using regex patterns
  */
 export function parseRemittance(ocrText: string): RemittanceParseResult {
   const errors: string[] = [];
   const lines: RemittanceLine[] = [];
+  let metadata: BatchMetadata | undefined;
 
   try {
     const checkNumber = extractCheckNumber(ocrText);
@@ -229,9 +265,23 @@ export function parseRemittance(ocrText: string): RemittanceParseResult {
     };
 
     lines.push(line);
+
+    // Extract batch metadata if we have the essential fields
+    if (checkNumber && accountNumber && checkDate) {
+      const weekDates = calculateWeekDates(checkDate);
+      
+      metadata = {
+        nvlPaymentRef: checkNumber,
+        agencyCode: accountNumber,
+        agencyName: payeeName || 'Unknown Agency',
+        checkDate: checkDate,
+        weekStartDate: weekDates?.weekStartDate,
+        weekEndDate: weekDates?.weekEndDate,
+      };
+    }
   } catch (error) {
     errors.push(`Parsing failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  return { lines, errors };
+  return { lines, errors, metadata };
 }
