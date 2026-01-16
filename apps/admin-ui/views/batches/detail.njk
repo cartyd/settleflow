@@ -111,14 +111,12 @@
                     </thead>
                     <tbody>
                         {% for line in batch.lineItems.revenueDistribution %}
-                            {% set rawData = line.rawData | safe %}
-                            {% set parsedData = rawData | fromjson if rawData else {} %}
-                            {% set shipper = parsedData.shipperName or 'Unknown' %}
-                            {% set origin = parsedData.origin or 'Unknown' %}
-                            {% set destination = parsedData.destination or 'Unknown' %}
-                            {% set driverLast = parsedData.driverLastName or parsedData.driverName or '-' %}
-                            {% set driverFirst = parsedData.driverFirstName or '' %}
-                            {% set deliveryDate = parsedData.deliveryDate or '-' %}
+                            {% set shipper = line.shipperName or 'Unknown' %}
+                            {% set origin = line.origin or 'Unknown' %}
+                            {% set destination = line.destination or 'Unknown' %}
+                            {% set driverLast = line.driverLastName or line.driverName or '-' %}
+                            {% set driverFirst = line.driverFirstName or '' %}
+                            {% set deliveryDate = line.deliveryDate or '-' %}
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
                                 <td>{{ line.tripNumber or '-' }}</td>

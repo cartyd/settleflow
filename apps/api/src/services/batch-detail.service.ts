@@ -37,6 +37,14 @@ export interface BatchLineItem {
   billOfLading?: string | null;
   pageNumber: number;
   documentType: string;
+  // Parsed trip data for revenue distribution lines
+  shipperName?: string;
+  origin?: string;
+  destination?: string;
+  driverName?: string;
+  driverFirstName?: string;
+  driverLastName?: string;
+  deliveryDate?: string;
 }
 
 export interface BatchDetailData {
@@ -222,7 +230,7 @@ export async function getBatchDetailData(
 }
 
 function formatLineItem(line: any): BatchLineItem {
-  return {
+  const item: BatchLineItem = {
     id: line.id,
     category: line.category || line.documentType,
     description: line.description,
@@ -234,6 +242,24 @@ function formatLineItem(line: any): BatchLineItem {
     pageNumber: line.pageNumber,
     documentType: line.documentType,
   };
+
+  // Parse rawData for revenue distribution lines to include trip details
+  if (line.rawData) {
+    try {
+      const rawData = JSON.parse(line.rawData);
+      item.shipperName = rawData.shipperName;
+      item.origin = rawData.origin;
+      item.destination = rawData.destination;
+      item.driverName = rawData.driverName;
+      item.driverFirstName = rawData.driverFirstName;
+      item.driverLastName = rawData.driverLastName;
+      item.deliveryDate = rawData.deliveryDate;
+    } catch (e) {
+      // Ignore parsing errors
+    }
+  }
+
+  return item;
 }
 
 function extractTripDetails(revenueLines: any[]): TripDetail[] {
