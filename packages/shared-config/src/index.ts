@@ -77,6 +77,12 @@ export function loadConfig(): AppConfig {
     throw new Error('DATABASE_PROVIDER must be either "sqlite" or "postgres"');
   }
 
+  // Resolve PDF storage path relative to project root (where .env is located)
+  const pdfStoragePath = getEnvVar('PDF_STORAGE_PATH', './uploads/pdfs');
+  const resolvedPdfPath = path.isAbsolute(pdfStoragePath)
+    ? pdfStoragePath
+    : path.resolve(process.cwd(), pdfStoragePath);
+
   return {
     nodeEnv,
     isProduction,
@@ -113,7 +119,7 @@ export function loadConfig(): AppConfig {
       model: getEnvVar('OCR_MODEL', 'gemma3:27b'),
     },
     storage: {
-      pdfPath: getEnvVar('PDF_STORAGE_PATH', './uploads/pdfs'),
+      pdfPath: resolvedPdfPath,
     },
   };
 }
