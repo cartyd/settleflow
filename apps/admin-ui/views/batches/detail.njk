@@ -404,7 +404,13 @@
         link.addEventListener('click', (e) => {
             e.preventDefault();
             const pageNumber = parseInt(link.getAttribute('href').replace('#page-', ''));
+            
+            // Try updating iframe first
             showPdfPage(pageNumber);
+            
+            // Also open in new tab as fallback (works better in some browsers)
+            const pdfUrl = `/admin/batches/${batchId}/pdf#page=${pageNumber}`;
+            window.open(pdfUrl, '_blank');
         });
     });
     
