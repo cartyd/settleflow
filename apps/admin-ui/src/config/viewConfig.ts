@@ -47,6 +47,12 @@ export const batchDetailConfig = {
   statusLabel: "Status",
   separator: " | ",
 
+  // Navigation
+  listViewPath: "/admin/batches",
+  actionLabels: {
+    backToBatches: "← Back to Batches",
+  },
+
   infoItems: {
     totalRevenue: {
       label: "Total Revenue",
