@@ -165,13 +165,19 @@ export async function parseAndSaveImportLines(
 
       // Create ImportLine records for revenue distribution
       for (const line of parseResult.lines) {
+        // Format description as "SHIPPER: ORIGIN → DESTINATION"
+        const shipper = line.shipperName || 'Unknown';
+        const origin = line.origin || 'Unknown';
+        const destination = line.destination || 'Unknown';
+        const description = `${shipper}: ${origin} → ${destination}`;
+        
         await prisma.importLine.create({
           data: {
             importDocumentId: document.id,
             driverId: null, // Will be matched later
             category: 'REV DIST',
             lineType: 'REVENUE',
-            description: `Trip ${line.tripNumber} - ${line.origin || 'Unknown'} to ${line.destination || 'Unknown'}`,
+            description,
             amount: -Math.abs(line.netBalance), // Revenue is negative (owed to driver)
             date: line.entryDate ? parseISODateLocal(line.entryDate) : null,
             reference: line.tripNumber,
