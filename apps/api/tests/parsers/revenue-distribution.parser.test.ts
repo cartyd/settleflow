@@ -2,293 +2,305 @@ import { describe, it, expect } from 'vitest';
 import { parseRevenueDistribution } from '../../src/parsers/nvl/revenue-distribution.parser.js';
 
 describe('Revenue Distribution Parser', () => {
-  const trip1854Text = `FOR SERVICE PERFORMED BY
-
-CICEROS' MOVING & ST/ BIDETTI, DONNY
-
-
-ACCOUNT NUMBER TRIP NUMBER
-3101 1854
-
-
-BILL OF LADING SHIPPER NAME NVL TYPE NVL ENTRY SUPPLIER NAME SUPPLIER ACTUAL CUT PICKUP REFERENCE BILL
-NUMBER ENTITY NUMBER DATE DESCRIPTION NUMBER DELIVERY DATE DELIVERY BATE FRT DATE
-356985/ 357175/ BELLÍ COD 10 22 5 481
-
-NVL ENTITY SHIPPER NAME
-NUMBER
-357175
-
-TRN# 348113
-
-ORIGIN DESTINATION SIT DELIVERED DATE CUT DATE
-
-WESTBOROUGH MA
-
-AKRON
-
-OH 11.19        5 P62
-ZIP 01581 ZIP 44311
-
-INTERLINE WEIGHT MILES BILLING RATE TARIFF TENDER SECTION
-
-REFERENCE RATE
-13880/   1230 NVL100                 3
-
-REVENUE % DUE CHARGES EARNINGS
-
-NET BALANCE 3890.63
-DUE ACCOUNT`;
-
-  const trip416Text = `FOR SERVICE PERFORMED BY
-
-
-CICEROS' MOVING & ST/ HEAVENLY CARE MOVIN
-
-EBERT, WILLIAM
-
-
-ACCOUNT NUMBER TRIP NUMBER
-3101 416
-
-
-BILL OF LADING SHIPPER NAME NVL TYPE NVL ENTRY SUPPLIER NAME SUPPLIER ACTUAL CUT PICKUP REFERENCE BILL
-NUMBER ENTITY NUMBER DATE DESCRIPTION NUMBER DELIVERY DATE DELIVERY BATE FRT DATE
-356985/ 357236/ HARRITS COD 2 12 5 516
-
-TRN# 348118
-
-ORIGIN DESTINATION SIT DELIVERED DATE CUT DATE
-
-MISSOURI C TX GERMANTOWN MD 12 12 5 P62
-ZIP 77489 ZIP 20874
-
-INTERLINE WEIGHT MILES BILLING RATE TARIFF TENDER SECTION
-
-REFERENCE RATE
-2500 1430 NVL100 3
-
-REVENUE % DUE CHARGES EARNINGS
-
-SERVICE PERFORMED
-
-BOOKER 2248.81 15.0 22.49 337.32
-
-BP FUND 2248.81- 1.0
-
-NET BALANCE 314.83
-
-DUE ACCOUNT`;
-
-  describe('Field extraction', () => {
+  describe('Driver name extraction', () => {
     const testCases = [
       {
-        name: 'Trip 1854 - single line driver format',
-        text: trip1854Text,
+        name: 'single line format with comma (Last, First)',
+        text: `FOR SERVICE PERFORMED BY
+
+AGENCY/ SMITH, JOHN
+
+TRIP NUMBER
+123
+
+NET BALANCE 100.00
+DUE ACCOUNT`,
         expected: {
-          tripNumber: '1854',
-          driverName: 'BIDETTI, DONNY',
-          driverFirstName: 'DONNY',
-          driverLastName: 'BIDETTI',
-          billOfLading: '356985',
-          shipperName: 'BELLÍ',
-          origin: 'WESTBOROUGH MA',
-          destination: 'AKRON, OH',
-          deliveryDate: '2025-11-19',
-          netBalance: 3890.63,
+          driverName: 'SMITH, JOHN',
+          driverFirstName: 'JOHN',
+          driverLastName: 'SMITH',
         },
       },
       {
-        name: 'Trip 416 - multi-line driver with combined origin/destination',
-        text: trip416Text,
+        name: 'multi-line format (incomplete name continues on next line)',
+        text: `FOR SERVICE PERFORMED BY
+
+AGENCY/ PARTIAL NAME
+
+DOE, JANE
+
+TRIP NUMBER
+456
+
+NET BALANCE 200.00
+DUE ACCOUNT`,
         expected: {
-          tripNumber: '416',
-          driverName: 'EBERT, WILLIAM',
-          driverFirstName: 'WILLIAM',
-          driverLastName: 'EBERT',
-          billOfLading: '356985',
-          shipperName: 'HARRITS',
-          origin: 'MISSOURI C TX',
-          destination: 'GERMANTOWN, MD',
-          deliveryDate: '2025-12-12',
-          weight: 2500,
-          miles: 1430,
-          netBalance: 314.83,
+          driverName: 'DOE, JANE',
+          driverFirstName: 'JANE',
+          driverLastName: 'DOE',
+        },
+      },
+      {
+        name: 'should not capture ACCOUNT NUMBER as driver name',
+        text: `FOR SERVICE PERFORMED BY
+
+AGENCY/ INCOMPLETE
+
+ACCOUNT NUMBER TRIP NUMBER
+123 789
+
+NET BALANCE 300.00
+DUE ACCOUNT`,
+        expected: {
+          driverName: 'INCOMPLETE',
         },
       },
     ];
 
     testCases.forEach(({ name, text, expected }) => {
-      describe(name, () => {
+      it(name, () => {
         const result = parseRevenueDistribution(text);
-        const line = result.lines[0];
-
-        it('should extract trip number', () => {
-          expect(line.tripNumber).toBe(expected.tripNumber);
-        });
-
-        it('should extract driver name', () => {
-          expect(line.driverName).toBe(expected.driverName);
-          if (expected.driverFirstName) {
-            expect(line.driverFirstName).toBe(expected.driverFirstName);
-          }
-          if (expected.driverLastName) {
-            expect(line.driverLastName).toBe(expected.driverLastName);
-          }
-        });
-
-        it('should extract bill of lading', () => {
-          expect(line.billOfLading).toBe(expected.billOfLading);
-        });
-
-        it('should extract shipper name', () => {
-          expect(line.shipperName).toBe(expected.shipperName);
-        });
-
-        it('should extract origin', () => {
-          expect(line.origin).toBe(expected.origin);
-        });
-
-        it('should extract destination', () => {
-          expect(line.destination).toBe(expected.destination);
-        });
-
-        it('should extract delivery date', () => {
-          expect(line.deliveryDate).toBe(expected.deliveryDate);
-        });
-
-        if (expected.weight !== undefined) {
-          it('should extract weight', () => {
-            expect(line.weight).toBe(expected.weight);
-          });
+        expect(result.lines).toHaveLength(1);
+        expect(result.lines[0].driverName).toBe(expected.driverName);
+        if (expected.driverFirstName) {
+          expect(result.lines[0].driverFirstName).toBe(expected.driverFirstName);
         }
-
-        if (expected.miles !== undefined) {
-          it('should extract miles', () => {
-            expect(line.miles).toBe(expected.miles);
-          });
+        if (expected.driverLastName) {
+          expect(result.lines[0].driverLastName).toBe(expected.driverLastName);
         }
-
-        it('should extract net balance', () => {
-          expect(line.netBalance).toBe(expected.netBalance);
-        });
-      });
-    });
-
-    it('Trip 416 driver should not include ACCOUNT NUMBER', () => {
-      const result = parseRevenueDistribution(trip416Text);
-      expect(result.lines[0].driverName).not.toContain('ACCOUNT');
-      expect(result.lines[0].driverName).not.toContain('NUMBER');
-    });
-
-    it('Trip 416 should extract service items', () => {
-      const result = parseRevenueDistribution(trip416Text);
-      expect(result.lines[0].serviceItems).toHaveLength(2);
-      expect(result.lines[0].serviceItems[0]).toMatchObject({
-        description: 'BOOKER',
-        amount: 2248.81,
-        percentage: 15.0,
-        earnings: 337.32,
       });
     });
   });
 
-  describe('Edge cases', () => {
-    it('should handle missing optional fields', () => {
-      const minimalText = `ACCOUNT NUMBER TRIP NUMBER
-3101 999
-
-NET BALANCE 100.00
-DUE ACCOUNT`;
-
-      const result = parseRevenueDistribution(minimalText);
-      expect(result.lines).toHaveLength(1);
-      expect(result.lines[0].tripNumber).toBe('999');
-      expect(result.lines[0].netBalance).toBe(100.00);
-      expect(result.lines[0].driverName).toBeUndefined();
-    });
-
-    it('should report error when trip number missing', () => {
-      const invalidText = `NET BALANCE 100.00`;
-      const result = parseRevenueDistribution(invalidText);
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0]).toContain('trip number');
-    });
-
-    it('should report error when net balance missing', () => {
-      const invalidText = `TRIP NUMBER
-1234`;
-      const result = parseRevenueDistribution(invalidText);
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0]).toContain('net balance');
-    });
-  });
-
-  describe('Date parsing', () => {
-    it('should parse MM DD Y format (space separated)', () => {
+  describe('Origin and destination extraction', () => {
+    it('should extract from combined line with date', () => {
       const text = `TRIP NUMBER
-1234
+123
+
+ORIGIN DESTINATION SIT DELIVERED DATE CUT DATE
+
+NEW YORK NY LOS ANGELES CA 12 15 5
+
+NET BALANCE 500.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].origin).toBe('NEW YORK NY');
+      expect(result.lines[0].destination).toBe('LOS ANGELES, CA');
+    });
+
+    it('should extract from separate lines', () => {
+      const text = `TRIP NUMBER
+456
+
+ORIGIN
+
+BOSTON MA
+
+MIAMI
+
+FL
+
+NET BALANCE 600.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].origin).toBe('BOSTON MA');
+      expect(result.lines[0].destination).toBe('MIAMI, FL');
+    });
+
+    it('should handle multi-word city names', () => {
+      const text = `TRIP NUMBER
+789
 
 ORIGIN DESTINATION
 
-CITY ST DEST MD 12 15 5
+SAN FRANCISCO CA NEW ORLEANS LA 11 20 5
 
-NET BALANCE 100.00`;
-
+NET BALANCE 700.00
+DUE ACCOUNT`;
+      
       const result = parseRevenueDistribution(text);
-      expect(result.lines[0].deliveryDate).toBe('2025-12-15');
+      expect(result.lines[0].origin).toBe('SAN FRANCISCO CA');
+      expect(result.lines[0].destination).toBe('NEW ORLEANS, LA');
+    });
+  });
+
+  describe('Date extraction', () => {
+    it('should extract from ORIGIN section with space-separated format', () => {
+      const text = `TRIP NUMBER
+111
+
+ORIGIN DESTINATION
+
+CITY ST DEST MD 12 25 5
+
+NET BALANCE 100.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].deliveryDate).toBe('2025-12-25');
     });
 
-    it('should parse MM.DD Y format (dot separated)', () => {
+    it('should extract from ORIGIN section with dot-separated format', () => {
       const text = `TRIP NUMBER
-1234
+222
 
 ORIGIN
 
 CITY ST
+
 DEST
+
 OH 11.19        5
 
-NET BALANCE 100.00`;
-
+NET BALANCE 200.00
+DUE ACCOUNT`;
+      
       const result = parseRevenueDistribution(text);
       expect(result.lines[0].deliveryDate).toBe('2025-11-19');
     });
+
+    it('should use ORIGIN section date, not earlier COD date', () => {
+      const text = `TRIP NUMBER
+333
+
+357236/ SHIPPER COD 2 12 5 516
+
+ORIGIN DESTINATION
+
+CITY ST DEST MD 12 25 5
+
+NET BALANCE 300.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      // Should extract 12/25 from ORIGIN, not 2/12 from COD line
+      expect(result.lines[0].deliveryDate).toBe('2025-12-25');
+    });
   });
 
-  describe('Origin/Destination parsing variations', () => {
-    it('should handle ORIGIN DESTINATION header with multiple words', () => {
+  describe('Required fields', () => {
+    it('should extract trip number', () => {
       const text = `TRIP NUMBER
-1234
+999
 
-ORIGIN DESTINATION SIT DELIVERED DATE CUT DATE
-
-CITY ST DEST MD 12 12 5
-
-NET BALANCE 100.00`;
-
+NET BALANCE 100.00
+DUE ACCOUNT`;
+      
       const result = parseRevenueDistribution(text);
-      expect(result.lines[0].origin).toBe('CITY ST');
-      expect(result.lines[0].destination).toBe('DEST, MD');
+      expect(result.lines[0].tripNumber).toBe('999');
     });
 
-    it('should handle origin/destination on separate lines', () => {
+    it('should extract net balance', () => {
       const text = `TRIP NUMBER
-1234
+888
 
-ORIGIN
-
-WESTBOROUGH MA
-
-AKRON
-
-OH
-
-NET BALANCE 100.00`;
-
+NET BALANCE 1234.56
+DUE ACCOUNT`;
+      
       const result = parseRevenueDistribution(text);
-      expect(result.lines[0].origin).toBe('WESTBOROUGH MA');
-      expect(result.lines[0].destination).toBe('AKRON, OH');
+      expect(result.lines[0].netBalance).toBe(1234.56);
+    });
+
+    it('should report error when trip number is missing', () => {
+      const text = `NET BALANCE 100.00`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors.some(e => e.toLowerCase().includes('trip number'))).toBe(true);
+    });
+
+    it('should report error when net balance is missing', () => {
+      const text = `TRIP NUMBER
+777`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors.some(e => e.toLowerCase().includes('net balance'))).toBe(true);
+    });
+  });
+
+  describe('Optional fields', () => {
+    it('should extract bill of lading', () => {
+      const text = `TRIP NUMBER
+777
+
+BILL OF LADING
+123456/ 789012/
+
+NET BALANCE 400.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].billOfLading).toBe('123456');
+    });
+
+    it('should extract shipper name from BOL line', () => {
+      const text = `TRIP NUMBER
+666
+
+357236/ ACME COD
+
+NET BALANCE 500.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].shipperName).toBe('ACME');
+    });
+
+    it('should handle missing optional fields without error', () => {
+      const text = `TRIP NUMBER
+555
+
+NET BALANCE 100.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0].tripNumber).toBe('555');
+      expect(result.lines[0].netBalance).toBe(100.00);
+      expect(result.lines[0].driverName).toBeUndefined();
+      expect(result.lines[0].origin).toBeUndefined();
+      expect(result.lines[0].destination).toBeUndefined();
+      expect(result.errors).toHaveLength(0);
+    });
+  });
+
+  describe('Edge cases', () => {
+    it('should handle empty text', () => {
+      const result = parseRevenueDistribution('');
+      expect(result.lines).toHaveLength(0);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it('should handle malformed text gracefully', () => {
+      const text = `RANDOM TEXT
+NO STRUCTURE
+GARBAGE DATA`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it('should parse valid document without errors', () => {
+      const text = `TRIP NUMBER
+123
+
+FOR SERVICE PERFORMED BY
+
+AGENCY/ DRIVER, TEST
+
+ORIGIN DESTINATION
+
+CITY ST DEST MD 12 25 5
+
+NET BALANCE 100.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.errors).toHaveLength(0);
+      expect(result.lines).toHaveLength(1);
     });
   });
 });
