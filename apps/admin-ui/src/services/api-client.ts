@@ -16,6 +16,14 @@ export async function getBatchById(id: string) {
   return response.json();
 }
 
+export async function getBatchDetails(id: string) {
+  const response = await fetch(`${API_BASE_URL}/batches/${id}/details`);
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.statusText}`);
+  }
+  return response.json();
+}
+
 export async function parseImportFile(importFileId: string) {
   const response = await fetch(`${API_BASE_URL}/batches/import-files/${importFileId}/parse`, {
     method: 'POST',

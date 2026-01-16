@@ -38,6 +38,9 @@ export interface AppConfig {
     serverUrl: string;
     model: string;
   };
+  storage: {
+    pdfPath: string;
+  };
 }
 
 function getEnvVar(key: string, defaultValue?: string): string {
@@ -108,6 +111,9 @@ export function loadConfig(): AppConfig {
       enabled: getEnvVar('OCR_ENABLED', 'true') === 'true',
       serverUrl: getEnvVar('OCR_SERVER_URL', 'http://10.147.17.205:11434/api/generate'),
       model: getEnvVar('OCR_MODEL', 'gemma3:27b'),
+    },
+    storage: {
+      pdfPath: getEnvVar('PDF_STORAGE_PATH', './uploads/pdfs'),
     },
   };
 }

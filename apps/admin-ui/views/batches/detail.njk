@@ -13,479 +13,331 @@
     <div class="detail-header-info">
         <span>
             <strong>{{ config.agencyLabel | escape }}:</strong>
-            {{ macros.safeValue(batch.agency.name if batch.agency) }}
+            {{ macros.safeValue(batch.agencyName) }}
         </span>
         <span>
             <strong>{{ config.statusLabel | escape }}:</strong>
             {{ macros.statusBadge(batch.status, statusClasses) }}
         </span>
+        <span>
+            <strong>Week:</strong>
+            {{ batch.weekStartDate | date('MMM D') }} - {{ batch.weekEndDate | date('MMM D, YYYY') }}
+        </span>
     </div>
 </div>
 
-{# Info grid using macro for consistency #}
-<div class="info-grid">
-    {{ macros.infoCard(
-        config.infoItems.totalRevenue.label,
-        macros.formatCurrency(batch.totalRevenue, config.currency.symbol, config.currency.decimalPlaces)
-    ) }}
-    {{ macros.infoCard(
-        config.infoItems.totalAdvances.label,
-        macros.formatCurrency(batch.totalAdvances, config.currency.symbol, config.currency.decimalPlaces)
-    ) }}
-    {{ macros.infoCard(
-        config.infoItems.netAmount.label,
-        macros.formatCurrency(batch.netAmount, config.currency.symbol, config.currency.decimalPlaces)
-    ) }}
+{# Document Info Card #}
+<div class="document-info-card">
+    <h3>Document Information</h3>
+    <div class="document-meta">
+        <div class="meta-item">
+            <span class="meta-label">File:</span>
+            <span class="meta-value">{{ batch.fileName }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Size:</span>
+            <span class="meta-value">{{ (batch.fileSize / 1024) | round(1) }} KB</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Pages:</span>
+            <span class="meta-value">{{ batch.pageCount }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Uploaded:</span>
+            <span class="meta-value">{{ batch.uploadedAt | date('MMM D, YYYY h:mm A') }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Last Parsed:</span>
+            <span class="meta-value">{{ batch.lastParsedAt | date('MMM D, YYYY h:mm A') if batch.lastParsedAt else 'Not parsed' }}</span>
+        </div>
+    </div>
+    {% if batch.parseErrors and batch.parseErrors.length > 0 %}
+        <div class="parse-errors-alert">
+            <strong>⚠️ Parse Errors:</strong>
+            <ul>
+                {% for error in batch.parseErrors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
 </div>
 
-<section aria-labelledby="import-files-heading">
-    <div class="section-header">
-        <h2 id="import-files-heading" class="section-heading">{{ config.importFiles.heading | escape }}</h2>
-        <button type="button" class="btn-primary" onclick="document.getElementById('upload-form').style.display='block'">Upload PDF</button>
+{# Financial Summary - Enhanced with 4 metrics #}
+<div class="financial-summary">
+    <h2>Financial Summary</h2>
+    <div class="info-grid info-grid-4">
+        {{ macros.infoCard(
+            'Total Revenue',
+            macros.formatCurrency(batch.totalRevenue, '$', 2)
+        ) }}
+        {{ macros.infoCard(
+            'Total Advances',
+            macros.formatCurrency(batch.totalAdvances, '$', 2)
+        ) }}
+        {{ macros.infoCard(
+            'Total Deductions',
+            macros.formatCurrency(batch.totalDeductions, '$', 2)
+        ) }}
+        {{ macros.infoCard(
+            'Net Payment',
+            macros.formatCurrency(batch.netTotal, '$', 2)
+        ) }}
     </div>
+</div>
 
-    {# Upload Form #}
-    <div id="upload-form" class="upload-form" style="display: none;">
-        <form id="pdf-upload-form" enctype="multipart/form-data">
-            <div class="form-group">
-                <label for="pdf-file">Select PDF file:</label>
-                <input type="file" id="pdf-file" name="file" accept=".pdf" required>
+{# Batch Breakdown Table - Grouped by Category #}
+<section class="batch-breakdown" aria-labelledby="breakdown-heading">
+    <h2 id="breakdown-heading">Batch Line Items</h2>
+    
+    {# Revenue Distribution Lines #}
+    {% if batch.lineItems.revenueDistribution and batch.lineItems.revenueDistribution.length > 0 %}
+        <details class="breakdown-category" open>
+            <summary>
+                <h3>Revenue Distribution</h3>
+                <span class="category-count">{{ batch.lineItems.revenueDistribution.length }} items</span>
+            </summary>
+            <div class="breakdown-table-container">
+                <table class="breakdown-table">
+                    <thead>
+                        <tr>
+                            <th>Page</th>
+                            <th>Description</th>
+                            <th>Trip #</th>
+                            <th>B/L</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in batch.lineItems.revenueDistribution %}
+                            <tr>
+                                <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
+                                <td>{{ line.description }}</td>
+                                <td>{{ line.tripNumber or '-' }}</td>
+                                <td>{{ line.billOfLading or '-' }}</td>
+                                <td class="amount-cell negative">${{ line.amount | abs | number(2) }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-            <div class="form-actions">
-                <button type="submit" class="btn-primary">Upload and Process</button>
-                <button type="button" class="btn-secondary" onclick="document.getElementById('upload-form').style.display='none'">Cancel</button>
+        </details>
+    {% endif %}
+    
+    {# Advances #}
+    {% if batch.lineItems.advances and batch.lineItems.advances.length > 0 %}
+        <details class="breakdown-category">
+            <summary>
+                <h3>Advances</h3>
+                <span class="category-count">{{ batch.lineItems.advances.length }} items</span>
+            </summary>
+            <div class="breakdown-table-container">
+                <table class="breakdown-table">
+                    <thead>
+                        <tr>
+                            <th>Page</th>
+                            <th>Description</th>
+                            <th>Date</th>
+                            <th>Reference</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in batch.lineItems.advances %}
+                            <tr>
+                                <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
+                                <td>{{ line.description }}</td>
+                                <td>{{ line.date | date('MMM D, YYYY') if line.date else '-' }}</td>
+                                <td>{{ line.reference or '-' }}</td>
+                                <td class="amount-cell positive">${{ line.amount | abs | number(2) }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-            <div id="upload-progress" class="upload-progress" style="display: none;">
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progress-fill"></div>
-                </div>
-                <p id="progress-text">Processing PDF...</p>
+        </details>
+    {% endif %}
+    
+    {# Credit/Debit (Deductions) #}
+    {% if batch.lineItems.creditDebit and batch.lineItems.creditDebit.length > 0 %}
+        <details class="breakdown-category">
+            <summary>
+                <h3>Deductions (Credit/Debit)</h3>
+                <span class="category-count">{{ batch.lineItems.creditDebit.length }} items</span>
+            </summary>
+            <div class="breakdown-table-container">
+                <table class="breakdown-table">
+                    <thead>
+                        <tr>
+                            <th>Page</th>
+                            <th>Description</th>
+                            <th>Date</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in batch.lineItems.creditDebit %}
+                            <tr>
+                                <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
+                                <td>{{ line.description }}</td>
+                                <td>{{ line.date | date('MMM D, YYYY') if line.date else '-' }}</td>
+                                <td class="amount-cell positive">${{ line.amount | abs | number(2) }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-            <div id="upload-error" class="alert-error" style="display: none;"></div>
-        </form>
-    </div>
-
-    {% if batch.importFiles and batch.importFiles.length > 0 %}
-        <div class="import-files-grid">
-            {% for file in batch.importFiles %}
-                <div class="import-file-card">
-                    <div class="import-file-header">
-                        <h3 class="import-file-name">{{ macros.safeValue(file.fileName, 'Unnamed File') }}</h3>
-                        {% if file.approvedAt %}
-                            <span class="badge badge-success">Approved</span>
-                        {% else %}
-                            <span class="badge badge-pending">Pending</span>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="import-file-meta">
-                        <div class="meta-item">
-                            <span class="meta-label">Uploaded:</span>
-                            <span class="meta-value">{{ macros.formatDate(file.uploadedAt, config.dateFormat.fileUploadDate) }}</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Size:</span>
-                            <span class="meta-value">{{ (file.fileSize / 1024) | round(1) }} KB</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Pages:</span>
-                            <span class="meta-value">{{ file.importDocuments.length if file.importDocuments else 0 }}</span>
-                        </div>
-                    </div>
-
-                    {# Parse Actions #}
-                    <div class="import-file-actions">
-                        <button type="button" class="btn-secondary btn-sm" onclick="parseImportFile('{{ file.id }}')">
-                            Parse Transactions
-                        </button>
-                        <button type="button" class="btn-secondary btn-sm" onclick="resetAndReparse('{{ file.id }}')">
-                            Reset & Reparse
-                        </button>
-                        <button type="button" class="btn-secondary btn-sm" onclick="viewParseSummary('{{ file.id }}')">
-                            View Summary
-                        </button>
-                        <button type="button" class="btn-secondary btn-sm" onclick="viewParsedLines('{{ file.id }}')">
-                            View Parsed Lines
-                        </button>
-                    </div>
-
-                    {# Parse Results Display #}
-                    <div id="parse-result-{{ file.id }}" class="parse-result" style="display: none;"></div>
-                    <div id="parse-summary-{{ file.id }}" class="parse-summary" style="display: none;"></div>
-                    <div id="parse-lines-{{ file.id }}" class="parse-lines" style="display: none;"></div>
-
-                    {% if file.importDocuments and file.importDocuments.length > 0 %}
-                        <div class="document-types">
-                            <h4>Document Types:</h4>
-                            <div class="document-type-chips">
-                                {% for type in file.docTypeCounts | keys %}
-                                    <span class="chip chip-{{ type | lower }}">{{ type }} ({{ file.docTypeCounts[type] }})</span>
-                                {% endfor %}
-                            </div>
-                        </div>
-
-                        <details class="import-documents-details">
-                            <summary>View Pages ({{ file.importDocuments.length }})</summary>
-                            <div class="documents-list">
-                                {% for doc in file.importDocuments %}
-                                    <div class="document-item">
-                                        <div class="document-header">
-                                            <span class="document-page">Page {{ doc.pageNumber }}</span>
-                                            <span class="chip chip-{{ doc.documentType | lower }}">{{ doc.documentType }}</span>
-                                        </div>
-                                        <div class="document-text">
-                                            {{ doc.rawText | truncate(200) | escape }}
-                                        </div>
-                                    </div>
-                                {% endfor %}
-                            </div>
-                        </details>
-                    {% endif %}
-                </div>
-            {% endfor %}
-        </div>
-    {% else %}
-        <div class="empty-state" role="status">
-            <p>{{ config.importFiles.emptyMessage | escape }}</p>
-            <p class="empty-state-hint">Click "Upload PDF" to import a settlement file.</p>
-        </div>
+        </details>
+    {% endif %}
+    
+    {# Posting Ticket #}
+    {% if batch.lineItems.postingTicket and batch.lineItems.postingTicket.length > 0 %}
+        <details class="breakdown-category">
+            <summary>
+                <h3>Posting Ticket</h3>
+                <span class="category-count">{{ batch.lineItems.postingTicket.length }} items</span>
+            </summary>
+            <div class="breakdown-table-container">
+                <table class="breakdown-table">
+                    <thead>
+                        <tr>
+                            <th>Page</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in batch.lineItems.postingTicket %}
+                            <tr>
+                                <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
+                                <td>{{ line.description }}</td>
+                                <td class="amount-cell positive">${{ line.amount | abs | number(2) }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </details>
     {% endif %}
 </section>
 
+{# Trip Details Section #}
+{% if batch.trips and batch.trips.length > 0 %}
+<section class="trip-details" aria-labelledby="trips-heading">
+    <h2 id="trips-heading">Trip Details ({{ batch.trips.length }})</h2>
+    
+    <div class="trips-grid">
+        {% for trip in batch.trips %}
+            <div class="trip-card" id="trip-{{ trip.tripNumber }}">
+                <div class="trip-header">
+                    <div class="trip-title">
+                        <h3>Trip #{{ trip.tripNumber }}</h3>
+                        <span class="trip-bl">B/L: {{ trip.billOfLading }}</span>
+                    </div>
+                    <a href="#page-{{ trip.pageNumber }}" class="page-link">Page {{ trip.pageNumber }}</a>
+                </div>
+                
+                <div class="trip-info">
+                    <div class="trip-info-row">
+                        <strong>Driver:</strong>
+                        <span>{{ trip.driverName }}</span>
+                    </div>
+                    {% if trip.shipperName %}
+                        <div class="trip-info-row">
+                            <strong>Shipper:</strong>
+                            <span>{{ trip.shipperName }}</span>
+                        </div>
+                    {% endif %}
+                    {% if trip.origin or trip.destination %}
+                        <div class="trip-info-row">
+                            <strong>Route:</strong>
+                            <span>{{ trip.origin or 'Unknown' }} → {{ trip.destination or 'Unknown' }}</span>
+                        </div>
+                    {% endif %}
+                    {% if trip.deliveryDate %}
+                        <div class="trip-info-row">
+                            <strong>Delivery Date:</strong>
+                            <span>{{ trip.deliveryDate }}</span>
+                        </div>
+                    {% endif %}
+                    <div class="trip-info-row">
+                        {% if trip.weight %}
+                            <span><strong>Weight:</strong> {{ trip.weight }}</span>
+                        {% endif %}
+                        {% if trip.miles %}
+                            <span><strong>Miles:</strong> {{ trip.miles }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                {% if trip.serviceItems and trip.serviceItems.length > 0 %}
+                    <div class="trip-services">
+                        <h4>Service Items</h4>
+                        <table class="services-table">
+                            <thead>
+                                <tr>
+                                    <th>Service</th>
+                                    <th>Revenue/Expense</th>
+                                    <th>% Due</th>
+                                    <th>Charges</th>
+                                    <th>Earnings</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in trip.serviceItems %}
+                                    <tr>
+                                        <td>{{ item.description }}</td>
+                                        <td>{{ item.revenueExpense or '-' }}</td>
+                                        <td>{{ item.percentageDue or '-' }}</td>
+                                        <td>{{ macros.formatCurrency(item.charges, '$', 2) if item.charges else '-' }}</td>
+                                        <td>{{ macros.formatCurrency(item.earnings, '$', 2) if item.earnings else '-' }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+                
+                <div class="trip-total">
+                    <strong>Net Balance:</strong>
+                    <span class="trip-net-balance">${{ trip.netBalance | number(2) }}</span>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<section aria-labelledby="import-files-heading">
+    <div class="section-header">
+        <h2 id="import-files-heading" class="section-heading">Raw Document Data (Advanced)</h2>
+        <button type="button" class="btn-secondary" onclick="document.getElementById('raw-data-section').style.display = document.getElementById('raw-data-section').style.display === 'none' ? 'block' : 'none'">Toggle Raw Data</button>
+    </div>
+
+    <div id="raw-data-section" style="display: none;">
+        <p class="section-description">This section shows raw parsing data and debugging information.</p>
+        <div class="empty-state">
+            <p>Raw document data is available via API endpoint:</p>
+            <code>GET /api/batches/{{ batch.id }}/details</code>
+        </div>
+    </div>
+</section>
+
 <script>
+// Page navigation for PDF links
 (function() {
-    const form = document.getElementById('pdf-upload-form');
-    const progressDiv = document.getElementById('upload-progress');
-    const progressFill = document.getElementById('progress-fill');
-    const progressText = document.getElementById('progress-text');
-    const errorDiv = document.getElementById('upload-error');
     const batchId = '{{ batch.id }}';
-
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const fileInput = document.getElementById('pdf-file');
-        const file = fileInput.files[0];
-        
-        if (!file) {
-            alert('Please select a file');
-            return;
-        }
-
-        // Hide error, show progress
-        errorDiv.style.display = 'none';
-        progressDiv.style.display = 'block';
-        progressFill.style.width = '0%';
-        progressText.textContent = 'Uploading PDF...';
-
-        const formData = new FormData();
-        formData.append('file', file);
-
-        try {
-            // Simulate progress (since we can't get real progress easily)
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-                progress += 5;
-                if (progress >= 90) {
-                    clearInterval(progressInterval);
-                    progressText.textContent = 'Processing with OCR... This may take several minutes.';
-                }
-                progressFill.style.width = progress + '%';
-            }, 1000);
-
-            const response = await fetch(`http://localhost:3000/batches/${batchId}/upload`, {
-                method: 'POST',
-                body: formData
-            });
-
-            clearInterval(progressInterval);
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.message || 'Upload failed');
-            }
-
-            const result = await response.json();
-            
-            // Success!
-            progressFill.style.width = '100%';
-            progressText.textContent = `Success! Processed ${result.documentsDetected} documents.`;
-            
-            // Reload page after 2 seconds
-            setTimeout(() => {
-                window.location.reload();
-            }, 2000);
-
-        } catch (error) {
-            progressDiv.style.display = 'none';
-            errorDiv.textContent = 'Error: ' + error.message;
-            errorDiv.style.display = 'block';
-        }
+    
+    // Handle page link clicks (placeholder for future PDF viewer integration)
+    document.querySelectorAll('.page-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const pageNumber = link.getAttribute('href').replace('#page-', '');
+            console.log(`Navigate to page ${pageNumber}`);
+            // TODO: Integrate PDF viewer and navigate to page
+            alert(`PDF viewer integration pending. Would navigate to page ${pageNumber}`);
+        });
     });
 })();
-
-// Parse import file transactions
-window.parseImportFile = async function(importFileId) {
-    const resultDiv = document.getElementById(`parse-result-${importFileId}`);
-    const button = event.target;
-    
-    button.disabled = true;
-    button.textContent = 'Parsing...';
-    resultDiv.style.display = 'block';
-    resultDiv.innerHTML = '<p class="loading">Parsing documents...</p>';
-    
-    try {
-        const response = await fetch(`/admin/batches/import-files/${importFileId}/parse`, {
-            method: 'POST'
-        });
-        
-        if (!response.ok) {
-            throw new Error('Parse request failed');
-        }
-        
-        const result = await response.json();
-        
-        let html = '<div class="parse-success">';
-        html += `<h4>✓ Parse Complete</h4>`;
-        html += `<p><strong>Documents Processed:</strong> ${result.documentsProcessed}</p>`;
-        html += `<p><strong>Lines Created:</strong> ${result.totalLinesCreated}</p>`;
-        
-        if (result.errors && result.errors.length > 0) {
-            html += '<div class="parse-errors">';
-            html += '<h5>Errors:</h5><ul>';
-            result.errors.forEach(err => {
-                html += `<li>${err}</li>`;
-            });
-            html += '</ul></div>';
-        }
-        
-        html += '</div>';
-        resultDiv.innerHTML = html;
-        
-        button.textContent = 'Parse Complete';
-        
-    } catch (error) {
-        resultDiv.innerHTML = `<p class="alert-error">Error: ${error.message}</p>`;
-        button.disabled = false;
-        button.textContent = 'Parse Transactions';
-    }
-};
-
-// Reset and reparse import file
-window.resetAndReparse = async function(importFileId) {
-    if (!confirm('This will delete all existing parsed lines and reparse the documents. Continue?')) {
-        return;
-    }
-    
-    const resultDiv = document.getElementById(`parse-result-${importFileId}`);
-    const button = event.target;
-    
-    button.disabled = true;
-    button.textContent = 'Resetting...';
-    resultDiv.style.display = 'block';
-    resultDiv.innerHTML = '<p class="loading">Resetting and reparsing...</p>';
-    
-    try {
-        // Step 1: Reset
-        const resetResponse = await fetch(`/admin/batches/import-files/${importFileId}/reset`, {
-            method: 'POST'
-        });
-        
-        if (!resetResponse.ok) {
-            throw new Error('Reset request failed');
-        }
-        
-        button.textContent = 'Parsing...';
-        
-        // Step 2: Parse
-        const parseResponse = await fetch(`/admin/batches/import-files/${importFileId}/parse`, {
-            method: 'POST'
-        });
-        
-        if (!parseResponse.ok) {
-            throw new Error('Parse request failed');
-        }
-        
-        const result = await parseResponse.json();
-        
-        let html = '<div class="parse-success">';
-        html += `<h4>✓ Reset & Parse Complete</h4>`;
-        html += `<p><strong>Documents Processed:</strong> ${result.documentsProcessed}</p>`;
-        html += `<p><strong>Lines Created:</strong> ${result.totalLinesCreated}</p>`;
-        
-        if (result.errors && result.errors.length > 0) {
-            html += '<div class="parse-errors">';
-            html += '<h5>Errors:</h5><ul>';
-            result.errors.forEach(err => {
-                html += `<li>${err}</li>`;
-            });
-            html += '</ul></div>';
-        }
-        
-        html += '</div>';
-        resultDiv.innerHTML = html;
-        
-        button.disabled = false;
-        button.textContent = 'Reset & Reparse';
-        
-    } catch (error) {
-        resultDiv.innerHTML = `<p class="alert-error">Error: ${error.message}</p>`;
-        button.disabled = false;
-        button.textContent = 'Reset & Reparse';
-    }
-};
-
-// View parse summary
-window.viewParseSummary = async function(importFileId) {
-    const summaryDiv = document.getElementById(`parse-summary-${importFileId}`);
-    const button = event.target;
-    
-    // Toggle display
-    if (summaryDiv.style.display === 'block') {
-        summaryDiv.style.display = 'none';
-        return;
-    }
-    
-    button.disabled = true;
-    button.textContent = 'Loading...';
-    summaryDiv.style.display = 'block';
-    summaryDiv.innerHTML = '<p class="loading">Loading summary...</p>';
-    
-    try {
-        const response = await fetch(`/admin/batches/import-files/${importFileId}/summary`);
-        
-        if (!response.ok) {
-            throw new Error('Failed to load summary');
-        }
-        
-        const summary = await response.json();
-        
-        let html = '<div class="summary-content">';
-        html += '<h4>Parsed Lines Summary</h4>';
-        html += `<p><strong>Total Lines:</strong> ${summary.totalLines}</p>`;
-        
-        if (summary.totalLines > 0) {
-            html += '<div class="summary-grid">';
-            html += `<div class="summary-item">`;
-            html += `<span class="summary-label">Revenue:</span>`;
-            html += `<span class="summary-value">$${summary.totalRevenue.toFixed(2)}</span>`;
-            html += `<span class="summary-count">(${summary.byLineType.REVENUE || 0} lines)</span>`;
-            html += `</div>`;
-            
-            html += `<div class="summary-item">`;
-            html += `<span class="summary-label">Advances:</span>`;
-            html += `<span class="summary-value">$${summary.totalAdvances.toFixed(2)}</span>`;
-            html += `<span class="summary-count">(${summary.byLineType.ADVANCE || 0} lines)</span>`;
-            html += `</div>`;
-            
-            html += `<div class="summary-item">`;
-            html += `<span class="summary-label">Deductions:</span>`;
-            html += `<span class="summary-value">$${summary.totalDeductions.toFixed(2)}</span>`;
-            html += `<span class="summary-count">(${summary.byLineType.DEDUCTION || 0} lines)</span>`;
-            html += `</div>`;
-            html += '</div>';
-        } else {
-            html += '<p class="empty-message">No parsed lines yet. Click "Parse Transactions" first.</p>';
-        }
-        
-        html += '</div>';
-        summaryDiv.innerHTML = html;
-        
-        button.disabled = false;
-        button.textContent = 'View Summary';
-        
-    } catch (error) {
-        summaryDiv.innerHTML = `<p class="alert-error">Error: ${error.message}</p>`;
-        button.disabled = false;
-        button.textContent = 'View Summary';
-    }
-};
-
-// View parsed lines
-window.viewParsedLines = async function(importFileId) {
-    const linesDiv = document.getElementById(`parse-lines-${importFileId}`);
-    const button = event.target;
-    
-    // Toggle display
-    if (linesDiv.style.display === 'block') {
-        linesDiv.style.display = 'none';
-        return;
-    }
-    
-    button.disabled = true;
-    button.textContent = 'Loading...';
-    linesDiv.style.display = 'block';
-    linesDiv.innerHTML = '<p class="loading">Loading parsed lines...</p>';
-    
-    try {
-        const response = await fetch(`/admin/batches/import-files/${importFileId}/lines`);
-        
-        if (!response.ok) {
-            throw new Error('Failed to load lines');
-        }
-        
-        const data = await response.json();
-        const lines = data.lines || [];
-        
-        if (lines.length === 0) {
-            linesDiv.innerHTML = '<p class="empty-message">No parsed lines yet. Click "Parse Transactions" first.</p>';
-            button.disabled = false;
-            button.textContent = 'View Parsed Lines';
-            return;
-        }
-        
-        let html = '<div class="lines-table-container">';
-        html += `<h4>Parsed Lines (${lines.length})</h4>`;
-        html += '<table class="lines-table">';
-        html += '<thead><tr>';
-        html += '<th>Page</th>';
-        html += '<th>Category</th>';
-        html += '<th>Type</th>';
-        html += '<th>Acct</th>';
-        html += '<th>Date</th>';
-        html += '<th>Description</th>';
-        html += '<th>Amount</th>';
-        html += '<th>Driver</th>';
-        html += '<th>Ref</th>';
-        html += '<th>Trip#</th>';
-        html += '<th>B/L</th>';
-        html += '</tr></thead>';
-        html += '<tbody>';
-        
-        lines.forEach(line => {
-            const date = line.date ? new Date(line.date).toLocaleDateString() : '-';
-            const driver = line.driver ? line.driver.name : '-';
-            const amount = line.amount.toFixed(2);
-            const amountClass = line.amount < 0 ? 'negative' : 'positive';
-            
-            html += '<tr>';
-            html += `<td>${line.pageNumber || '-'}</td>`;
-            html += `<td>${line.category || '-'}</td>`;
-            html += `<td><span class="line-type-badge ${line.lineType ? line.lineType.toLowerCase() : 'unknown'}">${line.lineType || 'UNKNOWN'}</span></td>`;
-            html += `<td>${line.accountNumber || '-'}</td>`;
-            html += `<td>${date}</td>`;
-            html += `<td>${line.description}</td>`;
-            html += `<td class="amount ${amountClass}">$${amount}</td>`;
-            html += `<td>${driver}</td>`;
-            html += `<td>${line.reference || '-'}</td>`;
-            html += `<td>${line.tripNumber || '-'}</td>`;
-            html += `<td>${line.billOfLading || '-'}</td>`;
-            html += '</tr>';
-        });
-        
-        html += '</tbody></table>';
-        html += '</div>';
-        
-        linesDiv.innerHTML = html;
-        
-        button.disabled = false;
-        button.textContent = 'View Parsed Lines';
-        
-    } catch (error) {
-        linesDiv.innerHTML = `<p class="alert-error">Error: ${error.message}</p>`;
-        button.disabled = false;
-        button.textContent = 'View Parsed Lines';
-    }
-};
 </script>
 {% endblock %}

@@ -199,6 +199,280 @@ a:focus {
   font-weight: 500;
 }
 
+/* Document Info Card */
+.document-info-card {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 30px;
+}
+
+.document-info-card h3 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.document-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.meta-label {
+  font-size: 12px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.meta-value {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+
+.parse-errors-alert {
+  margin-top: 15px;
+  padding: 15px;
+  background-color: #fff3cd;
+  border-left: 4px solid #ffc107;
+  border-radius: 4px;
+}
+
+.parse-errors-alert ul {
+  margin: 10px 0 0 0;
+  padding-left: 20px;
+}
+
+.parse-errors-alert li {
+  margin: 5px 0;
+}
+
+/* Financial Summary */
+.financial-summary {
+  margin-bottom: 40px;
+}
+
+.financial-summary h2 {
+  font-size: 24px;
+  margin: 0 0 20px 0;
+  color: #333;
+}
+
+.info-grid-4 {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+/* Batch Breakdown */
+.batch-breakdown {
+  margin-bottom: 40px;
+}
+
+.batch-breakdown h2 {
+  font-size: 24px;
+  margin: 0 0 20px 0;
+  color: #333;
+}
+
+.breakdown-category {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 15px;
+  overflow: hidden;
+}
+
+.breakdown-category summary {
+  padding: 15px 20px;
+  cursor: pointer;
+  background-color: #f8f9fa;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  color: #333;
+  user-select: none;
+}
+
+.breakdown-category summary:hover {
+  background-color: #e9ecef;
+}
+
+.breakdown-category summary h3 {
+  margin: 0;
+  font-size: 16px;
+  display: inline;
+}
+
+.category-count {
+  font-size: 14px;
+  color: #666;
+  font-weight: 400;
+}
+
+.breakdown-table-container {
+  padding: 0;
+  overflow-x: auto;
+}
+
+.breakdown-table {
+  width: 100%;
+  margin: 0;
+}
+
+.breakdown-table th {
+  background-color: #fafafa;
+  font-size: 11px;
+  padding: 10px 15px;
+}
+
+.breakdown-table td {
+  padding: 12px 15px;
+  font-size: 14px;
+}
+
+.page-link {
+  color: #0066cc;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.page-link:hover {
+  text-decoration: underline;
+}
+
+.amount-cell {
+  font-weight: 600;
+  text-align: right;
+  font-family: 'Courier New', monospace;
+}
+
+.amount-cell.negative {
+  color: #d32f2f;
+}
+
+.amount-cell.positive {
+  color: #388e3c;
+}
+
+/* Trip Details */
+.trip-details {
+  margin-bottom: 40px;
+}
+
+.trip-details h2 {
+  font-size: 24px;
+  margin: 0 0 20px 0;
+  color: #333;
+}
+
+.trips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+  gap: 20px;
+}
+
+.trip-card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+}
+
+.trip-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.trip-header {
+  background-color: #f8f9fa;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.trip-title h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.trip-bl {
+  font-size: 14px;
+  color: #666;
+  margin-top: 4px;
+  display: block;
+}
+
+.trip-info {
+  padding: 20px;
+}
+
+.trip-info-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.trip-info-row strong {
+  color: #666;
+  min-width: 100px;
+}
+
+.trip-services {
+  padding: 0 20px 20px 20px;
+}
+
+.trip-services h4 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.services-table {
+  width: 100%;
+  font-size: 13px;
+}
+
+.services-table th {
+  background-color: #fafafa;
+  padding: 8px 10px;
+  font-size: 11px;
+}
+
+.services-table td {
+  padding: 8px 10px;
+}
+
+.trip-total {
+  padding: 15px 20px;
+  background-color: #f8f9fa;
+  border-top: 2px solid #dee2e6;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 16px;
+}
+
+.trip-net-balance {
+  font-weight: 700;
+  color: #d32f2f;
+  font-size: 18px;
+  font-family: 'Courier New', monospace;
+}
+
 /* Parse Actions */
 .import-file-actions {
   display: flex;

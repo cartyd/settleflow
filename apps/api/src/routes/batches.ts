@@ -1,9 +1,12 @@
 import { FastifyPluginAsync } from 'fastify';
 import * as batchService from '../services/batch.service.js';
+import * as batchDetailService from '../services/batch-detail.service.js';
 import * as importService from '../services/import.service.js';
 import * as importLineService from '../services/import-line.service.js';
 import * as driverMatcherService from '../services/driver-matcher.service.js';
 import { loadConfig } from '@settleflow/shared-config';
+import path from 'path';
+import fs from 'fs';
 import {
   CreateBatchSchema,
   GetBatchesQuerySchema,
@@ -46,6 +49,73 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request) => {
       const { id } = BatchIdParamSchema.parse(request.params);
       return await batchService.getBatchById(fastify.prisma, id);
+    },
+  });
+
+  fastify.get('/:id/details', {
+    schema: {
+      description: 'Get comprehensive batch detail data',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { id } = BatchIdParamSchema.parse(request.params);
+      try {
+        const details = await batchDetailService.getBatchDetailData(fastify.prisma, id);
+        return reply.send(details);
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to get batch details',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
+  fastify.get('/:id/pdf', {
+    schema: {
+      description: 'Get PDF file for batch',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { id } = BatchIdParamSchema.parse(request.params);
+      try {
+        // Get the batch to find the import file
+        const batch = await fastify.prisma.settlementBatch.findUnique({
+          where: { id },
+          include: {
+            importFiles: {
+              take: 1,
+              orderBy: { uploadedAt: 'desc' },
+            },
+          },
+        });
+
+        if (!batch || !batch.importFiles[0]) {
+          return reply.status(404).send({ error: 'Batch or PDF file not found' });
+        }
+
+        const config = loadConfig();
+        const fileName = batch.importFiles[0].fileName;
+        const filePath = path.join(config.storage.pdfPath, fileName);
+
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+          return reply.status(404).send({ error: 'PDF file not found on disk' });
+        }
+
+        // Send the PDF file
+        const stream = fs.createReadStream(filePath);
+        reply.type('application/pdf');
+        reply.header('Content-Disposition', `inline; filename="${fileName}"`);
+        return reply.send(stream);
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to serve PDF',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     },
   });
 
