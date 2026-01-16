@@ -33,6 +33,9 @@ export interface AppConfig {
         serverUrl: string;
         model: string;
     };
+    storage: {
+        pdfPath: string;
+    };
 }
 export declare function loadConfig(): AppConfig;
 //# sourceMappingURL=index.d.ts.map

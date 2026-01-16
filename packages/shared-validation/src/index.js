@@ -1,37 +1,34 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ImportIdParamSchema = exports.AdjustmentIdParamSchema = exports.CreateAdjustmentSchema = exports.UploadImportSchema = exports.BatchIdParamSchema = exports.GetBatchesQuerySchema = exports.CreateBatchSchema = void 0;
-const zod_1 = require("zod");
-exports.CreateBatchSchema = zod_1.z.object({
-    agencyId: zod_1.z.string().uuid(),
-    nvlPaymentRef: zod_1.z.string().min(1),
-    weekStartDate: zod_1.z.string().datetime(),
-    weekEndDate: zod_1.z.string().datetime(),
+import { z } from 'zod';
+export const CreateBatchSchema = z.object({
+    agencyId: z.string().uuid(),
+    nvlPaymentRef: z.string().min(1),
+    weekStartDate: z.string().datetime(),
+    weekEndDate: z.string().datetime(),
 });
-exports.GetBatchesQuerySchema = zod_1.z.object({
-    agencyId: zod_1.z.string().uuid().optional(),
-    status: zod_1.z.string().optional(),
-    limit: zod_1.z.coerce.number().int().positive().default(50),
-    offset: zod_1.z.coerce.number().int().min(0).default(0),
+export const GetBatchesQuerySchema = z.object({
+    agencyId: z.string().uuid().optional(),
+    status: z.string().optional(),
+    limit: z.coerce.number().int().positive().default(50),
+    offset: z.coerce.number().int().min(0).default(0),
 });
-exports.BatchIdParamSchema = zod_1.z.object({
-    id: zod_1.z.string().uuid(),
+export const BatchIdParamSchema = z.object({
+    id: z.string().uuid(),
 });
-exports.UploadImportSchema = zod_1.z.object({
-    fileName: zod_1.z.string().min(1),
-    fileContent: zod_1.z.string().min(1),
+export const UploadImportSchema = z.object({
+    fileName: z.string().min(1),
+    fileContent: z.string().min(1),
 });
-exports.CreateAdjustmentSchema = zod_1.z.object({
-    targetTable: zod_1.z.string().min(1),
-    targetRecordId: zod_1.z.string().uuid(),
-    targetField: zod_1.z.string().min(1),
-    adjustedValue: zod_1.z.string().min(1),
-    reason: zod_1.z.string().min(10),
+export const CreateAdjustmentSchema = z.object({
+    targetTable: z.string().min(1),
+    targetRecordId: z.string().uuid(),
+    targetField: z.string().min(1),
+    adjustedValue: z.string().min(1),
+    reason: z.string().min(10),
 });
-exports.AdjustmentIdParamSchema = zod_1.z.object({
-    id: zod_1.z.string().uuid(),
+export const AdjustmentIdParamSchema = z.object({
+    id: z.string().uuid(),
 });
-exports.ImportIdParamSchema = zod_1.z.object({
-    importId: zod_1.z.string().uuid(),
+export const ImportIdParamSchema = z.object({
+    importId: z.string().uuid(),
 });
 //# sourceMappingURL=index.js.map
