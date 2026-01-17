@@ -276,7 +276,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
       const { importFileId } = request.params as { importFileId: string };
 
       try {
-        const result = await importLineService.parseImportFile(importFileId);
+        const result = await importLineService.parseImportFile(fastify.prisma, importFileId);
         reply.send(result);
       } catch (error) {
         fastify.log.error(error);
@@ -297,7 +297,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
       const { importFileId } = request.params as { importFileId: string };
 
       try {
-        const summary = await importLineService.getImportLineSummary(importFileId);
+        const summary = await importLineService.getImportLineSummary(fastify.prisma, importFileId);
         reply.send(summary);
       } catch (error) {
         fastify.log.error(error);
@@ -318,7 +318,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
       const { importFileId } = request.params as { importFileId: string };
 
       try {
-        const result = await driverMatcherService.matchDriversForImportFile(importFileId);
+        const result = await driverMatcherService.matchDriversForImportFile(fastify.prisma, importFileId);
         return reply.send(result);
       } catch (error) {
         fastify.log.error(error);
