@@ -7,8 +7,6 @@ import { parseRemittance } from '../parsers/nvl/remittance.parser.js';
 import { parseAdvance } from '../parsers/nvl/advance.parser.js';
 import { parsePostingTicket } from '../parsers/nvl/posting-ticket.parser.js';
 
-const prisma = new PrismaClient();
-
 /**
  * Parse ISO date string (YYYY-MM-DD) to Date in local timezone
  * Avoids UTC offset issues by explicitly using local timezone
@@ -32,6 +30,7 @@ export interface ParseDocumentResult {
  * Parse a single ImportDocument and create ImportLine records
  */
 export async function parseAndSaveImportLines(
+  prisma: PrismaClient,
   importDocumentId: string
 ): Promise<ParseDocumentResult> {
   const errors: string[] = [];
@@ -416,7 +415,10 @@ export async function parseAndSaveImportLines(
  * 1. First parse supporting documents (Revenue Distribution, Credit/Debit, Advance) to create import lines
  * 2. Then parse Settlement Detail as validation (cross-check totals and flag discrepancies)
  */
-export async function parseImportFile(importFileId: string): Promise<{
+export async function parseImportFile(
+  prisma: PrismaClient,
+  importFileId: string
+): Promise<{
   importFileId: string;
   documentsProcessed: number;
   totalLinesCreated: number;
@@ -441,7 +443,7 @@ export async function parseImportFile(importFileId: string): Promise<{
       document.documentType === DocumentType.POSTING_TICKET
     ) {
       try {
-        const result = await parseAndSaveImportLines(document.id);
+        const result = await parseAndSaveImportLines(prisma, document.id);
         totalLinesCreated += result.linesCreated;
         allErrors.push(...result.errors);
       } catch (error) {
@@ -461,7 +463,7 @@ export async function parseImportFile(importFileId: string): Promise<{
       document.documentType === DocumentType.UNKNOWN
     ) {
       try {
-        const result = await parseAndSaveImportLines(document.id);
+        const result = await parseAndSaveImportLines(prisma, document.id);
         totalLinesCreated += result.linesCreated;
         allErrors.push(...result.errors);
       } catch (error) {
@@ -483,7 +485,10 @@ export async function parseImportFile(importFileId: string): Promise<{
 /**
  * Get summary statistics for parsed import lines
  */
-export async function getImportLineSummary(importFileId: string): Promise<{
+export async function getImportLineSummary(
+  prisma: PrismaClient,
+  importFileId: string
+): Promise<{
   totalLines: number;
   byLineType: Record<string, number>;
   totalRevenue: number;

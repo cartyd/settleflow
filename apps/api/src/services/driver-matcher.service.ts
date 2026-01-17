@@ -1,7 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
-
 export interface DriverMatchResult {
   importLineId: string;
   matchedDriverId?: string;
@@ -60,6 +58,7 @@ function calculateSimilarity(str1: string, str2: string): number {
  * Match a driver name to existing Driver records
  */
 export async function matchDriverByName(
+  prisma: PrismaClient,
   firstName: string | null,
   lastName: string | null,
   batchId: string
@@ -149,6 +148,7 @@ export async function matchDriverByName(
  * Match all import lines with driver information to Driver records
  */
 export async function matchDriversForImportFile(
+  prisma: PrismaClient,
   importFileId: string
 ): Promise<{
   matched: number;
@@ -191,6 +191,7 @@ export async function matchDriversForImportFile(
       }
 
       const match = await matchDriverByName(
+        prisma,
         firstName,
         lastName,
         line.importDocument.importFile.batchId
