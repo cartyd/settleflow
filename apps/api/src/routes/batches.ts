@@ -8,11 +8,71 @@ import * as autoBatchImportService from '../services/auto-batch-import.service.j
 import { loadConfig } from '@settleflow/shared-config';
 import path from 'path';
 import fs from 'fs';
+import { spawn } from 'child_process';
 import {
   CreateBatchSchema,
   GetBatchesQuerySchema,
   BatchIdParamSchema,
 } from '@settleflow/shared-validation';
+
+// Helper function to extract and serve a specific PDF page
+async function extractAndServePdfPage(
+  pdfPath: string,
+  pageNum: number,
+  reply: any,
+  fastify: any
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const outputPath = path.join('/tmp', `page-${Date.now()}-${pageNum}.pdf`);
+    
+    // Use pdftk or qpdf to extract the page
+    // Format: qpdf input.pdf --pages input.pdf pageNum -- output.pdf
+    const args = [pdfPath, '--pages', pdfPath, String(pageNum), '--', outputPath];
+    const process = spawn('qpdf', args);
+
+    let stderr = '';
+    process.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    process.on('close', (code) => {
+      if (code !== 0) {
+        fastify.log.error({ stderr, code }, 'qpdf extraction failed');
+        // Cleanup and reject
+        fs.unlink(outputPath, () => {});
+        reply.status(500).send({ error: 'Failed to extract PDF page' });
+        return reject(new Error('qpdf failed'));
+      }
+
+      // Send the extracted page
+      const stream = fs.createReadStream(outputPath);
+      reply.type('application/pdf');
+      reply.header('Content-Disposition', `inline; filename="page-${pageNum}.pdf"`);
+      
+      stream.on('end', () => {
+        // Cleanup temp file after sending
+        fs.unlink(outputPath, (err) => {
+          if (err) fastify.log.warn({ err }, 'Failed to cleanup temp PDF');
+        });
+        resolve();
+      });
+
+      stream.on('error', (err) => {
+        fastify.log.error({ err }, 'Error streaming extracted PDF');
+        fs.unlink(outputPath, () => {});
+        reject(err);
+      });
+
+      reply.send(stream);
+    });
+
+    process.on('error', (err) => {
+      fastify.log.error({ err }, 'Failed to spawn qpdf process');
+      reply.status(500).send({ error: 'PDF extraction not available' });
+      reject(err);
+    });
+  });
+}
 
 export const batchRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/', {
@@ -75,11 +135,14 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.get('/:id/pdf', {
     schema: {
-      description: 'Get PDF file for batch',
+      description: 'Get PDF file for batch, optionally a specific page',
       tags: ['batches'],
     },
     handler: async (request, reply) => {
       const { id } = BatchIdParamSchema.parse(request.params);
+      const query = request.query as { page?: string };
+      const pageNum = query.page ? parseInt(query.page) : null;
+      
       try {
         // Get the batch to find the import file
         const batch = await fastify.prisma.settlementBatch.findUnique({
@@ -93,7 +156,9 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         if (!batch || !batch.importFiles[0]) {
-          return reply.status(404).send({ error: 'Batch or PDF file not found' });
+          return reply.status(404).send({ 
+            error: 'Batch or PDF file not found'
+          });
         }
 
         const config = loadConfig();
@@ -102,10 +167,17 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Check if file exists
         if (!fs.existsSync(filePath)) {
-          return reply.status(404).send({ error: 'PDF file not found on disk' });
+          return reply.status(404).send({ 
+            error: 'PDF file not found on disk'
+          });
         }
 
-        // Send the PDF file
+        // If specific page requested, extract it
+        if (pageNum && pageNum > 0) {
+          return extractAndServePdfPage(filePath, pageNum, reply, fastify);
+        }
+
+        // Send the full PDF file
         const stream = fs.createReadStream(filePath);
         reply.type('application/pdf');
         reply.header('Content-Disposition', `inline; filename="${fileName}"`);

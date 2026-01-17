@@ -1308,6 +1308,77 @@ footer p {
   margin-top: 10px;
 }
 
+/* PDF Viewer */
+.pdf-viewer-section {
+  margin-top: 30px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.pdf-viewer-container {
+  padding: 20px;
+}
+
+.pdf-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 15px;
+}
+
+.pdf-toolbar h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #333;
+  font-weight: 600;
+}
+
+.pdf-page-info {
+  font-size: 14px;
+  color: #666;
+  margin: 0 15px;
+}
+
+.pdf-nav-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.pdf-nav-btn {
+  background-color: #0066cc;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.pdf-nav-btn:hover:not(:disabled) {
+  background-color: #0052a3;
+}
+
+.pdf-nav-btn:disabled {
+  background-color: #6c757d;
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pdf-iframe {
+  width: 100%;
+  height: 700px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background-color: #f5f5f5;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   body {
