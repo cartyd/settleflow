@@ -78,8 +78,6 @@ export async function parseAndSaveImportLines(
 
       // Validate that Settlement Detail matches existing import lines
       for (const settlementLine of parseResult.lines) {
-        let matched = false;
-
         // Match RD (Revenue Distribution) lines by B/L
         if (settlementLine.transactionCode === 'RD' && settlementLine.billOfLading) {
           const matchingLine = existingLines.find(
@@ -87,7 +85,6 @@ export async function parseAndSaveImportLines(
           );
           
           if (matchingLine) {
-            matched = true;
             // Validate amounts match (within 0.01 tolerance for rounding)
             if (Math.abs(Math.abs(matchingLine.amount) - Math.abs(settlementLine.amount)) > 0.01) {
               errors.push(
@@ -113,9 +110,7 @@ export async function parseAndSaveImportLines(
               Math.abs(el.amount - settlementLine.amount) < 0.01
           );
           
-          if (matchingLine) {
-            matched = true;
-          } else {
+          if (!matchingLine) {
             errors.push(
               `Settlement Detail shows MC deduction "${settlementLine.description}" ($${settlementLine.amount}), ` +
               `but no matching Credit/Debit document was found`
@@ -132,9 +127,7 @@ export async function parseAndSaveImportLines(
               el.tripNumber === settlementLine.tripNumber
           );
           
-          if (matchingLine) {
-            matched = true;
-          } else {
+          if (!matchingLine) {
             // This is expected - CM advances might not have supporting docs
             // Just note it, don't error
           }
@@ -143,7 +136,7 @@ export async function parseAndSaveImportLines(
         // Match PT (Posting Ticket) lines
         else if (settlementLine.transactionCode === 'PT') {
           // PT lines might not have supporting docs either
-          matched = true; // Accept as-is for now
+          // Accept as-is for now
         }
       }
 

@@ -56,21 +56,29 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
     const driverName = driverMatch ? driverMatch[1].trim() : undefined;
 
     // Extract advance amount
-    // The amount appears on the last line after the G/L #
-    // Format: "3101 071 1855 2032-01 518.00" (last number on last line)
+    // The amount appears in format: "ACCOUNT# DRIVER# TRIP# G/L# AMOUNT"
+    // Or in the TOTAL column of the summary line
     let advanceAmount = 0;
     
-    // Split into lines and get last line
-    const textLines = ocrText.trim().split('\n');
-    const lastLine = textLines[textLines.length - 1];
-    
-    // Extract last decimal number from last line
-    const amountMatch = lastLine.match(/(\d+\.\d{2})\s*$/);
-    if (amountMatch) {
-      advanceAmount = parseFloat(amountMatch[1]);
+    // Try to find amount after G/L # pattern (most reliable)
+    const glAmountMatch = ocrText.match(/G\/L\s*#\s*[\w-]+\s+([\d,]+\.\d{2})/i);
+    if (glAmountMatch) {
+      advanceAmount = parseFloat(glAmountMatch[1].replace(/,/g, ''));
     } else {
-      errors.push('Could not extract advance amount from last line: ' + lastLine);
-      return { lines, errors };
+      // Try to find amount in the TOTAL column
+      const totalMatch = ocrText.match(/TOTAL\s*\n[^\n]*\s+([\d,]+\.\d{2})/i);
+      if (totalMatch) {
+        advanceAmount = parseFloat(totalMatch[1].replace(/,/g, ''));
+      } else {
+        // Last resort: find any line with pattern "XXXX XXXX XXXX XXXX-XX AMOUNT"
+        const lineMatch = ocrText.match(/\d+\s+\d+\s+\d+\s+[\d-]+\s+([\d,]+\.\d{2})/i);
+        if (lineMatch) {
+          advanceAmount = parseFloat(lineMatch[1].replace(/,/g, ''));
+        } else {
+          errors.push('Could not extract advance amount from document');
+          return { lines, errors };
+        }
+      }
     }
 
     // Extract date
