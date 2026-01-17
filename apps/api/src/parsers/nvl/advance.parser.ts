@@ -8,6 +8,7 @@ export interface AdvanceLine {
   tripNumber?: string;
   accountNumber?: string;
   driverName?: string;
+  driverNumber?: string;
   advanceAmount: number;
   description?: string;
   date?: string;
@@ -52,8 +53,13 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
     const accountNumber = accountMatch ? accountMatch[1] : undefined;
 
     // Extract driver name (format: LASTNAME, FIRSTNAME or just name)
-    const driverMatch = ocrText.match(/DRIVER[-\s]+>?\s*([A-Z,\s]+)/i);
+    // Also extract driver number if present (format: DRIV# XXX)
+    const driverMatch = ocrText.match(/DRIVER[-\s]+>?\s*([A-Z,\s]+?)(?:\s+ACCOUNT|\s+DRIV#|$)/i);
     const driverName = driverMatch ? driverMatch[1].trim() : undefined;
+    
+    // Extract driver number
+    const driverNumMatch = ocrText.match(/DRIV\s*#\s*(\d+)/i);
+    const driverNumber = driverNumMatch ? driverNumMatch[1] : undefined;
 
     // Extract advance amount
     // The amount appears in format: "ACCOUNT# DRIVER# TRIP# G/L# AMOUNT"
@@ -97,6 +103,7 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
       tripNumber,
       accountNumber,
       driverName,
+      driverNumber,
       advanceAmount,
       description,
       date,

@@ -334,6 +334,7 @@ export async function parseAndSaveImportLines(
               tripNumber: line.tripNumber,
               accountNumber: line.accountNumber,
               driverName: line.driverName,
+              driverNumber: line.driverNumber,
               advanceAmount: line.advanceAmount,
               description: line.description,
             }),

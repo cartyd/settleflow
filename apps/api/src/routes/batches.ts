@@ -4,6 +4,7 @@ import * as batchDetailService from '../services/batch-detail.service.js';
 import * as importService from '../services/import.service.js';
 import * as importLineService from '../services/import-line.service.js';
 import * as driverMatcherService from '../services/driver-matcher.service.js';
+import * as driverResolutionService from '../services/driver-resolution.service.js';
 import * as autoBatchImportService from '../services/auto-batch-import.service.js';
 import { loadConfig } from '@settleflow/shared-config';
 import path from 'path';
@@ -396,6 +397,27 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
         fastify.log.error(error);
         return reply.status(500).send({
           error: 'Failed to match drivers',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
+  fastify.post('/import-files/:importFileId/resolve-drivers', {
+    schema: {
+      description: 'Resolve and validate driver information across documents',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { importFileId } = request.params as { importFileId: string };
+
+      try {
+        const result = await driverResolutionService.resolveDriversForImportFile(fastify.prisma, importFileId);
+        return reply.send(result);
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to resolve drivers',
           message: error instanceof Error ? error.message : String(error),
         });
       }
