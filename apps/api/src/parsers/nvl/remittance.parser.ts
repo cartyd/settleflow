@@ -249,6 +249,7 @@ export function parseRemittance(ocrText: string): RemittanceParseResult {
     // Validate that we extracted at least the essential fields
     if (!checkNumber && !checkAmount) {
       errors.push('Could not extract check number or amount from remittance document');
+      // Still create a line with available data rather than skipping completely
     }
 
     const line: RemittanceLine = {
