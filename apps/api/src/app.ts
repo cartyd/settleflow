@@ -74,7 +74,11 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   // Custom plugins
   await app.register(prismaPlugin);
   if (config.sentry.enabled) {
-    await app.register(sentryPlugin, { dsn: config.sentry.dsn });
+    await app.register(sentryPlugin, {
+      dsn: config.sentry.dsn,
+      environment: config.sentry.environment,
+      tracesSampleRate: config.sentry.tracesSampleRate,
+    });
   }
   await app.register(errorHandler);
 

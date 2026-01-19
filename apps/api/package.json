@@ -24,7 +24,7 @@
     "@libsql/client": "^0.8.1",
     "@prisma/adapter-libsql": "^7.2.0",
     "@prisma/client": "^7.2.0",
-    "@sentry/node": "^7.99.0",
+    "@sentry/node": "^10.35.0",
     "@settleflow/shared-config": "*",
     "@settleflow/shared-types": "*",
     "@settleflow/shared-validation": "*",

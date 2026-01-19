@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { captureCustomError } from '../utils/sentry.js';
 
 export interface TripDetail {
   tripNumber: string;
@@ -293,6 +294,17 @@ function extractTripDetails(revenueLines: any[]): TripDetail[] {
       });
     } catch (e) {
       console.error(`Failed to parse rawData for line ${line.id}:`, e);
+      captureCustomError(e as Error, {
+        level: 'warning',
+        tags: {
+          module: 'batch-detail',
+          operation: 'extract_trip_details',
+        },
+        extra: {
+          lineId: line.id,
+          rawData: line.rawData,
+        },
+      });
     }
   }
 
