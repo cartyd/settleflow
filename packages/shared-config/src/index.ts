@@ -60,6 +60,8 @@ export interface AppConfig {
   sentry: {
     dsn?: string;
     enabled: boolean;
+    environment?: string;
+    tracesSampleRate?: number;
   };
   logging: {
     level: string;
@@ -140,6 +142,8 @@ export function loadConfig(): AppConfig {
     sentry: {
       dsn: process.env.SENTRY_DSN,
       enabled: !!process.env.SENTRY_DSN,
+      environment: nodeEnv,
+      tracesSampleRate: getEnvVarAsNumber('SENTRY_TRACES_SAMPLE_RATE', isDevelopment ? 1.0 : 0.1),
     },
     logging: {
       level: getEnvVar('LOG_LEVEL', 'info'),
