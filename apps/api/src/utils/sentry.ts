@@ -49,6 +49,28 @@ export function captureMessage(
 }
 
 /**
+ * Direct Sentry logger for structured logging
+ * This sends logs directly to Sentry's Logs product
+ */
+export const logger = {
+  debug: (message: string, extra?: Record<string, any>) => {
+    Sentry.logger.debug(message, extra);
+  },
+  info: (message: string, extra?: Record<string, any>) => {
+    Sentry.logger.info(message, extra);
+  },
+  warn: (message: string, extra?: Record<string, any>) => {
+    Sentry.logger.warn(message, extra);
+  },
+  error: (message: string, extra?: Record<string, any>) => {
+    Sentry.logger.error(message, extra);
+  },
+  fatal: (message: string, extra?: Record<string, any>) => {
+    Sentry.logger.fatal(message, extra);
+  },
+};
+
+/**
  * Track a custom performance metric
  * 
  * Example:
@@ -205,9 +227,11 @@ export function logMetric(
 /**
  * Example usage in a service:
  * 
- * import { trackAsyncOperation, addBreadcrumb, captureCustomError } from '../utils/sentry';
+ * import { trackAsyncOperation, addBreadcrumb, captureCustomError, logger } from '../utils/sentry';
  * 
  * async function processDocument(doc: Document) {
+ *   logger.info('Starting document processing', { docId: doc.id, docType: doc.type });
+ *   
  *   return trackAsyncOperation(
  *     'document.process',
  *     async () => {
@@ -216,11 +240,14 @@ export function logMetric(
  *       const result = await heavyOperation(doc);
  *       
  *       if (!result.valid) {
+ *         logger.warn('Invalid processing result', { result, docId: doc.id });
  *         captureCustomError(new Error('Invalid result'), {
  *           level: 'warning',
  *           tags: { docType: doc.type },
  *           extra: { result }
  *         });
+ *       } else {
+ *         logger.info('Document processed successfully', { docId: doc.id, linesProcessed: result.lines.length });
  *       }
  *       
  *       return result;
