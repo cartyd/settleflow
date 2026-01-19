@@ -5,6 +5,7 @@ import * as importService from '../services/import.service.js';
 import * as importLineService from '../services/import-line.service.js';
 import * as driverMatcherService from '../services/driver-matcher.service.js';
 import * as autoBatchImportService from '../services/auto-batch-import.service.js';
+import { captureCustomError } from '../utils/sentry.js';
 import { loadConfig } from '@settleflow/shared-config';
 import path from 'path';
 import fs from 'fs';
@@ -237,6 +238,16 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
         });
       } catch (error) {
         fastify.log.error(error);
+        captureCustomError(error as Error, {
+          level: 'error',
+          tags: {
+            operation: 'delete_batch',
+            batchId: id,
+          },
+          extra: {
+            batchId: id,
+          },
+        });
         return reply.status(500).send({
           error: 'Failed to delete batch',
           message: error instanceof Error ? error.message : String(error),
