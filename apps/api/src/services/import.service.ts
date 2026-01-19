@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
-import { processPdfBufferWithOcr, OcrConfig, PageText } from './ocr.service.js';
+import { processPdfBufferWithOcr, OcrConfig } from './ocr.service.js';
 import { detectDocumentType } from '../parsers/nvl/detectDocumentType.js';
+import { logger } from '../utils/sentry.js';
 
 export interface ProcessPdfResult {
   importId: string;
@@ -24,8 +25,17 @@ export async function processUploadedPdf(
   });
 
   if (!batch) {
-    throw new Error('Batch not found');
+    const error = 'Batch not found';
+    logger.error(error, { batchId });
+    throw new Error(error);
   }
+
+  // Log file import start
+  logger.info('File import started', {
+    batchId,
+    fileName,
+    fileSizeMB: (fileBuffer.length / (1024 * 1024)).toFixed(2),
+  });
 
   // Create import file record
   const importFile = await prisma.importFile.create({
@@ -60,6 +70,15 @@ export async function processUploadedPdf(
 
     documentsCreated++;
   }
+
+  // Log successful import
+  logger.info('File import completed', {
+    importFileId: importFile.id,
+    batchId,
+    fileName,
+    documentsDetected: documentsCreated,
+    totalPages: pages.length,
+  });
 
   return {
     importId: importFile.id,

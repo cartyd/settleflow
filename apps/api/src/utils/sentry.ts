@@ -49,22 +49,42 @@ export function captureMessage(
 }
 
 /**
- * Direct Sentry logger for structured logging
- * This sends logs directly to Sentry's Logs product
+ * High-value event logger for structured logging to Sentry Logs
+ * 
+ * Focus on capturing important business events, not debug logs.
+ * Use this for significant operations like:
+ * - File imports and processing
+ * - Data parsing and validation
+ * - Driver matching and resolution
+ * - Settlement calculations
+ * - Payment processing
+ * - Errors and warnings
  */
 export const logger = {
-  debug: (message: string, extra?: Record<string, any>) => {
-    Sentry.logger.debug(message, extra);
-  },
+  /**
+   * Log important business events (e.g., batch imported, file processed)
+   */
   info: (message: string, extra?: Record<string, any>) => {
     Sentry.logger.info(message, extra);
   },
+
+  /**
+   * Log warning-level events (e.g., data quality issues, partial failures)
+   */
   warn: (message: string, extra?: Record<string, any>) => {
     Sentry.logger.warn(message, extra);
   },
+
+  /**
+   * Log errors (e.g., parsing failed, validation error)
+   */
   error: (message: string, extra?: Record<string, any>) => {
     Sentry.logger.error(message, extra);
   },
+
+  /**
+   * Log critical failures that may require immediate attention
+   */
   fatal: (message: string, extra?: Record<string, any>) => {
     Sentry.logger.fatal(message, extra);
   },

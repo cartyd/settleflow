@@ -43,10 +43,9 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
     
     // Enable Sentry Logs product
     enableLogs: true,
-    integrations: [
-      // Capture console.log, console.warn, and console.error as logs
-      Sentry.consoleLoggingIntegration({ levels: ['log', 'warn', 'error'] }),
-    ],
+    // Note: We intentionally do NOT use consoleLoggingIntegration
+    // Instead, we log high-value events explicitly via logger.info/warn/error
+    // This avoids noise and focuses on business-critical events
     
     // Filter sensitive data
     beforeSend(event) {
