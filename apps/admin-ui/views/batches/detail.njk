@@ -30,7 +30,7 @@
 <div class="document-info-card">
     <div class="document-info-header">
         <h3>Document Information</h3>
-        <button type="button" class="btn-secondary" onclick="resetAndReparseImportFile('{{ batch.importFiles[0].id if batch.importFiles and batch.importFiles.length > 0 else '' }}')" title="Reset parsing status and re-parse the document">Reset & Re-parse</button>
+        <button type="button" class="btn-secondary" onclick="resetAndReparseImportFile('{{ batch.importFileId }}')" title="Reset parsing status and re-parse the document">Reset & Re-parse</button>
     </div>
     <div class="document-meta">
         <div class="meta-item">
