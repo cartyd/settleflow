@@ -60,23 +60,32 @@ export function startPerformanceTracking(
   operation: string,
   data?: Record<string, any>
 ) {
-  const transaction = Sentry.startTransaction({
-    op: operation,
-    name: operation,
-    data,
-  });
+  let span: any = null;
+  
+  // Use startSpanManual to get a handle to the span
+  const { end } = Sentry.startSpanManual(
+    {
+      op: operation,
+      name: operation,
+      attributes: data,
+    },
+    (s) => {
+      span = s;
+      return s;
+    }
+  );
 
   return {
     finish: (additionalData?: Record<string, any>) => {
-      if (additionalData) {
-        Object.entries(additionalData).forEach(([key, value]) => {
-          transaction.setData(key, value);
-        });
+      if (additionalData && span) {
+        span.setAttributes(additionalData);
       }
-      transaction.finish();
+      end();
     },
-    setStatus: (status: 'ok' | 'cancelled' | 'unknown_error' | 'invalid_argument' | 'deadline_exceeded' | 'not_found' | 'already_exists' | 'permission_denied' | 'resource_exhausted' | 'failed_precondition' | 'aborted' | 'out_of_range' | 'unimplemented' | 'internal_error' | 'unavailable' | 'data_loss' | 'unauthenticated') => {
-      transaction.setStatus(status);
+    setStatus: (statusCode: 'ok' | 'cancelled' | 'unknown_error' | 'invalid_argument' | 'deadline_exceeded' | 'not_found' | 'already_exists' | 'permission_denied' | 'resource_exhausted' | 'failed_precondition' | 'aborted' | 'out_of_range' | 'unimplemented' | 'internal_error' | 'unavailable' | 'data_loss' | 'unauthenticated') => {
+      if (span) {
+        span.setStatus({ code: statusCode });
+      }
     },
   };
 }
@@ -158,15 +167,15 @@ export async function trackAsyncOperation<T>(
   try {
     const result = await fn();
     metric.setStatus('ok');
+    metric.finish();
     return result;
   } catch (error) {
     metric.setStatus('internal_error');
+    metric.finish();
     captureCustomError(error as Error, {
       tags: { ...tags, operation: operationName },
     });
     throw error;
-  } finally {
-    metric.finish();
   }
 }
 

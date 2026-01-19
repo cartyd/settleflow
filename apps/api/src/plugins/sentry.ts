@@ -82,52 +82,56 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
   // Add Sentry to fastify instance for manual error reporting
   fastify.decorate('sentry', Sentry);
 
-  // Request tracing hook - start transaction for each request
+  // Request tracing hook - start span for each request
   fastify.addHook('onRequest', async (request: FastifyRequest) => {
     // Skip tracing for health checks
     if (request.url === '/health' || request.url === '/metrics') {
       return;
     }
 
-    // Start transaction for performance monitoring
-    const transaction = Sentry.startTransaction({
-      op: 'http.server',
-      name: `${request.method} ${request.routeOptions?.url || request.url}`,
-      data: {
-        method: request.method,
-        url: request.url,
-        requestId: request.id,
-      },
-    });
-
-    // Store transaction on request for access in other hooks
-    (request as any).sentryTransaction = transaction;
-
-    // Set request context
-    Sentry.configureScope((scope) => {
-      scope.setContext('request', {
-        id: request.id,
-        method: request.method,
-        url: request.url,
-        route: request.routeOptions?.url,
-        query: request.query,
-        headers: {
-          'user-agent': request.headers['user-agent'],
-          'content-type': request.headers['content-type'],
+    // Start span for performance monitoring
+    const span = Sentry.startSpan(
+      {
+        op: 'http.server',
+        name: `${request.method} ${request.routeOptions?.url || request.url}`,
+        attributes: {
+          method: request.method,
+          url: request.url,
+          'http.request.id': request.id,
         },
-      });
-
-      // Set user context if available (e.g., from auth)
-      if (request.headers['x-user-id']) {
-        scope.setUser({
-          id: request.headers['x-user-id'] as string,
+      },
+      () => {
+        // This callback runs in isolation scope
+        const scope = Sentry.getCurrentScope();
+        
+        // Set request context
+        scope.setContext('request', {
+          id: request.id,
+          method: request.method,
+          url: request.url,
+          route: request.routeOptions?.url,
+          query: request.query,
+          headers: {
+            'user-agent': request.headers['user-agent'],
+            'content-type': request.headers['content-type'],
+          },
         });
-      }
 
-      // Add tags for filtering
-      scope.setTag('route', request.routeOptions?.url || request.url);
-      scope.setTag('method', request.method);
-    });
+        // Set user context if available (e.g., from auth)
+        if (request.headers['x-user-id']) {
+          scope.setUser({
+            id: request.headers['x-user-id'] as string,
+          });
+        }
+
+        // Add tags for filtering
+        scope.setTag('route', request.routeOptions?.url || request.url);
+        scope.setTag('method', request.method);
+      }
+    );
+
+    // Store span on request for access in other hooks
+    (request as any).sentrySpan = span;
 
     // Add breadcrumb
     Sentry.addBreadcrumb({
@@ -144,24 +148,26 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
 
   // Response timing and metrics
   fastify.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
-    const transaction = (request as any).sentryTransaction;
+    const span = (request as any).sentrySpan;
     
-    if (transaction) {
-      // Add response data to transaction
-      transaction.setData('statusCode', reply.statusCode);
-      transaction.setData('responseTime', reply.getResponseTime());
+    if (span) {
+      // Add response data to span
+      span.setAttributes({
+        'http.response.status_code': reply.statusCode,
+        'http.response_time_ms': Math.round(reply.getResponseTime() * 1000),
+      });
       
-      // Set transaction status based on response
+      // Set span status based on response
       if (reply.statusCode >= 500) {
-        transaction.setStatus('internal_error');
+        span.setStatus({ code: 'internal_error' });
       } else if (reply.statusCode >= 400) {
-        transaction.setStatus('invalid_argument');
+        span.setStatus({ code: 'invalid_argument' });
       } else {
-        transaction.setStatus('ok');
+        span.setStatus({ code: 'ok' });
       }
       
-      // Finish transaction
-      transaction.finish();
+      // End span
+      span.end();
     }
 
     // Track custom metrics
@@ -185,7 +191,7 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
       return;
     }
 
-    const transaction = (request as any).sentryTransaction;
+    const span = (request as any).sentrySpan;
     
     // Capture exception with full context
     Sentry.captureException(error, {
@@ -214,10 +220,10 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
       level: 'error',
     });
 
-    // Mark transaction as failed if exists
-    if (transaction) {
-      transaction.setStatus('internal_error');
-      transaction.finish();
+    // Mark span as failed if exists
+    if (span) {
+      span.setStatus({ code: 'internal_error' });
+      span.end();
     }
   });
 
@@ -225,7 +231,7 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
   fastify.addHook('onClose', async () => {
     fastify.log.info('Flushing Sentry events before shutdown...');
     await Sentry.close(2000); // Wait up to 2 seconds for events to be sent
-  });
+  }); 
 
   fastify.log.info({
     environment,
