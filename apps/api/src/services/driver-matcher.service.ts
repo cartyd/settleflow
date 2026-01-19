@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { captureCustomError } from '../utils/sentry.js';
 
 export interface DriverMatchResult {
   importLineId: string;
@@ -217,6 +218,17 @@ export async function matchDriversForImportFile(
       }
     } catch (error) {
       console.error(`Failed to match driver for line ${line.id}:`, error);
+      captureCustomError(error as Error, {
+        level: 'warning',
+        tags: {
+          module: 'driver-matcher',
+          operation: 'match_driver',
+        },
+        extra: {
+          lineId: line.id,
+          importFileId,
+        },
+      });
       unmatched++;
     }
   }

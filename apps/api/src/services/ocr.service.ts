@@ -3,6 +3,7 @@ import { basename, join } from 'path';
 import { execFile } from 'child_process';
 import os from 'os';
 import { promisify } from 'util';
+import { captureMessage, captureCustomError } from '../utils/sentry.js';
 
 const execFilePromise = promisify(execFile);
 
@@ -156,6 +157,14 @@ async function convertPdfToImages(pdfPath: string): Promise<PdfConversionResult>
       cleanup: async () => {
         await rm(outputDir, { recursive: true, force: true }).catch((cleanupError) => {
           console.error('Failed to clean up temporary directory:', outputDir, cleanupError);
+          captureMessage(
+            `Failed to clean up OCR temporary directory: ${outputDir}`,
+            'warning',
+            {
+              tags: { module: 'ocr', operation: 'cleanup' },
+              extra: { outputDir, error: cleanupError },
+            }
+          );
         });
       },
     };
@@ -164,6 +173,14 @@ async function convertPdfToImages(pdfPath: string): Promise<PdfConversionResult>
     // PDF conversion errors are unrecoverable - we need the images to proceed
     await rm(outputDir, { recursive: true, force: true }).catch((cleanupError) => {
       console.error('Failed to clean up temporary directory:', outputDir, cleanupError);
+      captureMessage(
+        `Failed to clean up OCR temporary directory after error: ${outputDir}`,
+        'warning',
+        {
+          tags: { module: 'ocr', operation: 'cleanup_after_error' },
+          extra: { outputDir, error: cleanupError },
+        }
+      );
     });
     throw error instanceof Error ? error : new Error(String(error));
   }
@@ -307,10 +324,23 @@ export async function processPdfWithOcr(
         } catch (error) {
           // Per-page OCR errors are recoverable - log and continue with empty text
           // This allows processing other pages even if one fails
-          console.error(
-            `OCR failed for page ${pageIndex + 1}:`,
-            error instanceof Error ? error.message : String(error)
-          );
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(`OCR failed for page ${pageIndex + 1}:`, errorMessage);
+          
+          captureCustomError(error as Error, {
+            level: 'warning',
+            tags: {
+              module: 'ocr',
+              operation: 'process_page',
+              pageNumber: String(pageIndex + 1),
+            },
+            extra: {
+              pageNumber: pageIndex + 1,
+              imagePath,
+              totalPages: imagePaths.length,
+            },
+          });
+          
           return {
             pageNumber: pageIndex + 1,
             text: '',
@@ -356,6 +386,14 @@ export async function processPdfBufferWithOcr(
     // Clean up temporary directory
     await rm(tempDir, { recursive: true, force: true }).catch((cleanupError) => {
       console.error('Failed to clean up temporary directory:', tempDir, cleanupError);
+      captureMessage(
+        `Failed to clean up PDF upload temporary directory: ${tempDir}`,
+        'warning',
+        {
+          tags: { module: 'ocr', operation: 'cleanup_upload' },
+          extra: { tempDir, error: cleanupError },
+        }
+      );
     });
   }
 }
