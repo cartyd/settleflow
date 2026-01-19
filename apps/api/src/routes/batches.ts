@@ -6,6 +6,7 @@ import * as importLineService from '../services/import-line.service.js';
 import * as driverMatcherService from '../services/driver-matcher.service.js';
 import * as autoBatchImportService from '../services/auto-batch-import.service.js';
 import { captureCustomError } from '../utils/sentry.js';
+import { detectDocumentType } from '../parsers/nvl/detectDocumentType.js';
 import { loadConfig } from '@settleflow/shared-config';
 import path from 'path';
 import fs from 'fs';
@@ -438,7 +439,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post('/import-files/:importFileId/reset', {
     schema: {
-      description: 'Reset parsed status to allow re-parsing',
+      description: 'Reset parsed status and re-detect document types',
       tags: ['batches'],
     },
     handler: async (request, reply) => {
@@ -454,15 +455,25 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
           },
         });
 
-        // Reset parsedAt timestamps
-        await fastify.prisma.importDocument.updateMany({
+        // Re-detect document types and reset parsing status
+        const documents = await fastify.prisma.importDocument.findMany({
           where: { importFileId },
-          data: { parsedAt: null },
         });
+
+        for (const doc of documents) {
+          const newDocType = detectDocumentType(doc.rawText);
+          await fastify.prisma.importDocument.update({
+            where: { id: doc.id },
+            data: {
+              documentType: newDocType,
+              parsedAt: null,
+            },
+          });
+        }
 
         return reply.send({
           success: true,
-          message: 'Import file reset successfully',
+          message: 'Import file reset successfully with re-detected document types',
         });
       } catch (error) {
         fastify.log.error(error);
