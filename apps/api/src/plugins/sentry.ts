@@ -41,6 +41,13 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
     // Debug mode in development
     debug: isDevelopment,
     
+    // Enable Sentry Logs product
+    enableLogs: true,
+    integrations: [
+      // Capture console.log, console.warn, and console.error as logs
+      Sentry.consoleLoggingIntegration({ levels: ['log', 'warn', 'error'] }),
+    ],
+    
     // Filter sensitive data
     beforeSend(event) {
       // Remove sensitive headers
