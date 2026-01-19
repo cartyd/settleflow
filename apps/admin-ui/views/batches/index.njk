@@ -36,6 +36,53 @@
 {% include "batches/table.njk" %}
 
 <script>
+// Reset and re-parse import file
+window.resetAndReparseAction = function(importFileId, event) {
+    if (!importFileId) {
+        alert('Import file ID not found');
+        return;
+    }
+    
+    if (!confirm('This will clear all parsed data and re-parse the document. Continue?')) {
+        return;
+    }
+    
+    const resetBtn = event.target;
+    resetBtn.disabled = true;
+    const originalText = resetBtn.textContent;
+    resetBtn.textContent = 'Resetting...';
+    
+    // Step 1: Reset the import file
+    fetch(`http://localhost:3000/batches/import-files/${importFileId}/reset`, {
+        method: 'POST'
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Reset failed');
+        return response.json();
+    })
+    .then(() => {
+        resetBtn.textContent = 'Reparsing...';
+        // Step 2: Re-parse the import file
+        return fetch(`http://localhost:3000/batches/import-files/${importFileId}/parse`, {
+            method: 'POST'
+        });
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Re-parse failed');
+        return response.json();
+    })
+    .then(() => {
+        alert('Re-parsing complete! Reloading page...');
+        window.location.reload();
+    })
+    .catch(error => {
+        resetBtn.disabled = false;
+        resetBtn.textContent = originalText;
+        alert('Error: ' + error.message);
+        console.error('Reset/re-parse error:', error);
+    });
+};
+
 // Delete batch function
 window.deleteBatchAction = function(batchId, batchRef) {
     if (!confirm(`Are you sure you want to delete batch ${batchRef}? This will remove all associated data and cannot be undone.`)) {

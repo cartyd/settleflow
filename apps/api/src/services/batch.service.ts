@@ -49,7 +49,13 @@ export async function getBatches(
   const [batches, total] = await Promise.all([
     prisma.settlementBatch.findMany({
       where,
-      include: { agency: true },
+      include: {
+        agency: true,
+        importFiles: {
+          take: 1,
+          select: { id: true },
+        },
+      },
       take: filters.limit,
       skip: filters.offset,
       orderBy: { createdAt: 'desc' },
@@ -69,6 +75,7 @@ export async function getBatches(
       totalRevenue: b.totalRevenue,
       netAmount: b.netAmount,
       createdAt: b.createdAt.toISOString(),
+      importFileId: b.importFiles[0]?.id || null,
     })),
     total,
   };

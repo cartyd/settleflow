@@ -28,10 +28,7 @@
 
 {# Document Info Card #}
 <div class="document-info-card">
-    <div class="document-info-header">
-        <h3>Document Information</h3>
-        <button type="button" class="btn-secondary" onclick="resetAndReparseImportFile('{{ batch.importFileId }}')" title="Reset parsing status and re-parse the document">Reset & Re-parse</button>
-    </div>
+    <h3>Document Information</h3>
     <div class="document-meta">
         <div class="meta-item">
             <span class="meta-label">File:</span>
@@ -355,52 +352,6 @@
 </section>
 
 <script>
-// Reset and re-parse import file
-window.resetAndReparseImportFile = function(importFileId) {
-    if (!importFileId) {
-        alert('Import file ID not found');
-        return;
-    }
-    
-    if (!confirm('This will clear all parsed data and re-parse the document. Continue?')) {
-        return;
-    }
-    
-    const resetBtn = event.target;
-    resetBtn.disabled = true;
-    resetBtn.textContent = 'Resetting...';
-    
-    // Step 1: Reset the import file
-    fetch(`http://localhost:3000/batches/import-files/${importFileId}/reset`, {
-        method: 'POST'
-    })
-    .then(response => {
-        if (!response.ok) throw new Error('Reset failed');
-        return response.json();
-    })
-    .then(() => {
-        resetBtn.textContent = 'Re-parsing...';
-        // Step 2: Re-parse the import file
-        return fetch(`http://localhost:3000/batches/import-files/${importFileId}/parse`, {
-            method: 'POST'
-        });
-    })
-    .then(response => {
-        if (!response.ok) throw new Error('Re-parse failed');
-        return response.json();
-    })
-    .then(() => {
-        alert('Re-parsing complete! Reloading page...');
-        window.location.reload();
-    })
-    .catch(error => {
-        resetBtn.disabled = false;
-        resetBtn.textContent = 'Reset & Re-parse';
-        alert('Error: ' + error.message);
-        console.error('Reset/re-parse error:', error);
-    });
-};
-
 // PDF Viewer Navigation
 (function() {
     const batchId = '{{ batch.id }}';
