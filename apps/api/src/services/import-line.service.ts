@@ -206,12 +206,11 @@ export async function parseAndSaveImportLines(
         linesCreated++;
       }
 
-      if (linesCreated > 0) {
-        await prisma.importDocument.update({
-          where: { id: document.id },
-          data: { parsedAt: new Date() },
-        });
-      }
+      // Mark as parsed (even if 0 lines created)
+      await prisma.importDocument.update({
+        where: { id: document.id },
+        data: { parsedAt: new Date() },
+      });
 
       break;
     }
