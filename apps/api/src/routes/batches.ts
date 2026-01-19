@@ -222,6 +222,29 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
     },
   });
 
+  fastify.delete('/:id', {
+    schema: {
+      description: 'Delete a batch and all related data',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { id } = BatchIdParamSchema.parse(request.params);
+      try {
+        await batchService.deleteBatch(fastify.prisma, id, 'system');
+        reply.send({
+          success: true,
+          message: 'Batch deleted successfully',
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to delete batch',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
   // New auto-upload endpoint - creates batch automatically from PDF
   fastify.post('/upload', {
     schema: {

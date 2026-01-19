@@ -32,6 +32,14 @@
                     <a href="{{ batch.detailUrl | escape }}" aria-label="View details for batch {{ batch.id | escape }}">
                         {{ config.actionLabels.view | escape }}
                     </a>
+                    <button 
+                        type="button" 
+                        class="btn-delete-small" 
+                        onclick="deleteBatchAction('{{ batch.id }}', '{{ batch.nvlPaymentRef }}')" 
+                        aria-label="Delete batch {{ batch.id | escape }}"
+                        title="Delete this batch">
+                        Delete
+                    </button>
                 {% else %}
                     N/A
                 {% endif %}

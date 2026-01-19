@@ -36,6 +36,33 @@
 {% include "batches/table.njk" %}
 
 <script>
+// Delete batch function
+window.deleteBatchAction = function(batchId, batchRef) {
+    if (!confirm(`Are you sure you want to delete batch ${batchRef}? This will remove all associated data and cannot be undone.`)) {
+        return;
+    }
+    
+    fetch(`http://localhost:3000/batches/${batchId}`, {
+        method: 'DELETE'
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(error => {
+                throw new Error(error.message || 'Failed to delete batch');
+            });
+        }
+        return response.json();
+    })
+    .then(() => {
+        alert('Batch deleted successfully');
+        window.location.reload();
+    })
+    .catch(error => {
+        alert('Error deleting batch: ' + error.message);
+        console.error('Delete error:', error);
+    });
+};
+
 (function() {
     const form = document.getElementById('pdf-upload-form');
     const progressDiv = document.getElementById('upload-progress');

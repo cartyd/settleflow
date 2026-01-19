@@ -153,3 +153,58 @@ export async function clearFunds(prisma: PrismaClient, id: string, userId: strin
 
   return updated;
 }
+
+export async function deleteBatch(prisma: PrismaClient, id: string, userId: string) {
+  const batch = await prisma.settlementBatch.findUnique({
+    where: { id },
+    include: { importFiles: true },
+  });
+
+  if (!batch) {
+    throw new Error('Batch not found');
+  }
+
+  // Delete in reverse order of dependencies
+  // 1. Delete audit logs
+  await prisma.auditLog.deleteMany({
+    where: { batchId: id },
+  });
+
+  // 2. Delete import lines (through import documents)
+  for (const file of batch.importFiles) {
+    await prisma.importLine.deleteMany({
+      where: {
+        importDocument: {
+          importFileId: file.id,
+        },
+      },
+    });
+
+    // 3. Delete import documents
+    await prisma.importDocument.deleteMany({
+      where: { importFileId: file.id },
+    });
+  }
+
+  // 4. Delete import files
+  await prisma.importFile.deleteMany({
+    where: { batchId: id },
+  });
+
+  // 5. Delete the batch itself
+  const deleted = await prisma.settlementBatch.delete({
+    where: { id },
+  });
+
+  // Log the deletion
+  await prisma.auditLog.create({
+    data: {
+      batchId: id,
+      action: 'BATCH_DELETED',
+      performedBy: userId,
+      beforeSnapshot: JSON.stringify(batch),
+    },
+  });
+
+  return deleted;
+}
