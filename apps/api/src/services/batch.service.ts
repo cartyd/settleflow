@@ -164,6 +164,16 @@ export async function deleteBatch(prisma: PrismaClient, id: string, userId: stri
     throw new Error('Batch not found');
   }
 
+  // Log the deletion BEFORE deleting the batch (to avoid foreign key constraint)
+  await prisma.auditLog.create({
+    data: {
+      batchId: id,
+      action: 'BATCH_DELETED',
+      performedBy: userId,
+      beforeSnapshot: JSON.stringify(batch),
+    },
+  });
+
   // Delete in reverse order of dependencies
   // 1. Delete audit logs
   await prisma.auditLog.deleteMany({
@@ -194,16 +204,6 @@ export async function deleteBatch(prisma: PrismaClient, id: string, userId: stri
   // 5. Delete the batch itself
   const deleted = await prisma.settlementBatch.delete({
     where: { id },
-  });
-
-  // Log the deletion
-  await prisma.auditLog.create({
-    data: {
-      batchId: id,
-      action: 'BATCH_DELETED',
-      performedBy: userId,
-      beforeSnapshot: JSON.stringify(batch),
-    },
   });
 
   return deleted;
