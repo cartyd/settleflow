@@ -45,7 +45,7 @@ export async function processPdfWithGemini(
     // Initialize Gemini AI
     const genAI = new GoogleGenerativeAI(config.apiKey);
     const model = genAI.getGenerativeModel({ 
-      model: config.model || 'gemini-pro-vision'
+      model: config.model || 'gemini-1.5-pro'
     });
 
     // Read PDF file
@@ -136,7 +136,7 @@ export async function processPdfBufferWithGemini(
     // Initialize Gemini AI
     const genAI = new GoogleGenerativeAI(config.apiKey);
     const model = genAI.getGenerativeModel({ 
-      model: config.model || 'gemini-pro-vision'
+      model: config.model || 'gemini-1.5-pro'
     });
 
     const base64Pdf = pdfBuffer.toString('base64');
