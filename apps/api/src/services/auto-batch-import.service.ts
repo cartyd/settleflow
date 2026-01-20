@@ -153,7 +153,6 @@ export async function uploadPdfAndCreateBatch(
   });
 
   // Step 6: Save PDF to disk storage
-  const config = loadConfig();
   await mkdir(config.storage.pdfPath, { recursive: true });
   const pdfPath = path.join(config.storage.pdfPath, fileName);
   await writeFile(pdfPath, fileBuffer);
