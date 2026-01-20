@@ -173,11 +173,19 @@ export async function processPdfBufferWithGemini(
       const text = response.text();
 
       console.log(`[GEMINI OCR] Received response, text length: ${text.length} characters`);
+      console.log(`[GEMINI OCR] Raw response text:`);
+      console.log('='.repeat(80));
+      console.log(text);
+      console.log('='.repeat(80));
 
       // Parse the response to extract text per page
       const pages = parseGeminiResponse(text);
       
       console.log(`[GEMINI OCR] Extracted ${pages.length} pages`);
+      pages.forEach((page, idx) => {
+        console.log(`[GEMINI OCR] Page ${page.pageNumber} (index ${idx}): ${page.text.length} chars`);
+        console.log(`[GEMINI OCR] Page ${page.pageNumber} first 200 chars:`, page.text.substring(0, 200));
+      });
       
       return pages;
     } catch (error) {
