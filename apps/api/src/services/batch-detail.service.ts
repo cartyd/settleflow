@@ -68,6 +68,7 @@ export interface BatchDetailData {
   uploadedAt: string;
   lastParsedAt: string | null;
   parseErrors: string[];
+  importFileId: string; // For reset/re-parse functionality
 
   // Financial Summary
   totalRevenue: number;
@@ -219,6 +220,7 @@ export async function getBatchDetailData(
     uploadedAt: importFile.uploadedAt.toISOString(),
     lastParsedAt: lastParsedAt?.toISOString() || null,
     parseErrors,
+    importFileId: importFile.id,
 
     totalRevenue,
     totalAdvances,

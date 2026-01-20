@@ -47,17 +47,24 @@ export async function processUploadedPdf(
   });
 
   // Process PDF with OCR
+  console.log(`[IMPORT] Starting OCR processing for ${fileName}`);
   const pages = await processPdfBufferWithOcr(fileBuffer, ocrConfig);
+  console.log(`[IMPORT] OCR returned ${pages.length} pages`);
+  console.log(`[IMPORT] Page numbers:`, pages.map(p => p.pageNumber));
 
   // Create import document records for each page
   let documentsCreated = 0;
+  let pagesWithEmptyText = 0;
   for (const page of pages) {
-    if (!page.text || page.text.trim().length === 0) {
-      continue; // Skip empty pages
+    const hasText = page.text && page.text.trim().length > 0;
+    
+    if (!hasText) {
+      console.log(`[IMPORT] WARNING: Page ${page.pageNumber} has no text - OCR may have failed`);
+      pagesWithEmptyText++;
     }
 
-    // Detect document type from the text
-    const documentType = detectDocumentType(page.text);
+    // Detect document type from the text (will be UNKNOWN for empty pages)
+    const documentType = hasText ? detectDocumentType(page.text) : 'UNKNOWN';
 
     await prisma.importDocument.create({
       data: {
@@ -72,11 +79,16 @@ export async function processUploadedPdf(
   }
 
   // Log successful import
+  console.log(`[IMPORT] Created ${documentsCreated} documents, ${pagesWithEmptyText} pages with empty text, total pages from OCR: ${pages.length}`);
+  if (pagesWithEmptyText > 0) {
+    console.warn(`[IMPORT] WARNING: ${pagesWithEmptyText} pages had no OCR text - check Ollama logs for errors`);
+  }
   logger.info('File import completed', {
     importFileId: importFile.id,
     batchId,
     fileName,
     documentsDetected: documentsCreated,
+    pagesWithEmptyText,
     totalPages: pages.length,
   });
 

@@ -5,6 +5,7 @@ import * as importService from '../services/import.service.js';
 import * as importLineService from '../services/import-line.service.js';
 import * as driverMatcherService from '../services/driver-matcher.service.js';
 import * as autoBatchImportService from '../services/auto-batch-import.service.js';
+import { captureCustomError } from '../utils/sentry.js';
 import { loadConfig } from '@settleflow/shared-config';
 import path from 'path';
 import fs from 'fs';
@@ -222,6 +223,39 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
     },
   });
 
+  fastify.delete('/:id', {
+    schema: {
+      description: 'Delete a batch and all related data',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { id } = BatchIdParamSchema.parse(request.params);
+      try {
+        await batchService.deleteBatch(fastify.prisma, id, 'system');
+        reply.send({
+          success: true,
+          message: 'Batch deleted successfully',
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        captureCustomError(error as Error, {
+          level: 'error',
+          tags: {
+            operation: 'delete_batch',
+            batchId: id,
+          },
+          extra: {
+            batchId: id,
+          },
+        });
+        return reply.status(500).send({
+          error: 'Failed to delete batch',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
   // New auto-upload endpoint - creates batch automatically from PDF
   fastify.post('/upload', {
     schema: {
@@ -265,6 +299,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
           {
             model: config.ocr.model,
             serverUrl: config.ocr.serverUrl,
+            timeoutMs: config.ocr.timeoutMs,
           },
           'system' // TODO: Get actual user ID from auth
         );
@@ -325,6 +360,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
           {
             model: config.ocr.model,
             serverUrl: config.ocr.serverUrl,
+            timeoutMs: config.ocr.timeoutMs,
           }
         );
 
@@ -434,6 +470,41 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
         fastify.log.error(error);
         return reply.status(500).send({
           error: 'Failed to reset import file',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
+  fastify.get('/import-files/:importFileId/documents', {
+    schema: {
+      description: 'Get all import documents with raw OCR text',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { importFileId } = request.params as { importFileId: string };
+
+      try {
+        const documents = await fastify.prisma.importDocument.findMany({
+          where: { importFileId },
+          orderBy: { pageNumber: 'asc' },
+          select: {
+            id: true,
+            pageNumber: true,
+            documentType: true,
+            rawText: true,
+            parsedAt: true,
+          },
+        });
+
+        return reply.send({
+          success: true,
+          documents,
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to get import documents',
           message: error instanceof Error ? error.message : String(error),
         });
       }

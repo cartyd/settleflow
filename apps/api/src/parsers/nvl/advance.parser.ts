@@ -69,8 +69,14 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
     if (amountMatch) {
       advanceAmount = parseFloat(amountMatch[1]);
     } else {
-      errors.push('Could not extract advance amount from last line: ' + lastLine);
-      return { lines, errors };
+      // Try to find any dollar amount in the text
+      const altAmountMatch = ocrText.match(/(\d+\.\d{2})/);
+      if (altAmountMatch) {
+        advanceAmount = parseFloat(altAmountMatch[1]);
+      } else {
+        errors.push('Could not extract advance amount from: ' + lastLine);
+        // Still create a line with 0 amount rather than failing completely
+      }
     }
 
     // Extract date

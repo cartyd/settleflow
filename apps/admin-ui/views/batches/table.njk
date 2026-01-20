@@ -32,6 +32,22 @@
                     <a href="{{ batch.detailUrl | escape }}" aria-label="View details for batch {{ batch.id | escape }}">
                         {{ config.actionLabels.view | escape }}
                     </a>
+                    <button 
+                        type="button" 
+                        class="btn-secondary-small" 
+                        onclick="resetAndReparseAction('{{ batch.importFileId }}', event)" 
+                        aria-label="Reset and re-parse batch {{ batch.id | escape }}"
+                        title="Reset parsing and re-parse this batch">
+                        Reset
+                    </button>
+                    <button 
+                        type="button" 
+                        class="btn-delete-small" 
+                        onclick="deleteBatchAction('{{ batch.id }}', '{{ batch.nvlPaymentRef }}')" 
+                        aria-label="Delete batch {{ batch.id | escape }}"
+                        title="Delete this batch">
+                        Delete
+                    </button>
                 {% else %}
                     N/A
                 {% endif %}

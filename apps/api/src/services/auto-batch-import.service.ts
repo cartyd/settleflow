@@ -3,6 +3,9 @@ import { processPdfBufferWithOcr, OcrConfig } from './ocr.service.js';
 import { detectDocumentType } from '../parsers/nvl/detectDocumentType.js';
 import { parseRemittance, BatchMetadata } from '../parsers/nvl/remittance.parser.js';
 import { SettlementStatus } from '@settleflow/shared-types';
+import { loadConfig } from '@settleflow/shared-config';
+import { writeFile, mkdir } from 'fs/promises';
+import path from 'path';
 
 export interface AutoBatchImportResult {
   batchId: string;
@@ -139,7 +142,13 @@ export async function uploadPdfAndCreateBatch(
     },
   });
 
-  // Step 6: Create import file record
+  // Step 6: Save PDF to disk storage
+  const config = loadConfig();
+  await mkdir(config.storage.pdfPath, { recursive: true });
+  const pdfPath = path.join(config.storage.pdfPath, fileName);
+  await writeFile(pdfPath, fileBuffer);
+
+  // Step 7: Create import file record
   const importFile = await prisma.importFile.create({
     data: {
       batchId: batch.id,
@@ -148,7 +157,7 @@ export async function uploadPdfAndCreateBatch(
     },
   });
 
-  // Step 7: Save all import documents
+  // Step 8: Save all import documents
   let documentsCreated = 0;
   for (const page of pages) {
     if (!page.text || page.text.trim().length === 0) {
