@@ -299,6 +299,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
           {
             model: config.ocr.model,
             serverUrl: config.ocr.serverUrl,
+            timeoutMs: config.ocr.timeoutMs,
           },
           'system' // TODO: Get actual user ID from auth
         );
@@ -359,6 +360,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
           {
             model: config.ocr.model,
             serverUrl: config.ocr.serverUrl,
+            timeoutMs: config.ocr.timeoutMs,
           }
         );
 

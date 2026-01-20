@@ -299,6 +299,9 @@ export async function processPdfWithOcr(
   
   // Convert PDF to images - this creates temp files and returns cleanup function
   const { imagePaths, cleanup } = await convertPdfToImages(pdfPath);
+  
+  console.log(`[OCR] PDF converted to ${imagePaths.length} images`);
+  console.log(`[OCR] Image paths:`, imagePaths);
 
   try {
     if (imagePaths.length === 0) {
@@ -350,6 +353,10 @@ export async function processPdfWithOcr(
 
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
+      console.log(`[OCR] Processed batch ${i / concurrency + 1}, total results so far: ${results.length}`);
+      for (const result of batchResults) {
+        console.log(`[OCR] Page ${result.pageNumber}: ${result.text.length} chars`);
+      }
     }
 
     return results;

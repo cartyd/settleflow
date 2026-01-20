@@ -77,6 +77,7 @@ export interface AppConfig {
     enabled: boolean;
     serverUrl: string;
     model: string;
+    timeoutMs: number;
   };
   storage: {
     pdfPath: string;
@@ -159,6 +160,7 @@ export function loadConfig(): AppConfig {
       enabled: getEnvVar('OCR_ENABLED', 'true') === 'true',
       serverUrl: getEnvVar('OCR_SERVER_URL', 'http://10.147.17.205:11434/api/generate'),
       model: getEnvVar('OCR_MODEL', 'gemma3:27b'),
+      timeoutMs: getEnvVarAsNumber('OCR_TIMEOUT_MS', 120000), // Default 120 seconds
     },
     storage: {
       pdfPath: resolvedPdfPath,
