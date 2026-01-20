@@ -55,19 +55,28 @@ export async function uploadPdfAndCreateBatch(
   // Step 2: Find and parse remittance page
   let remittanceMetadata: BatchMetadata | undefined;
   
+  console.log(`[AUTO-BATCH] Processing ${pages.length} pages from OCR`);
+  
   for (const page of pages) {
     if (!page.text || page.text.trim().length === 0) {
+      console.log(`[AUTO-BATCH] Page ${page.pageNumber}: EMPTY`);
       continue;
     }
 
     const docType = detectDocumentType(page.text);
+    console.log(`[AUTO-BATCH] Page ${page.pageNumber}: Detected as ${docType}, text length: ${page.text.length}`);
     
     if (docType === 'REMITTANCE') {
+      console.log(`[AUTO-BATCH] Attempting to parse remittance from page ${page.pageNumber}`);
       const parseResult = parseRemittance(page.text);
       
       if (parseResult.metadata) {
+        console.log(`[AUTO-BATCH] Successfully parsed remittance metadata from page ${page.pageNumber}`);
         remittanceMetadata = parseResult.metadata;
         break;
+      } else {
+        console.log(`[AUTO-BATCH] Page ${page.pageNumber} detected as REMITTANCE but parsing failed`);
+        console.log(`[AUTO-BATCH] Parse errors:`, parseResult.errors);
       }
     }
   }
