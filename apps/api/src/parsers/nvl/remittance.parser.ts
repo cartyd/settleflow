@@ -128,13 +128,30 @@ function extractCheckAmount(text: string): number | undefined {
 
 /**
  * Extract payee name from the document
- * Pattern: Name line after "PAY TO THE ORDER OF"
+ * Pattern: Name line after "PAY TO THE ORDER OF" or "TO THE ORDER OF"
  */
 function extractPayeeName(text: string): string | undefined {
-  // Look for payee name after "PAY TO THE ORDER OF"
+  // Try standard format first
   const payMatch = text.match(/PAY TO THE ORDER OF[^\n]*\n\s*([^\n]+)/i);
   if (payMatch) {
     return payMatch[1].trim();
+  }
+
+  // Try Gemini format with line breaks: TO THE\nORDER\nOF\nDATE...\nNAME
+  // Look for name between AMOUNT and next section
+  const geminiMatch = text.match(/AMOUNT\s+\$[^\n]*\n\s*([A-Z][A-Z\s'&,.-]+LLC)(?=\s|\n)/i);
+  if (geminiMatch) {
+    return geminiMatch[1].trim();
+  }
+  
+  // Alternative: Name appears after amount/date section
+  const altMatch = text.match(/TO THE[\s\n]+ORDER[\s\n]+OF[\s\n]+(?:DATE[^\n]*\n)?(?:AMOUNT[^\n]*\n)?\s*([A-Z][A-Z\s'&,.-]+?)(?:\n|$)/i);
+  if (altMatch) {
+    const name = altMatch[1].trim();
+    // Make sure it's not a header/keyword
+    if (!name.match(/^(NON-NEGOTIABLE|REMITTANCE|DETAIL|PAYMENT|BANK)$/i)) {
+      return name;
+    }
   }
 
   return undefined;
@@ -194,10 +211,27 @@ function extractAccountNumber(text: string): string | undefined {
     return tableMatch[1];
   }
 
-  // Try simple "ACCOUNT XXXX" pattern
-  const accountMatch = text.match(/ACCOUNT\s+(\d+)/i);
+  // Try early in document (Gemini format often has "ACCOUNT 03101" near top)
+  const lines = text.split('\n');
+  for (let i = 0; i < Math.min(20, lines.length); i++) {
+    const match = lines[i].match(/^ACCOUNT\s+(0?\d{3,5})$/i);
+    if (match) {
+      // Remove leading zero if present (03101 -> 3101)
+      return match[1].replace(/^0+/, '') || match[1];
+    }
+  }
+  
+  // Try simple "ACCOUNT XXXX" pattern anywhere
+  const accountMatch = text.match(/ACCOUNT\s+(0?\d{3,5})/i);
   if (accountMatch) {
-    return accountMatch[1];
+    // Remove leading zero if present
+    return accountMatch[1].replace(/^0+/, '') || accountMatch[1];
+  }
+  
+  // Try "AGENCY ACCOUNT" at bottom of document
+  const agencyMatch = text.match(/AGENCY ACCOUNT[\s\S]*?GENERAL LEDGER\s+(\d+)/i);
+  if (agencyMatch) {
+    return agencyMatch[1];
   }
 
   return undefined;
