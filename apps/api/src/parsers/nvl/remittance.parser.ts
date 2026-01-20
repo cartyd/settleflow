@@ -211,6 +211,12 @@ function extractAccountNumber(text: string): string | undefined {
     return tableMatch[1];
   }
 
+  // Try "GENERAL LEDGER AGENT" followed by number on next line (Gemini format)
+  const generalLedgerMatch = text.match(/GENERAL\s+LEDGER\s+AGENT[\s\n]+(\d{3,5})/i);
+  if (generalLedgerMatch) {
+    return generalLedgerMatch[1];
+  }
+  
   // Try early in document (Gemini format often has "ACCOUNT 03101" near top)
   const lines = text.split('\n');
   for (let i = 0; i < Math.min(20, lines.length); i++) {
