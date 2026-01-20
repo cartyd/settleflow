@@ -227,9 +227,12 @@ export async function processPdfBufferWithGemini(
  * 4. As continuous text (we need to estimate pages based on content)
  */
 function parseGeminiResponse(text: string): PageText[] {
-  // Try to detect markdown formatted pages first: **Page 1:** followed by ```
-  const markdownPattern = /\*\*Page\s+(\d+):\*\*[\s\n]*```[^\n]*\n([\s\S]*?)```/g;
+  // Try to detect markdown formatted pages first: **Page 1:** (with or without colon) followed by ```
+  // Match: **Page 1** or **Page 1:** followed by code block
+  const markdownPattern = /\*\*Page\s+(\d+)(?::|)\*\*[\s\n]*```[\s\S]*?\n([\s\S]*?)```/g;
   const markdownMatches = [...text.matchAll(markdownPattern)];
+  
+  console.log(`[GEMINI] Found ${markdownMatches.length} markdown page matches`);
   
   if (markdownMatches.length > 0) {
     const pages: PageText[] = [];
