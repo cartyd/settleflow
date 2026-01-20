@@ -338,15 +338,14 @@
 
 <section aria-labelledby="import-files-heading">
     <div class="section-header">
-        <h2 id="import-files-heading" class="section-heading">Raw Document Data (Advanced)</h2>
-        <button type="button" class="btn-secondary" onclick="document.getElementById('raw-data-section').style.display = document.getElementById('raw-data-section').style.display === 'none' ? 'block' : 'none'">Toggle Raw Data</button>
+        <h2 id="import-files-heading" class="section-heading">Raw OCR Text (Advanced)</h2>
+        <button type="button" class="btn-secondary" onclick="toggleRawOcrData()">View Raw OCR Text</button>
     </div>
 
     <div id="raw-data-section" style="display: none;">
-        <p class="section-description">This section shows raw parsing data and debugging information.</p>
-        <div class="empty-state">
-            <p>Raw document data is available via API endpoint:</p>
-            <code>GET /api/batches/{{ batch.id }}/details</code>
+        <p class="section-description">This section shows raw OCR text extracted from each page. Useful for debugging parser issues.</p>
+        <div id="raw-ocr-container">
+            <p>Loading OCR data...</p>
         </div>
     </div>
 </section>
@@ -417,5 +416,60 @@
         });
     }
 })();
+
+// Raw OCR Data Viewer
+let ocrDataLoaded = false;
+window.toggleRawOcrData = async function() {
+    const section = document.getElementById('raw-data-section');
+    const container = document.getElementById('raw-ocr-container');
+    
+    if (section.style.display === 'none') {
+        section.style.display = 'block';
+        
+        // Load data if not already loaded
+        if (!ocrDataLoaded) {
+            try {
+                const importFileId = '{{ batch.importFileId }}';
+                const response = await fetch(`/api/batches/import-files/${importFileId}/documents`);
+                const data = await response.json();
+                
+                if (data.success && data.documents) {
+                    let html = '';
+                    data.documents.forEach(doc => {
+                        const textLength = doc.rawText ? doc.rawText.length : 0;
+                        const isEmpty = textLength === 0;
+                        html += `
+                            <div class="ocr-document" style="margin-bottom: 20px; border: 1px solid #ddd; padding: 15px; border-radius: 4px;">
+                                <h4 style="margin-top: 0;">Page ${doc.pageNumber} - ${doc.documentType}
+                                    ${isEmpty ? '<span style="color: #d32f2f; font-weight: bold;"> ⚠️ EMPTY (OCR Failed)</span>' : ''}
+                                </h4>
+                                <div style="margin-bottom: 10px; color: #666; font-size: 0.9em;">
+                                    Text length: ${textLength} characters | 
+                                    Parsed: ${doc.parsedAt ? 'Yes' : 'No'}
+                                </div>
+                                <pre style="background: #f5f5f5; padding: 10px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto;">${isEmpty ? '(No text extracted by OCR)' : escapeHtml(doc.rawText)}</pre>
+                            </div>
+                        `;
+                    });
+                    container.innerHTML = html;
+                    ocrDataLoaded = true;
+                } else {
+                    container.innerHTML = '<p style="color: #d32f2f;">Failed to load OCR data</p>';
+                }
+            } catch (error) {
+                console.error('Failed to fetch OCR data:', error);
+                container.innerHTML = `<p style="color: #d32f2f;">Error loading OCR data: ${error.message}</p>`;
+            }
+        }
+    } else {
+        section.style.display = 'none';
+    }
+};
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 </script>
 {% endblock %}

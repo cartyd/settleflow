@@ -476,6 +476,41 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
     },
   });
 
+  fastify.get('/import-files/:importFileId/documents', {
+    schema: {
+      description: 'Get all import documents with raw OCR text',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { importFileId } = request.params as { importFileId: string };
+
+      try {
+        const documents = await fastify.prisma.importDocument.findMany({
+          where: { importFileId },
+          orderBy: { pageNumber: 'asc' },
+          select: {
+            id: true,
+            pageNumber: true,
+            documentType: true,
+            rawText: true,
+            parsedAt: true,
+          },
+        });
+
+        return reply.send({
+          success: true,
+          documents,
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to get import documents',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
   fastify.get('/import-files/:importFileId/lines', {
     schema: {
       description: 'Get all parsed import lines for an import file',
