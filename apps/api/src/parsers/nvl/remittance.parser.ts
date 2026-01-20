@@ -268,6 +268,13 @@ export function parseRemittance(ocrText: string): RemittanceParseResult {
     lines.push(line);
 
     // Extract batch metadata if we have the essential fields
+    console.log('[REMITTANCE PARSER] Extracted fields:', {
+      checkNumber,
+      accountNumber,
+      checkDate,
+      payeeName,
+    });
+    
     if (checkNumber && accountNumber && checkDate) {
       const weekDates = calculateWeekDates(checkDate);
       
@@ -279,6 +286,10 @@ export function parseRemittance(ocrText: string): RemittanceParseResult {
         weekStartDate: weekDates?.weekStartDate,
         weekEndDate: weekDates?.weekEndDate,
       };
+      
+      console.log('[REMITTANCE PARSER] Created metadata successfully');
+    } else {
+      console.log('[REMITTANCE PARSER] Missing required fields for metadata');
     }
   } catch (error) {
     errors.push(`Parsing failed: ${error instanceof Error ? error.message : String(error)}`);
