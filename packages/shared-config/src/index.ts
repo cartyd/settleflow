@@ -170,7 +170,7 @@ export function loadConfig(): AppConfig {
       timeoutMs: getEnvVarAsNumber('OCR_TIMEOUT_MS', 120000), // Default 120 seconds
       // Gemini config
       geminiApiKey: process.env.GEMINI_API_KEY,
-      geminiModel: getEnvVar('GEMINI_MODEL', 'gemini-1.5-pro'),
+      geminiModel: getEnvVar('GEMINI_MODEL', 'gemini-2.0-flash-exp'),
     },
     storage: {
       pdfPath: resolvedPdfPath,

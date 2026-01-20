@@ -1,6 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { readFile } from 'fs/promises';
+import { readFile, readdir, mkdtemp, rm } from 'fs/promises';
+import { basename, join } from 'path';
+import { execFile } from 'child_process';
+import os from 'os';
+import { promisify } from 'util';
 import { captureMessage, captureCustomError } from '../utils/sentry.js';
+
+const execFilePromise = promisify(execFile);
 
 export interface GeminiOcrConfig {
   apiKey: string;
@@ -45,7 +51,7 @@ export async function processPdfWithGemini(
     // Initialize Gemini AI
     const genAI = new GoogleGenerativeAI(config.apiKey);
     const model = genAI.getGenerativeModel({ 
-      model: config.model || 'gemini-1.5-pro'
+      model: config.model || 'gemini-2.0-flash-exp'
     });
 
     // Read PDF file
@@ -136,7 +142,7 @@ export async function processPdfBufferWithGemini(
     // Initialize Gemini AI
     const genAI = new GoogleGenerativeAI(config.apiKey);
     const model = genAI.getGenerativeModel({ 
-      model: config.model || 'gemini-1.5-pro'
+      model: config.model || 'gemini-2.0-flash-exp'
     });
 
     const base64Pdf = pdfBuffer.toString('base64');
