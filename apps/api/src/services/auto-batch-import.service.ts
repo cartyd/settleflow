@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { processPdfBufferWithOcr, OcrConfig } from './ocr.service.js';
+import { processPdfBufferWithGemini, GeminiOcrConfig, PageText } from './gemini-ocr.service.js';
 import { detectDocumentType } from '../parsers/nvl/detectDocumentType.js';
 import { parseRemittance, BatchMetadata } from '../parsers/nvl/remittance.parser.js';
 import { SettlementStatus } from '@settleflow/shared-types';
@@ -32,11 +33,20 @@ export async function uploadPdfAndCreateBatch(
   prisma: PrismaClient,
   fileName: string,
   fileBuffer: Buffer,
-  ocrConfig: OcrConfig,
+  ocrConfig: OcrConfig | GeminiOcrConfig,
   userId: string
 ): Promise<AutoBatchImportResult> {
   // Step 1: Process PDF with OCR
-  const pages = await processPdfBufferWithOcr(fileBuffer, ocrConfig);
+  const config = loadConfig();
+  let pages: PageText[];
+  
+  if (config.ocr.provider === 'gemini') {
+    console.log(`[AUTO-BATCH] Using Gemini OCR provider`);
+    pages = await processPdfBufferWithGemini(fileBuffer, ocrConfig as GeminiOcrConfig);
+  } else {
+    console.log(`[AUTO-BATCH] Using Ollama OCR provider`);
+    pages = await processPdfBufferWithOcr(fileBuffer, ocrConfig as OcrConfig);
+  }
 
   if (pages.length === 0) {
     throw new Error('No pages extracted from PDF');
