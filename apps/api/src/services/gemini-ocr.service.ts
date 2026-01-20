@@ -221,12 +221,36 @@ export async function processPdfBufferWithGemini(
  * Parse Gemini response text into pages
  * 
  * Gemini may return text in various formats:
- * 1. With explicit page markers: "Page 1:", "Page 2:", etc.
- * 2. With page breaks (form feed character)
- * 3. As continuous text (we need to estimate pages based on content)
+ * 1. With markdown page markers: "**Page 1:**\n```\ntext\n```"
+ * 2. With explicit page markers: "Page 1:", "Page 2:", etc.
+ * 3. With page breaks (form feed character)
+ * 4. As continuous text (we need to estimate pages based on content)
  */
 function parseGeminiResponse(text: string): PageText[] {
-  // Try to detect explicit page markers first
+  // Try to detect markdown formatted pages first: **Page 1:** followed by ```
+  const markdownPattern = /\*\*Page\s+(\d+):\*\*[\s\n]*```[^\n]*\n([\s\S]*?)```/g;
+  const markdownMatches = [...text.matchAll(markdownPattern)];
+  
+  if (markdownMatches.length > 0) {
+    const pages: PageText[] = [];
+    
+    for (const match of markdownMatches) {
+      const pageNum = parseInt(match[1], 10);
+      const pageText = match[2].trim();
+      
+      if (pageText) {
+        pages.push({
+          pageNumber: pageNum,
+          text: pageText,
+        });
+      }
+    }
+    
+    console.log(`[GEMINI] Parsed ${pages.length} pages using markdown format`);
+    return pages;
+  }
+  
+  // Try to detect explicit page markers
   const pageMarkerPattern = /(?:^|\n)(?:Page|PAGE)\s*(\d+)(?::|\s*\n)/g;
   const matches = [...text.matchAll(pageMarkerPattern)];
   
@@ -249,6 +273,7 @@ function parseGeminiResponse(text: string): PageText[] {
       }
     }
     
+    console.log(`[GEMINI] Parsed ${pages.length} pages using plain page markers`);
     return pages;
   }
   
