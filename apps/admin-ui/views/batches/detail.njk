@@ -430,8 +430,16 @@ window.toggleRawOcrData = async function() {
         if (!ocrDataLoaded) {
             try {
                 const importFileId = '{{ batch.importFileId }}';
-                const response = await fetch(`/api/batches/import-files/${importFileId}/documents`);
+                console.log('Fetching OCR data for importFileId:', importFileId);
+                const response = await fetch(`http://localhost:3000/batches/import-files/${importFileId}/documents`);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API returned ${response.status}: ${errorText}`);
+                }
+                
                 const data = await response.json();
+                console.log('OCR data received:', data);
                 
                 if (data.success && data.documents) {
                     let html = '';
