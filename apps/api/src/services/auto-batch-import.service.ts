@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { processPdfBufferWithOcr, OcrConfig } from './ocr.service.js';
+import { processPdfBufferWithGemini, GeminiOcrConfig, PageText } from './gemini-ocr.service.js';
 import { detectDocumentType } from '../parsers/nvl/detectDocumentType.js';
 import { parseRemittance, BatchMetadata } from '../parsers/nvl/remittance.parser.js';
 import { SettlementStatus } from '@settleflow/shared-types';
@@ -32,11 +33,20 @@ export async function uploadPdfAndCreateBatch(
   prisma: PrismaClient,
   fileName: string,
   fileBuffer: Buffer,
-  ocrConfig: OcrConfig,
+  ocrConfig: OcrConfig | GeminiOcrConfig,
   userId: string
 ): Promise<AutoBatchImportResult> {
   // Step 1: Process PDF with OCR
-  const pages = await processPdfBufferWithOcr(fileBuffer, ocrConfig);
+  const config = loadConfig();
+  let pages: PageText[];
+  
+  if (config.ocr.provider === 'gemini') {
+    console.log(`[AUTO-BATCH] Using Gemini OCR provider`);
+    pages = await processPdfBufferWithGemini(fileBuffer, ocrConfig as GeminiOcrConfig);
+  } else {
+    console.log(`[AUTO-BATCH] Using Ollama OCR provider`);
+    pages = await processPdfBufferWithOcr(fileBuffer, ocrConfig as OcrConfig);
+  }
 
   if (pages.length === 0) {
     throw new Error('No pages extracted from PDF');
@@ -45,24 +55,35 @@ export async function uploadPdfAndCreateBatch(
   // Step 2: Find and parse remittance page
   let remittanceMetadata: BatchMetadata | undefined;
   
+  console.log(`[AUTO-BATCH] Processing ${pages.length} pages from OCR`);
+  
   for (const page of pages) {
     if (!page.text || page.text.trim().length === 0) {
+      console.log(`[AUTO-BATCH] Page ${page.pageNumber}: EMPTY`);
       continue;
     }
 
     const docType = detectDocumentType(page.text);
+    console.log(`[AUTO-BATCH] Page ${page.pageNumber}: Detected as ${docType}, text length: ${page.text.length}`);
     
     if (docType === 'REMITTANCE') {
+      console.log(`[AUTO-BATCH] Attempting to parse remittance from page ${page.pageNumber}`);
       const parseResult = parseRemittance(page.text);
       
       if (parseResult.metadata) {
+        console.log(`[AUTO-BATCH] Successfully parsed remittance metadata from page ${page.pageNumber}`);
         remittanceMetadata = parseResult.metadata;
         break;
+      } else {
+        console.log(`[AUTO-BATCH] Page ${page.pageNumber} detected as REMITTANCE but parsing failed`);
+        console.log(`[AUTO-BATCH] Parse errors:`, parseResult.errors);
       }
     }
   }
 
   if (!remittanceMetadata) {
+    console.error('[AUTO-BATCH] Failed to parse remittance from any page');
+    console.error('[AUTO-BATCH] First page text sample:', pages[0]?.text?.substring(0, 500));
     throw new Error('Could not extract batch metadata from remittance page. Please ensure the PDF contains a valid NVL remittance page.');
   }
 
@@ -143,7 +164,6 @@ export async function uploadPdfAndCreateBatch(
   });
 
   // Step 6: Save PDF to disk storage
-  const config = loadConfig();
   await mkdir(config.storage.pdfPath, { recursive: true });
   const pdfPath = path.join(config.storage.pdfPath, fileName);
   await writeFile(pdfPath, fileBuffer);

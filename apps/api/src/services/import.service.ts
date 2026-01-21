@@ -1,7 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import { processPdfBufferWithOcr, OcrConfig } from './ocr.service.js';
+import { processPdfBufferWithGemini, GeminiOcrConfig, PageText } from './gemini-ocr.service.js';
 import { detectDocumentType } from '../parsers/nvl/detectDocumentType.js';
 import { logger } from '../utils/sentry.js';
+import { loadConfig } from '@settleflow/shared-config';
 
 export interface ProcessPdfResult {
   importId: string;
@@ -17,7 +19,7 @@ export async function processUploadedPdf(
   batchId: string,
   fileName: string,
   fileBuffer: Buffer,
-  ocrConfig: OcrConfig
+  ocrConfig: OcrConfig | GeminiOcrConfig
 ): Promise<ProcessPdfResult> {
   // Verify batch exists
   const batch = await prisma.settlementBatch.findUnique({
@@ -48,7 +50,19 @@ export async function processUploadedPdf(
 
   // Process PDF with OCR
   console.log(`[IMPORT] Starting OCR processing for ${fileName}`);
-  const pages = await processPdfBufferWithOcr(fileBuffer, ocrConfig);
+  
+  // Determine which OCR provider to use
+  const config = loadConfig();
+  let pages: PageText[];
+  
+  if (config.ocr.provider === 'gemini') {
+    console.log(`[IMPORT] Using Gemini OCR provider`);
+    pages = await processPdfBufferWithGemini(fileBuffer, ocrConfig as GeminiOcrConfig);
+  } else {
+    console.log(`[IMPORT] Using Ollama OCR provider`);
+    pages = await processPdfBufferWithOcr(fileBuffer, ocrConfig as OcrConfig);
+  }
+  
   console.log(`[IMPORT] OCR returned ${pages.length} pages`);
   console.log(`[IMPORT] Page numbers:`, pages.map(p => p.pageNumber));
 

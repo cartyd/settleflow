@@ -75,9 +75,14 @@ export interface AppConfig {
   };
   ocr: {
     enabled: boolean;
+    provider: 'ollama' | 'gemini';
+    // Ollama config
     serverUrl: string;
     model: string;
     timeoutMs: number;
+    // Gemini config
+    geminiApiKey?: string;
+    geminiModel?: string;
   };
   storage: {
     pdfPath: string;
@@ -158,9 +163,14 @@ export function loadConfig(): AppConfig {
     },
     ocr: {
       enabled: getEnvVar('OCR_ENABLED', 'true') === 'true',
+      provider: (getEnvVar('OCR_PROVIDER', 'ollama') as 'ollama' | 'gemini'),
+      // Ollama config
       serverUrl: getEnvVar('OCR_SERVER_URL', 'http://10.147.17.205:11434/api/generate'),
       model: getEnvVar('OCR_MODEL', 'gemma3:27b'),
       timeoutMs: getEnvVarAsNumber('OCR_TIMEOUT_MS', 120000), // Default 120 seconds
+      // Gemini config
+      geminiApiKey: process.env.GEMINI_API_KEY,
+      geminiModel: getEnvVar('GEMINI_MODEL', 'gemini-2.0-flash-exp'),
     },
     storage: {
       pdfPath: resolvedPdfPath,

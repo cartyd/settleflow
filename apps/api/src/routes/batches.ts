@@ -292,15 +292,24 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Upload PDF and auto-create batch
       try {
+        // Build OCR config based on provider
+        const ocrConfig = config.ocr.provider === 'gemini'
+          ? {
+              apiKey: config.ocr.geminiApiKey!,
+              model: config.ocr.geminiModel,
+              timeoutMs: config.ocr.timeoutMs,
+            }
+          : {
+              model: config.ocr.model,
+              serverUrl: config.ocr.serverUrl,
+              timeoutMs: config.ocr.timeoutMs,
+            };
+        
         const result = await autoBatchImportService.uploadPdfAndCreateBatch(
           fastify.prisma,
           data.filename,
           buffer,
-          {
-            model: config.ocr.model,
-            serverUrl: config.ocr.serverUrl,
-            timeoutMs: config.ocr.timeoutMs,
-          },
+          ocrConfig,
           'system' // TODO: Get actual user ID from auth
         );
 
@@ -352,16 +361,25 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Process PDF with OCR
       try {
+        // Build OCR config based on provider
+        const ocrConfig = config.ocr.provider === 'gemini'
+          ? {
+              apiKey: config.ocr.geminiApiKey!,
+              model: config.ocr.geminiModel,
+              timeoutMs: config.ocr.timeoutMs,
+            }
+          : {
+              model: config.ocr.model,
+              serverUrl: config.ocr.serverUrl,
+              timeoutMs: config.ocr.timeoutMs,
+            };
+        
         const result = await importService.processUploadedPdf(
           fastify.prisma,
           id,
           data.filename,
           buffer,
-          {
-            model: config.ocr.model,
-            serverUrl: config.ocr.serverUrl,
-            timeoutMs: config.ocr.timeoutMs,
-          }
+          ocrConfig
         );
 
         reply.status(201).send(result);
