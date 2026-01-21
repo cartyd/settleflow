@@ -2,6 +2,7 @@
  * Regex-based parser for CREDIT_DEBIT document type
  * 
  * These are form-based documents showing individual charges or credits
+ * Enhanced with flexible patterns to handle multiple OCR providers (Ollama, Gemini)
  * 
  * Example structure (Pages 6-10):
  * - Transaction type: SAFETY CHARGEBACKS, PROFILE SEO, ELD SRVC FEE
@@ -10,6 +11,8 @@
  * - Date: Entry date and process date (MMDDYY format like 121625)
  * - Account info
  */
+
+import { normalizeOcrText, OCR_PATTERNS } from '../../utils/ocr-normalizer.js';
 
 export interface CreditDebitLine {
   transactionType?: string;
@@ -135,11 +138,12 @@ function extractProcessDate(text: string): string | undefined {
 /**
  * Extract account number from the document
  * Pattern: Number after "ACCOUNT NUMBER" label
+ * Handles line breaks and removes leading zeros
  */
 function extractAccountNumber(text: string): string | undefined {
-  const match = text.match(/ACCOUNT\s+NUMBER[\s\t]*\n?[\s\t]*(\d+)/i);
+  const match = text.match(OCR_PATTERNS.ACCOUNT);
   if (match) {
-    return match[1];
+    return match[1].replace(/^0+/, ''); // Remove leading zeros
   }
   return undefined;
 }
@@ -243,19 +247,23 @@ function extractReference(text: string): string | undefined {
 
 /**
  * Parse CREDIT_DEBIT document using regex patterns
+ * Handles both Ollama and Gemini OCR output formats
  */
 export function parseCreditDebit(ocrText: string): CreditDebitParseResult {
   const errors: string[] = [];
   const lines: CreditDebitLine[] = [];
 
   try {
-    const transactionType = extractTransactionType(ocrText);
-    const description = extractDescription(ocrText);
-    const entryDate = extractEntryDate(ocrText);
-    const processDate = extractProcessDate(ocrText);
-    const accountNumber = extractAccountNumber(ocrText);
-    const { amount, isDebit } = extractAmountAndType(ocrText);
-    const reference = extractReference(ocrText);
+    // Normalize text to handle format variations between OCR providers
+    const normalizedText = normalizeOcrText(ocrText, 'gemini');
+    
+    const transactionType = extractTransactionType(normalizedText);
+    const description = extractDescription(normalizedText);
+    const entryDate = extractEntryDate(normalizedText);
+    const processDate = extractProcessDate(normalizedText);
+    const accountNumber = extractAccountNumber(normalizedText);
+    const { amount, isDebit } = extractAmountAndType(normalizedText);
+    const reference = extractReference(normalizedText);
 
     // Validate that we extracted essential fields
     if (amount === 0) {

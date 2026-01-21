@@ -3,6 +3,7 @@
  * 
  * These pages contain detailed trip information with driver assignments,
  * origin/destination, service breakdowns, and net earnings calculations.
+ * Enhanced with flexible patterns to handle multiple OCR providers (Ollama, Gemini)
  * 
  * Example structure (Pages 12-13):
  * - Driver name: BIDETTI, DONNY
@@ -12,6 +13,8 @@
  * - Service items: HAULER, FUEL, ATC, etc. with amounts and percentages
  * - Net balance: 3,890.63
  */
+
+import { normalizeOcrText, OCR_PATTERNS } from '../../utils/ocr-normalizer.js';
 
 export interface RevenueDistributionLine {
   driverName?: string;
@@ -153,11 +156,12 @@ function extractDriverName(servicePerformedBy: { agent?: string; driver?: string
 /**
  * Extract account number
  * Pattern: "ACCOUNT" followed by "NUMBER" and the value
+ * Handles line breaks and removes leading zeros
  */
 function extractAccountNumber(text: string): string | undefined {
-  const match = text.match(/ACCOUNT\s*\n?\s*NUMBER\s*\n?\s*(\d+)/i);
+  const match = text.match(OCR_PATTERNS.ACCOUNT);
   if (match) {
-    return match[1];
+    return match[1].replace(/^0+/, ''); // Remove leading zeros
   }
   return undefined;
 }
@@ -166,6 +170,7 @@ function extractAccountNumber(text: string): string | undefined {
  * Extract trip number
  * Pattern: "TRIP" followed by "NUMBER" and the value
  * Also handles "TRIP NUMBER" on same line or "ACCOUNT NUMBER TRIP NUMBER"
+ * Handles line breaks and flexible whitespace
  */
 function extractTripNumber(text: string): string | undefined {
   // Try "ACCOUNT NUMBER TRIP NUMBER\n3101 416" format
@@ -174,11 +179,12 @@ function extractTripNumber(text: string): string | undefined {
     return match[1];
   }
   
-  // Try "TRIP\nNUMBER\n1854" format
-  match = text.match(/TRIP\s*\n?\s*NUMBER\s*\n?\s*(\d+)/i);
+  // Use flexible pattern for basic TRIP extraction
+  match = text.match(OCR_PATTERNS.TRIP);
   if (match) {
     return match[1];
   }
+  
   return undefined;
 }
 
@@ -522,6 +528,7 @@ function extractNetBalance(text: string): number {
 
 /**
  * Parse REVENUE_DISTRIBUTION document using regex patterns
+ * Handles both Ollama and Gemini OCR output formats
  */
 export function parseRevenueDistribution(ocrText: string): RevenueDistributionParseResult {
   const errors: string[] = [];
@@ -534,29 +541,32 @@ export function parseRevenueDistribution(ocrText: string): RevenueDistributionPa
   }
 
   try {
-    const servicePerformedBy = extractServicePerformedBy(ocrText);
+    // Normalize text to handle format variations between OCR providers
+    const normalizedText = normalizeOcrText(ocrText, 'gemini');
+    
+    const servicePerformedBy = extractServicePerformedBy(normalizedText);
     const driverName = extractDriverName(servicePerformedBy);
     const { firstName, lastName } = driverName ? parseDriverName(driverName) : {};
     
-    const accountNumber = extractAccountNumber(ocrText);
-    const tripNumber = extractTripNumber(ocrText);
+    const accountNumber = extractAccountNumber(normalizedText);
+    const tripNumber = extractTripNumber(normalizedText);
     
     // Extract B/L - may be in format "356985/357175" where second number is supplier
-    let billOfLading = extractBillOfLading(ocrText);
+    let billOfLading = extractBillOfLading(normalizedText);
     if (billOfLading && billOfLading.includes('/')) {
       billOfLading = billOfLading.split('/')[0].trim();
     }
     
-    const shipperName = extractShipperName(ocrText);
-    const entryDate = extractEntryDate(ocrText);
-    const origin = extractOrigin(ocrText);
-    const destination = extractDestination(ocrText);
-    const deliveryDate = extractDeliveryDate(ocrText);
-    const weight = extractWeight(ocrText);
-    const miles = extractMiles(ocrText);
-    const overflowWeight = extractOverflowWeight(ocrText);
-    const serviceItems = extractServiceItems(ocrText);
-    const netBalance = extractNetBalance(ocrText);
+    const shipperName = extractShipperName(normalizedText);
+    const entryDate = extractEntryDate(normalizedText);
+    const origin = extractOrigin(normalizedText);
+    const destination = extractDestination(normalizedText);
+    const deliveryDate = extractDeliveryDate(normalizedText);
+    const weight = extractWeight(normalizedText);
+    const miles = extractMiles(normalizedText);
+    const overflowWeight = extractOverflowWeight(normalizedText);
+    const serviceItems = extractServiceItems(normalizedText);
+    const netBalance = extractNetBalance(normalizedText);
 
     // Validate essential fields
     if (!tripNumber) {

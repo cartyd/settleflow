@@ -1,5 +1,6 @@
 /**
  * Parser for SETTLEMENT_DETAIL document type (e.g., Page 2 of NVL settlement PDF)
+ * Enhanced with flexible patterns to handle multiple OCR providers (Ollama, Gemini)
  * 
  * Extracts transaction lines from the settlement detail table which has the format:
  * B/L | TRIP | REF # | DATE | TRANSACTION/DESCRIPTION | AMOUNT | COMMENTS
@@ -9,6 +10,8 @@
  * 12/10/25 MC MOTOR VEH REP 5.25
  * 356985 1854 12/12/25 RD REVENUE DISTR 3,890.63-
  */
+
+import { normalizeOcrText, OCR_PATTERNS } from '../../utils/ocr-normalizer.js';
 
 export interface ParsedSettlementLine {
   billOfLading?: string;
@@ -179,10 +182,10 @@ function extractHeaderInfo(text: string): {
 } {
   const result: ReturnType<typeof extractHeaderInfo> = {};
 
-  // Extract account number: "ACCOUNT 03101"
-  const accountMatch = text.match(/ACCOUNT\s+(\d+)/i);
+  // Extract account number: "ACCOUNT 03101" (remove leading zeros)
+  const accountMatch = text.match(OCR_PATTERNS.ACCOUNT);
   if (accountMatch) {
-    result.accountNumber = accountMatch[1];
+    result.accountNumber = accountMatch[1].replace(/^0+/, '');
   }
 
   // Extract account name (usually appears after account number)
@@ -215,16 +218,20 @@ function extractHeaderInfo(text: string): {
 
 /**
  * Main parser function for SETTLEMENT_DETAIL documents
+ * Handles both Ollama and Gemini OCR output formats
  */
 export function parseSettlementDetail(ocrText: string): SettlementDetailParseResult {
   const errors: string[] = [];
   const lines: ParsedSettlementLine[] = [];
 
+  // Normalize text to handle format variations between OCR providers
+  const normalizedText = normalizeOcrText(ocrText, 'gemini');
+
   // Extract header information
-  const headerInfo = extractHeaderInfo(ocrText);
+  const headerInfo = extractHeaderInfo(normalizedText);
 
   // Split text into lines and parse each one
-  const textLines = ocrText.split('\n');
+  const textLines = normalizedText.split('\n');
 
   for (const textLine of textLines) {
     try {
