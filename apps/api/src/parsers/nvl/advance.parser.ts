@@ -64,33 +64,27 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
     const driverName = driverMatch ? driverMatch[1].trim().replace(/\s+/g, ' ') : undefined;
 
     // Extract advance amount with flexible patterns
-    // The correct amount is in:
-    // 1. "AMOUNT\n1033.00" field (most reliable - after *FOR DATA ENTRY USE* section)
-    // 2. "TOTAL CHARGE" column in the table
-    // 3. Amount after G/L # on the last line: "2032-01 1033.00"
+    // The correct amount is in the "AMOUNT" field after the G/L # line
+    // Format: "G/L #\n1856\n2032-01\nAMOUNT\n1033.00"
     let advanceAmount = 0;
     
-    // Strategy 1: Look for "AMOUNT" in the data entry section (best)
-    // This appears after "*FOR DATA ENTRY USE*" and before "ACCOUNT NAME"
-    let amountMatch = normalizedText.match(/\*FOR DATA ENTRY USE\*[\s\S]{0,200}?AMOUNT\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
+    // Strategy 1: Look for "AMOUNT" field after G/L section (most reliable)
+    // Pattern: "G/L #" ... "AMOUNT" ... amount value
+    let amountMatch = normalizedText.match(/G\/L\s*#[\s\S]{0,100}?AMOUNT\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
     
     if (!amountMatch) {
-      // Strategy 2: Look for "TOTAL\nCHARGE\n1033.00" format (table column)
-      amountMatch = normalizedText.match(/TOTAL\s*\n?\s*CHARGE\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
-    }
-    
-    if (!amountMatch) {
-      // Strategy 3: Look for amount at end of line with G/L pattern: "2032-01\nAMOUNT\n1033.00"
-      amountMatch = normalizedText.match(/\d{4}-\d{2}\s*\n\s*AMOUNT\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
-    }
-    
-    if (!amountMatch) {
-      // Strategy 4: Simple "AMOUNT" followed by number (broader match)
+      // Strategy 2: Simple "AMOUNT" followed by number on next line
       amountMatch = normalizedText.match(/\bAMOUNT\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
     }
     
     if (!amountMatch) {
-      // Strategy 5: Look for amount at end of line with G/L pattern: "2032-01 1033.00" (single line)
+      // Strategy 3: Look for "TOTAL\nCHARGE\n1033.00" format (last column in table)
+      // This is on the right side of the table
+      amountMatch = normalizedText.match(/TOTAL\s*\n\s*CHARGE\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
+    }
+    
+    if (!amountMatch) {
+      // Strategy 4: Look for amount at end of line with G/L pattern: "2032-01 1033.00"
       amountMatch = normalizedText.match(/\d{4}-\d{2}\s+(\d{1,3}(?:,\d{3})*\.\d{2})/i);
     }
     
