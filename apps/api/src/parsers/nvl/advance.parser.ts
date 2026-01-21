@@ -64,41 +64,40 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
     const driverName = driverMatch ? driverMatch[1].trim().replace(/\s+/g, ' ') : undefined;
 
     // Extract advance amount with flexible patterns
-    // Handles multiple formats: "1033.00", "1,033.00", amounts on separate lines, etc.
+    // The correct amount is in:
+    // 1. "AMOUNT\n1033.00" field (most reliable - after *FOR DATA ENTRY USE* section)
+    // 2. "TOTAL CHARGE" column in the table
+    // 3. Amount after G/L # on the last line: "2032-01 1033.00"
     let advanceAmount = 0;
     
-    // Try different amount extraction strategies
-    
-    // 1. Look for amount in structured format: "AMOUNT\n1033.00"
-    let amountMatch = normalizedText.match(/AMOUNT\s*\n?\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
+    // Strategy 1: Look for "AMOUNT" in the data entry section (best)
+    // This appears after "*FOR DATA ENTRY USE*" and before "ACCOUNT NAME"
+    let amountMatch = normalizedText.match(/\*FOR DATA ENTRY USE\*[\s\S]{0,200}?AMOUNT\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
     
     if (!amountMatch) {
-      // 2. Look for "TOTAL" followed by amount
-      amountMatch = normalizedText.match(/TOTAL\s*\n?\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
+      // Strategy 2: Look for "TOTAL\nCHARGE\n1033.00" format (table column)
+      amountMatch = normalizedText.match(/TOTAL\s*\n?\s*CHARGE\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
     }
     
     if (!amountMatch) {
-      // 3. Look for amount at end of line with G/L pattern: "2032-01 1033.00"
+      // Strategy 3: Look for amount at end of line with G/L pattern: "2032-01\nAMOUNT\n1033.00"
+      amountMatch = normalizedText.match(/\d{4}-\d{2}\s*\n\s*AMOUNT\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
+    }
+    
+    if (!amountMatch) {
+      // Strategy 4: Simple "AMOUNT" followed by number (broader match)
+      amountMatch = normalizedText.match(/\bAMOUNT\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
+    }
+    
+    if (!amountMatch) {
+      // Strategy 5: Look for amount at end of line with G/L pattern: "2032-01 1033.00" (single line)
       amountMatch = normalizedText.match(/\d{4}-\d{2}\s+(\d{1,3}(?:,\d{3})*\.\d{2})/i);
-    }
-    
-    if (!amountMatch) {
-      // 4. Look for last decimal amount in the text (fallback)
-      const textLines = normalizedText.trim().split('\n');
-      const lastLine = textLines[textLines.length - 1];
-      amountMatch = lastLine.match(/(\d{1,3}(?:,\d{3})*\.\d{2})\s*$/);
     }
     
     if (amountMatch) {
       advanceAmount = parseFloat(amountMatch[1].replace(/,/g, ''));
     } else {
-      // Final fallback: any amount in the text
-      const fallbackMatch = normalizedText.match(OCR_PATTERNS.AMOUNT);
-      if (fallbackMatch) {
-        advanceAmount = parseFloat(fallbackMatch[1].replace(/,/g, ''));
-      } else {
-        errors.push('Could not extract advance amount from document');
-      }
+      errors.push('Could not extract advance amount from document');
     }
 
     // Extract date with flexible patterns
