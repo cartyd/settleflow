@@ -38,6 +38,7 @@ export interface BatchLineItem {
   billOfLading?: string | null;
   pageNumber: number;
   documentType: string;
+  rawData?: string | null;
   // Parsed trip data for revenue distribution lines
   shipperName?: string;
   origin?: string;
@@ -244,6 +245,7 @@ function formatLineItem(line: any): BatchLineItem {
     billOfLading: line.billOfLading || null,
     pageNumber: line.pageNumber,
     documentType: line.documentType,
+    rawData: line.rawData || null,
   };
 
   // Parse rawData for revenue distribution lines to include trip details
