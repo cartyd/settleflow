@@ -83,7 +83,12 @@ export async function uploadPdfAndCreateBatch(
 
   if (!remittanceMetadata) {
     console.error('[AUTO-BATCH] Failed to parse remittance from any page');
-    console.error('[AUTO-BATCH] First page text sample:', pages[0]?.text?.substring(0, 500));
+    console.error('[AUTO-BATCH] Pages detected:');
+    for (const page of pages) {
+      const docType = detectDocumentType(page.text);
+      console.error(`  Page ${page.pageNumber}: ${docType} (text length: ${page.text?.length || 0})`);
+    }
+    console.error('[AUTO-BATCH] First page text sample:', pages[0]?.text?.substring(0, 800));
     throw new Error('Could not extract batch metadata from remittance page. Please ensure the PDF contains a valid NVL remittance page.');
   }
 

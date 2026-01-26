@@ -173,8 +173,14 @@ function extractAccountNumber(text: string): string | undefined {
  * Handles line breaks and flexible whitespace
  */
 function extractTripNumber(text: string): string | undefined {
+  // Try table format: "ACCOUNT TRIP\nNUMBER NUMBER\n3101 1854"
+  let match = text.match(/ACCOUNT\s+TRIP\s*\n\s*NUMBER\s+NUMBER\s*\n\s*\d+\s+(\d+)/i);
+  if (match) {
+    return match[1];
+  }
+  
   // Try "ACCOUNT NUMBER TRIP NUMBER\n3101 416" format
-  let match = text.match(/TRIP\s+NUMBER\s*\n\s*\d+\s+(\d+)/i);
+  match = text.match(/TRIP\s+NUMBER\s*\n\s*\d+\s+(\d+)/i);
   if (match) {
     return match[1];
   }
@@ -215,18 +221,23 @@ function extractBillOfLading(text: string): string | undefined {
  * May appear with or without forward slash
  */
 function extractShipperName(text: string): string | undefined {
-  // Look for shipper name after bill of lading section
-  // Format can be: "357236/ HARRITS" or just the name
-  const match = text.match(/\d{6}\/\s*([A-ZÀ-ÿ]+)\s+(?:COD|TRN)/i);
+  // Try format: "356985/357175 BELLI COD"
+  let match = text.match(/\d{6}\/\d{6}\s+([A-ZÀ-ÿ]+)\s+(?:COD|GOV|TRN)/i);
+  if (match) {
+    return match[1].trim();
+  }
+  
+  // Try format: "357236/ HARRITS" or "357236/HARRITS"
+  match = text.match(/\d{6}\/\s*([A-ZÀ-ÿ]+)\s+(?:COD|GOV|TRN)/i);
   if (match) {
     return match[1].trim();
   }
   
   // Fallback: Look for name after SHIPPER NAME header
-  const headerMatch = text.match(/SHIPPER\s+NAME[\s\S]{0,100}?\n([A-ZÀ-ÿ\s']+)\s*\n+(?:ORIGIN|COD)/i);
+  const headerMatch = text.match(/SHIPPER\s+NAME[\s\S]{0,100}?\n([A-ZÀ-ÿ\s']+)\s*\n+(?:ORIGIN|COD|GOV)/i);
   if (headerMatch) {
     const name = headerMatch[1].trim();
-    if (name && !name.match(/^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN)$/i)) {
+    if (name && !name.match(/^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV)$/i)) {
       return name;
     }
   }

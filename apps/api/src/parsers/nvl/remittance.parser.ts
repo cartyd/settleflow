@@ -329,7 +329,12 @@ export function parseRemittance(ocrText: string): RemittanceParseResult {
       
       console.log('[REMITTANCE PARSER] Created metadata successfully');
     } else {
-      console.log('[REMITTANCE PARSER] Missing required fields for metadata');
+      const missing = [];
+      if (!checkNumber) missing.push('checkNumber');
+      if (!accountNumber) missing.push('accountNumber');
+      if (!checkDate) missing.push('checkDate');
+      console.log('[REMITTANCE PARSER] Missing required fields for metadata:', missing.join(', '));
+      errors.push(`Missing required fields: ${missing.join(', ')}`);
     }
   } catch (error) {
     errors.push(`Parsing failed: ${error instanceof Error ? error.message : String(error)}`);

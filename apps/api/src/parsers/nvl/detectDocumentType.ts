@@ -7,7 +7,13 @@ export function detectDocumentType(text: string): DocumentType {
     return DocumentType.REMITTANCE;
   }
 
-  if (upperText.includes('SETTLEMENT DETAIL') || upperText.includes('SETTLEMENT SUMMARY')) {
+  // Check for Settlement Detail first - it often contains "REVENUE DISTR" in transaction list
+  // which would incorrectly match REVENUE_DISTRIBUTION
+  if (
+    upperText.includes('SETTLEMENT DETAIL') ||
+    upperText.includes('SETTLEMENT SUMMARY') ||
+    (upperText.includes('THE FOLLOWING ITEMS') && upperText.includes('PAID WITH CHECK'))
+  ) {
     return DocumentType.SETTLEMENT_DETAIL;
   }
 

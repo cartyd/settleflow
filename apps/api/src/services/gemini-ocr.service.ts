@@ -227,17 +227,16 @@ export async function processPdfBufferWithGemini(
  * 4. As continuous text (we need to estimate pages based on content)
  */
 function parseGeminiResponse(text: string): PageText[] {
-  // Try to detect markdown formatted pages first: **Page 1:** (with or without colon) followed by ```
-  // Match: **Page 1** or **Page 1:** followed by code block
-  const markdownPattern = /\*\*Page\s+(\d+)(?::|)\*\*[\s\n]*```[\s\S]*?\n([\s\S]*?)```/g;
-  const markdownMatches = [...text.matchAll(markdownPattern)];
+  // Try to detect ==Start of page N== / ==End of page N== markers
+  const startEndPattern = /==Start of page (\d+)==([\s\S]*?)(?:==End of page \1==|$)/g;
+  const startEndMatches = [...text.matchAll(startEndPattern)];
   
-  console.log(`[GEMINI] Found ${markdownMatches.length} markdown page matches`);
+  console.log(`[GEMINI] Found ${startEndMatches.length} start/end page markers`);
   
-  if (markdownMatches.length > 0) {
+  if (startEndMatches.length > 0) {
     const pages: PageText[] = [];
     
-    for (const match of markdownMatches) {
+    for (const match of startEndMatches) {
       const pageNum = parseInt(match[1], 10);
       const pageText = match[2].trim();
       
@@ -249,7 +248,63 @@ function parseGeminiResponse(text: string): PageText[] {
       }
     }
     
-    console.log(`[GEMINI] Parsed ${pages.length} pages using markdown format`);
+    console.log(`[GEMINI] Parsed ${pages.length} pages using start/end markers`);
+    return pages;
+  }
+  
+  // Try to detect markdown format with code blocks: **Page N:**\n```\ntext\n```
+  const codeBlockPattern = /\*\*Page\s+(\d+):\*\*\s*\n```[^\n]*\n([\s\S]*?)```/g;
+  const codeBlockMatches = [...text.matchAll(codeBlockPattern)];
+  
+  console.log(`[GEMINI] Found ${codeBlockMatches.length} code block page markers`);
+  
+  if (codeBlockMatches.length > 0) {
+    const pages: PageText[] = [];
+    
+    for (const match of codeBlockMatches) {
+      const pageNum = parseInt(match[1], 10);
+      const pageText = match[2].trim();
+      
+      if (pageText) {
+        pages.push({
+          pageNumber: pageNum,
+          text: pageText,
+        });
+      }
+    }
+    
+    console.log(`[GEMINI] Parsed ${pages.length} pages using code block markers`);
+    return pages;
+  }
+  
+  // Try to detect markdown bold page markers: **Page 1** or **Page 1:**
+  const markdownBoldPattern = /\*\*Page\s+(\d+):?\*\*/g;
+  const boldMatches = [...text.matchAll(markdownBoldPattern)];
+  
+  console.log(`[GEMINI] Found ${boldMatches.length} markdown bold page markers`);
+  
+  if (boldMatches.length > 1) {
+    const pages: PageText[] = [];
+    
+    for (let i = 0; i < boldMatches.length; i++) {
+      const match = boldMatches[i];
+      const pageNum = parseInt(match[1], 10);
+      const startIdx = match.index! + match[0].length;
+      const endIdx = i < boldMatches.length - 1 ? boldMatches[i + 1].index! : text.length;
+      let pageText = text.substring(startIdx, endIdx).trim();
+      
+      // Remove code block markers if present
+      pageText = pageText.replace(/^```[^\n]*\n/, '').replace(/\n```$/, '');
+      
+      if (pageText) {
+        pages.push({
+          pageNumber: pageNum,
+          text: pageText,
+        });
+      }
+    }
+    
+    console.log(`[GEMINI] Parsed ${pages.length} pages using markdown bold markers`);
     return pages;
   }
   
