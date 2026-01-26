@@ -114,12 +114,22 @@ function parseDate(dateStr: string | undefined): string | undefined {
  * Returns {agent, driver} tuple
  */
 function extractServicePerformedBy(text: string): { agent?: string; driver?: string } {
-  // Try single line format first: "AGENT / DRIVER" all on one line
+  // Format 1: "AGENT / LASTNAME,\nFIRSTNAME" (driver name split across lines after slash)
+  // Example: "CICEROS' MOVING & ST/ BIDETTI,\nDONNY"
+  let match = text.match(/FOR\s+SERVICE\s+PERFORMED\s+BY\s*\n\s*([^/]+)\/\s*([A-Z]+),\s*\n\s*([A-Z]+)/i);
+  if (match) {
+    return {
+      agent: match[1].trim(),
+      driver: `${match[2].trim()}, ${match[3].trim()}`
+    };
+  }
+  
+  // Format 2: "AGENT / DRIVER" (complete driver name on one line)
   // Example: "CICEROS' MOVING & ST/ BIDETTI, DONNY"
-  const singleLineMatch = text.match(/FOR\s+SERVICE\s+PERFORMED\s+BY\s*\n\s*([^/]+)\/\s*([^\n]+)/i);
-  if (singleLineMatch) {
-    const agent = singleLineMatch[1].trim();
-    const driverPart = singleLineMatch[2].trim();
+  match = text.match(/FOR\s+SERVICE\s+PERFORMED\s+BY\s*\n\s*([^/]+)\/\s*([^\n]+)/i);
+  if (match) {
+    const agent = match[1].trim();
+    const driverPart = match[2].trim();
     
     // Check if driver looks complete (has comma for last,first format)
     if (driverPart.includes(',')) {
@@ -127,14 +137,11 @@ function extractServicePerformedBy(text: string): { agent?: string; driver?: str
     }
     
     // Driver might be incomplete, check next line
-    // Look for the driver part followed by next non-empty line
     const multiLineCheck = text.match(
       new RegExp(`FOR\\s+SERVICE\\s+PERFORMED\\s+BY\\s*\\n\\s*[^/]+\\/\\s*${driverPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\n\\s*([A-Z][^\\n]+)`, 'i')
     );
     if (multiLineCheck && multiLineCheck[1]) {
       const nextLine = multiLineCheck[1].trim();
-      // Only use next line if it looks like a name (has comma for Last, First format)
-      // AND doesn't look like a header (ACCOUNT, NUMBER, etc.)
       if (nextLine.includes(',') && !nextLine.includes('NUMBER') && !nextLine.includes('ACCOUNT')) {
         return { agent, driver: nextLine };
       }
@@ -221,23 +228,24 @@ function extractBillOfLading(text: string): string | undefined {
  * May appear with or without forward slash
  */
 function extractShipperName(text: string): string | undefined {
-  // Try format: "356985/357175 BELLI COD"
-  let match = text.match(/\d{6}\/\d{6}\s+([A-ZÀ-ÿ]+)\s+(?:COD|GOV|TRN)/i);
+  // Format 1: "356985/357175 BELLI COD" or "356985/357175\nBELLI"
+  let match = text.match(/\d{6}\/\d{6}\s*\n?\s*([A-ZÀ-ÿ]+)\s+(?:COD|GOV|TRN|ORIGIN)/i);
   if (match) {
     return match[1].trim();
   }
   
-  // Try format: "357236/ HARRITS" or "357236/HARRITS"
-  match = text.match(/\d{6}\/\s*([A-ZÀ-ÿ]+)\s+(?:COD|GOV|TRN)/i);
+  // Format 2: "357236/\nHARRIS" or "357236/ HARRIS"
+  match = text.match(/\d{6}\/\s*\n?\s*([A-ZÀ-ÿ]+)\s+(?:COD|GOV|TRN|ORIGIN)/i);
   if (match) {
     return match[1].trim();
   }
   
-  // Fallback: Look for name after SHIPPER NAME header
-  const headerMatch = text.match(/SHIPPER\s+NAME[\s\S]{0,100}?\n([A-ZÀ-ÿ\s']+)\s*\n+(?:ORIGIN|COD|GOV)/i);
+  // Format 3: After SHIPPER NAME header and before ORIGIN
+  const headerMatch = text.match(/SHIPPER\s+NAME[\s\S]{0,100}?\n([A-ZÀ-ÿ\s']+?)\s*\n+ORIGIN/i);
   if (headerMatch) {
     const name = headerMatch[1].trim();
-    if (name && !name.match(/^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV)$/i)) {
+    // Filter out common non-name words
+    if (name && !name.match(/^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL)$/i)) {
       return name;
     }
   }
@@ -265,7 +273,6 @@ function extractEntryDate(text: string): string | undefined {
  */
 function extractOrigin(text: string): string | undefined {
   // Split into lines and find the origin line
-  // Header might be "ORIGIN" alone or "ORIGIN DESTINATION..."  
   const lines = text.split('\n');
   const originIdx = lines.findIndex(l => l.trim().startsWith('ORIGIN'));
   
@@ -274,27 +281,33 @@ function extractOrigin(text: string): string | undefined {
     for (let i = originIdx + 1; i < Math.min(originIdx + 10, lines.length); i++) {
       const line = lines[i].trim();
       
-      // Skip empty lines
-      if (!line) continue;
+      // Skip empty lines and headers
+      if (!line || line.match(/^(ZIP|INTER|REFERENCE|DESTINATION)/i)) continue;
       
-      // Check if both origin and destination are on the same line with date
+      // Format 1: "MISSOURI CTX" (missing space - handle concatenated city+state)
+      const noSpaceMatch = line.match(/^([A-Z][A-Z\s]+?)([A-Z]{2})$/);
+      if (noSpaceMatch) {
+        return `${noSpaceMatch[1].trim()}, ${noSpaceMatch[2]}`;
+      }
+      
+      // Format 2: Both origin and destination on same line with date
       // Pattern: "CITY ST CITY ST DD DD D..." or "CITY C ST CITY ST DD DD D..."
       const sameLineWithDate = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+\d/);
       if (sameLineWithDate) {
-        return `${sameLineWithDate[1].trim()} ${sameLineWithDate[2]}`;
+        return `${sameLineWithDate[1].trim()}, ${sameLineWithDate[2]}`;
       }
       
-      // Check if both origin and destination are on the same line without date
+      // Format 3: Both origin and destination on same line without date
       // Pattern: "CITY ST CITY ST" or "CITY C ST CITY ST"
       const sameLine = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+([A-Z][A-Z\s]+?)\s+([A-Z]{2})$/);
       if (sameLine) {
-        return `${sameLine[1].trim()} ${sameLine[2]}`;
+        return `${sameLine[1].trim()}, ${sameLine[2]}`;
       }
       
-      // Otherwise match standalone "CITY ST" line
+      // Format 4: Standalone "CITY ST" or "CITY STATE" line
       const standalone = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})$/);
       if (standalone && standalone[2].length === 2) {
-        return `${standalone[1].trim()} ${standalone[2]}`;
+        return `${standalone[1].trim()}, ${standalone[2]}`;
       }
     }
   }
@@ -311,55 +324,49 @@ function extractOrigin(text: string): string | undefined {
 function extractDestination(text: string): string | undefined {
   // Split into lines
   const lines = text.split('\n');
-  const originIdx = lines.findIndex(l => l.trim().startsWith('ORIGIN'));
   
+  // Look for DESTINATION header specifically
+  const destIdx = lines.findIndex(l => l.trim().startsWith('DESTINATION'));
+  
+  if (destIdx >= 0) {
+    // Look in the next few lines after DESTINATION header
+    for (let i = destIdx + 1; i < Math.min(destIdx + 5, lines.length); i++) {
+      const city = lines[i].trim();
+      if (!city || city.length < 2) continue;
+      
+      // Skip non-city lines (ZIP, WEIGHT, etc.)
+      if (city.match(/^(ZIP|WEIGHT|MILES|SIT|PAY|INTER)/i)) continue;
+      
+      // Check if this looks like a city name (all caps letters/spaces)
+      if (city.match(/^[A-Z\s]+$/)) {
+        // Look for state in next few lines (skip ZIP, WEIGHT, etc.)
+        for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+          const state = lines[j].trim();
+          if (state.match(/^[A-Z]{2}$/)) {
+            return `${city}, ${state}`;
+          }
+        }
+      }
+    }
+  }
+  
+  // Fallback: Look in ORIGIN section for combined format
+  const originIdx = lines.findIndex(l => l.trim().startsWith('ORIGIN'));
   if (originIdx >= 0) {
-    // Find the origin city+state line first
-    let originLineIdx = -1;
     for (let i = originIdx + 1; i < Math.min(originIdx + 10, lines.length); i++) {
       const line = lines[i].trim();
-      
-      // Skip empty lines
       if (!line) continue;
       
       // Check if origin and destination are on the same line with date
-      // Pattern: "CITY ST CITY ST DD DD D..." or "CITY C ST CITY ST DD DD D..."
       const sameLineWithDate = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+\d/);
       if (sameLineWithDate) {
         return `${sameLineWithDate[3].trim()}, ${sameLineWithDate[4]}`;
       }
       
       // Check if origin and destination are on the same line without date
-      // Pattern: "CITY ST CITY ST" or "CITY C ST CITY ST"
       const sameLine = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+([A-Z][A-Z\s]+?)\s+([A-Z]{2})$/);
       if (sameLine) {
         return `${sameLine[3].trim()}, ${sameLine[4]}`;
-      }
-      
-      // Otherwise, look for origin line
-      if (line.match(/^[A-Z][A-Z\s]+\s+[A-Z]{2}$/)) {
-        originLineIdx = i;
-        break;
-      }
-    }
-    
-    // If origin and destination are on separate lines
-    if (originLineIdx >= 0) {
-      // Look for next city name (all caps, might be multiple words)
-      for (let i = originLineIdx + 1; i < Math.min(originLineIdx + 5, lines.length); i++) {
-        const city = lines[i].trim();
-        if (!city || city.length < 2) continue;
-        
-        // Check if this looks like a city name (all caps)
-        if (city.match(/^[A-Z\s]+$/)) {
-          // Next line should be state abbreviation
-          if (i + 1 < lines.length) {
-            const state = lines[i + 1].trim();
-            if (state.match(/^[A-Z]{2}$/)) {
-              return `${city}, ${state}`;
-            }
-          }
-        }
       }
     }
   }
@@ -373,36 +380,44 @@ function extractDestination(text: string): string | undefined {
  * Must appear after origin/destination info to avoid picking up wrong date
  */
 function extractDeliveryDate(text: string): string | undefined {
-  // Try "MM.DD Y" format (dot separator) - appears after ORIGIN section
+  // Format 1: Look for "DELIVERY\nDATE" followed by date or look for date with P-code
+  // Pattern: "11 19 5 P68" or "12 12 5 P62" or "12 125 P62"
+  let match = text.match(/DELIVERY\s*\n\s*DATE\s*\n[^\n]*\n([\d\s]+)\s+P\d+/i);
+  if (match) {
+    // Clean up the date string - sometimes "12 125" should be "12 12 5"
+    let dateStr = match[1].trim();
+    // Fix missing space: "12 125" -> "12 12 5"
+    dateStr = dateStr.replace(/(\d{1,2})\s+(\d{3})/, '$1 $2[0] $2[1]');
+    // Extract actual date components
+    const dateMatch = dateStr.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})/);
+    if (dateMatch) {
+      return parseDate(`${dateMatch[1]} ${dateMatch[2]} ${dateMatch[3]}`);
+    }
+  }
+  
+  // Format 2: Look for date in CUT*RATE line ("11 19 5 P68")
+  match = text.match(/CUT\*\s*\n\s*RATE\s*\n([\d\s]+)\s+P\d+/i);
+  if (match) {
+    const dateStr = match[1].trim();
+    const dateMatch = dateStr.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})/);
+    if (dateMatch) {
+      return parseDate(`${dateMatch[1]} ${dateMatch[2]} ${dateMatch[3]}`);
+    }
+  }
+  
+  // Format 3: "MM.DD Y" format (dot separator)
   const dotMatch = text.match(/ORIGIN[^\n]*\n[\s\S]*?([A-Z]{2})\s*\n?(\d{1,2})\.(\d{1,2})\s+(\d{1})/i);
   if (dotMatch) {
-    const month = dotMatch[2];
-    const day = dotMatch[3];
-    const year = dotMatch[4];
-    return parseDate(`${month} ${day} ${year}`);
+    return parseDate(`${dotMatch[2]} ${dotMatch[3]} ${dotMatch[4]}`);
   }
   
-  // Try "MM DD Y" format on line with origin/destination
-  // Look for pattern after "ORIGIN" header: "CITY ST CITY ST DD DD Y"
+  // Format 4: "MM DD Y" on line with origin/destination
   const originSectionMatch = text.match(/ORIGIN[^\n]*\n[^\n]*\n([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1})/);
   if (originSectionMatch) {
-    const month = originSectionMatch[5];
-    const day = originSectionMatch[6];
-    const year = originSectionMatch[7];
-    return parseDate(`${month} ${day} ${year}`);
+    return parseDate(`${originSectionMatch[5]} ${originSectionMatch[6]} ${originSectionMatch[7]}`);
   }
   
-  // Try "MM DD Y" format (space separator, after state abbreviation)
-  // But NOT after "COD" which appears earlier in the document
-  const spaceMatch = text.match(/ORIGIN[^\n]*\n[^\n]*\n[^\n]*([A-Z]{2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1})\s+/i);
-  if (spaceMatch) {
-    const month = spaceMatch[2];
-    const day = spaceMatch[3];
-    const year = spaceMatch[4];
-    return parseDate(`${month} ${day} ${year}`);
-  }
-  
-  // Fallback: DELIVERY DATE header format
+  // Format 5: DELIVERY DATE header format
   const headerMatch = text.match(/DELIVERY\s*\n?DATE\s*\n(\d+\s+\d+\s+\d+)/i);
   if (headerMatch) {
     return parseDate(headerMatch[1]);
