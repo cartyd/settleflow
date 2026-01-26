@@ -257,6 +257,63 @@ a:focus {
   margin: 5px 0;
 }
 
+/* Remittance Details Card */
+.remittance-details-card {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 30px;
+  border-left: 4px solid #0066cc;
+}
+
+.remittance-details-card h3 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.remittance-details-card h3::before {
+  content: "📄";
+  font-size: 20px;
+}
+
+.remittance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 15px;
+}
+
+.remittance-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.remittance-label {
+  font-size: 12px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.remittance-value {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+
+.remittance-amount {
+  color: #0066cc;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+}
+
 /* Financial Summary */
 .financial-summary {
   margin-bottom: 40px;

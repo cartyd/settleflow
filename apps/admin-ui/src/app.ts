@@ -60,6 +60,15 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
           }
           return [];
         });
+
+        // Add json_parse filter
+        env.addFilter('json_parse', (str: string) => {
+          try {
+            return typeof str === 'string' ? JSON.parse(str) : str;
+          } catch (e) {
+            return {};
+          }
+        });
       },
     },
   });

@@ -63,6 +63,47 @@
     {% endif %}
 </div>
 
+{# Remittance Details Card #}
+{% if batch.lineItems.remittance and batch.lineItems.remittance.length > 0 %}
+    {% set remittance = batch.lineItems.remittance[0] %}
+    {% set remittanceData = remittance.rawData | json_parse if remittance.rawData else {} %}
+    <div class="remittance-details-card">
+        <h3>Remittance Details</h3>
+        <div class="remittance-grid">
+            <div class="remittance-item">
+                <span class="remittance-label">Check Number:</span>
+                <span class="remittance-value">{{ remittanceData.checkNumber or '-' }}</span>
+            </div>
+            <div class="remittance-item">
+                <span class="remittance-label">Check Date:</span>
+                <span class="remittance-value">{{ remittanceData.checkDate | date('MMM D, YYYY') if remittanceData.checkDate else '-' }}</span>
+            </div>
+            <div class="remittance-item">
+                <span class="remittance-label">Check Amount:</span>
+                <span class="remittance-value remittance-amount">${{ remittanceData.checkAmount | number(2) if remittanceData.checkAmount else '0.00' }}</span>
+            </div>
+            <div class="remittance-item">
+                <span class="remittance-label">Payee:</span>
+                <span class="remittance-value">{{ remittanceData.payeeName or '-' }}</span>
+            </div>
+            <div class="remittance-item">
+                <span class="remittance-label">Account Number:</span>
+                <span class="remittance-value">{{ remittanceData.accountNumber or '-' }}</span>
+            </div>
+            <div class="remittance-item">
+                <span class="remittance-label">Payment Method:</span>
+                <span class="remittance-value">{{ remittanceData.paymentMethod or '-' }}</span>
+            </div>
+            {% if remittanceData.bankAccount %}
+            <div class="remittance-item">
+                <span class="remittance-label">Bank Account:</span>
+                <span class="remittance-value">{{ remittanceData.bankAccount }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+{% endif %}
+
 {# Financial Summary - Enhanced with 4 metrics #}
 <div class="financial-summary">
     <h2>Financial Summary</h2>
