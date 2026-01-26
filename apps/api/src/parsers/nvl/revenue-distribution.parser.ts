@@ -115,13 +115,20 @@ function parseDate(dateStr: string | undefined): string | undefined {
  */
 function extractServicePerformedBy(text: string): { agent?: string; driver?: string } {
   // Format 1: "AGENT / LASTNAME,\nFIRSTNAME" (driver name split across lines after slash)
-  // Example: "CICEROS' MOVING & ST/ BIDETTI,\nDONNY"
-  let match = text.match(/FOR\s+SERVICE\s+PERFORMED\s+BY\s*\n\s*([^/]+)\/\s*([A-Z]+),\s*\n\s*([A-Z]+)/i);
+  // Example: "CICEROS' MOVING & ST/ BIDETTI,\nMOVING\nDONNY" (skip intermediate lines)
+  let match = text.match(/FOR\s+SERVICE\s+PERFORMED\s+BY\s*\n\s*([^/]+)\/\s*([A-Z]+),\s*\n(?:[^\n]*\n)*?\s*([A-Z]+)(?=\s*\n[&S]|\s*\n\s*SHIPPER|\s*\n\s*BILL)/i);
   if (match) {
-    return {
-      agent: match[1].trim(),
-      driver: `${match[2].trim()}, ${match[3].trim()}`
-    };
+    // Make sure the captured name is a first name, not a word like "MOVING"
+    const lastName = match[2].trim();
+    const potentialFirstName = match[3].trim();
+    
+    // Filter out common non-name words
+    if (!potentialFirstName.match(/^(MOVING|STORAGE|CARE|SERVICE|VAN|LINES)$/i)) {
+      return {
+        agent: match[1].trim(),
+        driver: `${lastName}, ${potentialFirstName}`
+      };
+    }
   }
   
   // Format 2: "AGENT / DRIVER" (complete driver name on one line)
@@ -329,8 +336,8 @@ function extractDestination(text: string): string | undefined {
   const destIdx = lines.findIndex(l => l.trim().startsWith('DESTINATION'));
   
   if (destIdx >= 0) {
-    // Look in the next few lines after DESTINATION header
-    for (let i = destIdx + 1; i < Math.min(destIdx + 5, lines.length); i++) {
+    // Look in the next several lines after DESTINATION header
+    for (let i = destIdx + 1; i < Math.min(destIdx + 10, lines.length); i++) {
       const city = lines[i].trim();
       if (!city || city.length < 2) continue;
       
@@ -339,11 +346,16 @@ function extractDestination(text: string): string | undefined {
       
       // Check if this looks like a city name (all caps letters/spaces)
       if (city.match(/^[A-Z\s]+$/)) {
-        // Look for state in next few lines (skip ZIP, WEIGHT, etc.)
-        for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
-          const state = lines[j].trim();
-          if (state.match(/^[A-Z]{2}$/)) {
-            return `${city}, ${state}`;
+        // Look for state in next several lines (may be after ZIP, WEIGHT, MILES)
+        for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+          const line = lines[j].trim();
+          // Check if this is a 2-letter state code
+          if (line.match(/^[A-Z]{2}$/) && !line.match(/^(MA|MD|OH|TX|CA|NY|FL|IL|PA|NJ)$/)) {
+            // Make sure it's actually a state by checking common ones
+            continue;
+          }
+          if (line.match(/^(MA|MD|OH|TX|CA|NY|FL|IL|PA|NJ|VA|NC|SC|GA|AL|MS|LA|AR|TN|KY|WV|MI|IN|WI|MN|IA|MO|ND|SD|NE|KS|OK|MT|WY|CO|NM|AZ|UT|NV|ID|WA|OR|AK|HI|ME|NH|VT|RI|CT|DE|DC)$/)) {
+            return `${city}, ${line}`;
           }
         }
       }
@@ -380,18 +392,21 @@ function extractDestination(text: string): string | undefined {
  * Must appear after origin/destination info to avoid picking up wrong date
  */
 function extractDeliveryDate(text: string): string | undefined {
-  // Format 1: Look for "DELIVERY\nDATE" followed by date or look for date with P-code
-  // Pattern: "11 19 5 P68" or "12 12 5 P62" or "12 125 P62"
-  let match = text.match(/DELIVERY\s*\n\s*DATE\s*\n[^\n]*\n([\d\s]+)\s+P\d+/i);
+  // Format 1: Look for "DELIVERY\nDATE" followed by date with P-code
+  // Pattern: "11 19 5 P68" or "12 12 5 P62" 
+  let match = text.match(/DELIVERY\s*\n\s*DATE\s*[\s\S]{0,100}?([\d\s]+)\s+P\d+/i);
   if (match) {
-    // Clean up the date string - sometimes "12 125" should be "12 12 5"
-    let dateStr = match[1].trim();
-    // Fix missing space: "12 125" -> "12 12 5"
-    dateStr = dateStr.replace(/(\d{1,2})\s+(\d{3})/, '$1 $2[0] $2[1]');
-    // Extract actual date components
-    const dateMatch = dateStr.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})/);
+    // Extract actual date components - handle formats like "12 125" or "11 19 5"
+    const dateStr = match[1].trim();
+    // Try standard "MM DD Y" format first
+    let dateMatch = dateStr.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})/);
     if (dateMatch) {
       return parseDate(`${dateMatch[1]} ${dateMatch[2]} ${dateMatch[3]}`);
+    }
+    // Try malformed "MM DDY" format (missing space) like "12 125"
+    dateMatch = dateStr.match(/(\d{1,2})\s+(\d)(\d{2})/);
+    if (dateMatch) {
+      return parseDate(`${dateMatch[1]} ${dateMatch[2]}${dateMatch[3][0]} ${dateMatch[3][1]}`);
     }
   }
   
