@@ -126,9 +126,20 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send(details);
       } catch (error) {
         fastify.log.error(error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
+        // Check if this is a parsing failure error
+        if (errorMessage.includes('failed to parse and cannot be viewed')) {
+          return reply.status(422).send({
+            error: 'Batch parsing failed',
+            message: errorMessage,
+            statusCode: 422,
+          });
+        }
+        
         return reply.status(500).send({
           error: 'Failed to get batch details',
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage,
         });
       }
     },

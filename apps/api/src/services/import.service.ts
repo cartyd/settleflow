@@ -4,6 +4,7 @@ import { processPdfBufferWithGemini, GeminiOcrConfig, PageText } from './gemini-
 import { detectDocumentType } from '../parsers/nvl/detectDocumentType.js';
 import { logger } from '../utils/sentry.js';
 import { loadConfig } from '@settleflow/shared-config';
+import { parseImportFile } from './import-line.service.js';
 
 export interface ProcessPdfResult {
   importId: string;
@@ -106,10 +107,66 @@ export async function processUploadedPdf(
     totalPages: pages.length,
   });
 
+  // Automatically parse documents after import
+  console.log(`[IMPORT] Starting automatic parsing for ${importFile.id}`);
+  let linesProcessed = 0;
+  let parsingStatus: 'COMPLETED' | 'PARTIAL' | 'FAILED' = 'COMPLETED';
+  let parsingErrors: string[] = [];
+
+  try {
+    const parseResult = await parseImportFile(prisma, importFile.id);
+    linesProcessed = parseResult.totalLinesCreated;
+    parsingErrors = parseResult.errors;
+
+    // Determine parsing status based on results
+    if (linesProcessed === 0 && parsingErrors.length > 0) {
+      // No data extracted and has errors = FAILED
+      parsingStatus = 'FAILED';
+    } else if (parsingErrors.length > 0) {
+      // Has data but also has errors = PARTIAL
+      parsingStatus = 'PARTIAL';
+    } else {
+      // No errors = COMPLETED
+      parsingStatus = 'COMPLETED';
+    }
+
+    console.log(`[IMPORT] Parsing completed with status: ${parsingStatus}, lines: ${linesProcessed}, errors: ${parsingErrors.length}`);
+  } catch (error) {
+    // Critical parsing failure
+    parsingStatus = 'FAILED';
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    parsingErrors = [`Critical parsing error: ${errorMessage}`];
+    console.error(`[IMPORT] Parsing failed critically:`, error);
+    logger.error('Document parsing failed', {
+      importFileId: importFile.id,
+      error: errorMessage,
+    });
+  }
+
+  // Update import file with parsing status
+  await prisma.importFile.update({
+    where: { id: importFile.id },
+    data: {
+      parsingStatus,
+      parsingCompletedAt: new Date(),
+      parsingErrors: parsingErrors.length > 0 ? JSON.stringify(parsingErrors) : null,
+    },
+  });
+
+  logger.info('File import and parsing completed', {
+    importFileId: importFile.id,
+    batchId,
+    fileName,
+    documentsDetected: documentsCreated,
+    linesProcessed,
+    parsingStatus,
+    errorCount: parsingErrors.length,
+  });
+
   return {
     importId: importFile.id,
     documentsDetected: documentsCreated,
-    linesProcessed: 0, // Will be updated when we parse the documents
+    linesProcessed,
   };
 }
 

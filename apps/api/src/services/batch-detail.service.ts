@@ -71,6 +71,11 @@ export interface BatchDetailData {
   parseErrors: string[];
   importFileId: string; // For reset/re-parse functionality
 
+  // Parsing status
+  parsingStatus: 'COMPLETED' | 'PARTIAL' | 'FAILED';
+  parsingCompletedAt: string | null;
+  parsingErrors: string[];
+
   // Financial Summary
   totalRevenue: number;
   totalAdvances: number;
@@ -147,6 +152,15 @@ export async function getBatchDetailData(
     throw new Error(`No import file found for batch ${batchId}`);
   }
 
+  // Validate parsing status - don't allow viewing FAILED batches
+  if (importFile.parsingStatus === 'FAILED') {
+    const errors = importFile.parsingErrors ? JSON.parse(importFile.parsingErrors) : [];
+    throw new Error(
+      `This batch failed to parse and cannot be viewed. ` +
+      `Errors: ${errors.join('; ') || 'Unknown parsing error'}`
+    );
+  }
+
   const documents = importFile.importDocuments;
   const pageCount = documents.length;
   const lastParsedAt =
@@ -160,6 +174,11 @@ export async function getBatchDetailData(
   const parseErrors = documents
     .filter((d) => !d.parsedAt && d.documentType !== 'UNKNOWN')
     .map((d) => `Page ${d.pageNumber} (${d.documentType}) not parsed`);
+
+  // Parse parsingErrors from JSON
+  const parsingErrors = importFile.parsingErrors 
+    ? JSON.parse(importFile.parsingErrors) 
+    : [];
 
   // Flatten all import lines with document context
   const allLines = documents.flatMap((doc) =>
@@ -222,6 +241,11 @@ export async function getBatchDetailData(
     lastParsedAt: lastParsedAt?.toISOString() || null,
     parseErrors,
     importFileId: importFile.id,
+
+    // Parsing status
+    parsingStatus: importFile.parsingStatus as 'COMPLETED' | 'PARTIAL' | 'FAILED',
+    parsingCompletedAt: importFile.parsingCompletedAt?.toISOString() || null,
+    parsingErrors,
 
     totalRevenue,
     totalAdvances,

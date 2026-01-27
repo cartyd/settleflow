@@ -71,13 +71,16 @@ model SettlementBatch {
 }
 
 model ImportFile {
-  id          String    @id @default(uuid())
-  batchId     String
-  fileName    String
-  fileSize    Int
-  uploadedAt  DateTime  @default(now())
-  approvedAt  DateTime?
-  approvedBy  String?
+  id                  String    @id @default(uuid())
+  batchId             String
+  fileName            String
+  fileSize            Int
+  uploadedAt          DateTime  @default(now())
+  approvedAt          DateTime?
+  approvedBy          String?
+  parsingStatus       String    @default("COMPLETED") // COMPLETED | PARTIAL | FAILED
+  parsingCompletedAt  DateTime?
+  parsingErrors       String?   // JSON array of error messages
 
   batch             SettlementBatch   @relation(fields: [batchId], references: [id])
   importDocuments   ImportDocument[]

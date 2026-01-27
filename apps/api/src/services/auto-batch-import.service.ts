@@ -7,6 +7,8 @@ import { SettlementStatus } from '@settleflow/shared-types';
 import { loadConfig } from '@settleflow/shared-config';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
+import { parseImportFile } from './import-line.service.js';
+import { logger } from '../utils/sentry.js';
 
 export interface AutoBatchImportResult {
   batchId: string;
@@ -202,6 +204,46 @@ export async function uploadPdfAndCreateBatch(
 
     documentsCreated++;
   }
+
+  // Step 9: Automatically parse documents
+  console.log(`[AUTO-BATCH] Starting automatic parsing for ${importFile.id}`);
+  let parsingStatus: 'COMPLETED' | 'PARTIAL' | 'FAILED' = 'COMPLETED';
+  let parsingErrors: string[] = [];
+
+  try {
+    const parseResult = await parseImportFile(prisma, importFile.id);
+    parsingErrors = parseResult.errors;
+
+    // Determine parsing status
+    if (parseResult.totalLinesCreated === 0 && parsingErrors.length > 0) {
+      parsingStatus = 'FAILED';
+    } else if (parsingErrors.length > 0) {
+      parsingStatus = 'PARTIAL';
+    } else {
+      parsingStatus = 'COMPLETED';
+    }
+
+    console.log(`[AUTO-BATCH] Parsing completed with status: ${parsingStatus}, lines: ${parseResult.totalLinesCreated}, errors: ${parsingErrors.length}`);
+  } catch (error) {
+    parsingStatus = 'FAILED';
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    parsingErrors = [`Critical parsing error: ${errorMessage}`];
+    console.error(`[AUTO-BATCH] Parsing failed critically:`, error);
+    logger.error('Auto-batch parsing failed', {
+      importFileId: importFile.id,
+      error: errorMessage,
+    });
+  }
+
+  // Update import file with parsing status
+  await prisma.importFile.update({
+    where: { id: importFile.id },
+    data: {
+      parsingStatus,
+      parsingCompletedAt: new Date(),
+      parsingErrors: parsingErrors.length > 0 ? JSON.stringify(parsingErrors) : null,
+    },
+  });
 
   return {
     batchId: batch.id,

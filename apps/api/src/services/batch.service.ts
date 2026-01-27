@@ -53,7 +53,11 @@ export async function getBatches(
         agency: true,
         importFiles: {
           take: 1,
-          select: { id: true },
+          select: { 
+            id: true, 
+            parsingStatus: true,
+            parsingCompletedAt: true,
+          },
         },
       },
       take: filters.limit,
@@ -76,6 +80,8 @@ export async function getBatches(
       netAmount: b.netAmount,
       createdAt: b.createdAt.toISOString(),
       importFileId: b.importFiles[0]?.id || null,
+      parsingStatus: b.importFiles[0]?.parsingStatus as 'COMPLETED' | 'PARTIAL' | 'FAILED' | null,
+      parsingCompletedAt: b.importFiles[0]?.parsingCompletedAt?.toISOString() || null,
     })),
     total,
   };
