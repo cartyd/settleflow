@@ -11,7 +11,7 @@ import { parsePostingTicket } from '../parsers/nvl/posting-ticket.parser.js';
  * Extract plain text from rawText field, handling both plain text and JSON formats.
  * Some older documents have JSON format from Gemini: [{"page_number": 1, "text_content": "..."}]
  */
-function extractPlainText(rawText: string): string {
+export function extractPlainText(rawText: string): string {
   // Remove markdown code fences if present (Gemini sometimes wraps JSON in ```json)
   let cleanedText = rawText;
   if (cleanedText.trimStart().startsWith('```')) {

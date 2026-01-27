@@ -3,11 +3,12 @@ import { processPdfBufferWithOcr, OcrConfig } from './ocr.service.js';
 import { processPdfBufferWithGemini, GeminiOcrConfig, PageText } from './gemini-ocr.service.js';
 import { detectDocumentType } from '../parsers/nvl/detectDocumentType.js';
 import { parseRemittance, BatchMetadata } from '../parsers/nvl/remittance.parser.js';
+import { extractBatchMetadata as extractBatchMetadataFromSettlement } from '../parsers/nvl/settlement-detail.parser.js';
 import { SettlementStatus } from '@settleflow/shared-types';
 import { loadConfig } from '@settleflow/shared-config';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
-import { parseImportFile } from './import-line.service.js';
+import { parseImportFile, extractPlainText } from './import-line.service.js';
 import { logger } from '../utils/sentry.js';
 
 export interface AutoBatchImportResult {
@@ -54,8 +55,9 @@ export async function uploadPdfAndCreateBatch(
     throw new Error('No pages extracted from PDF');
   }
 
-  // Step 2: Find and parse remittance page
+  // Step 2: Find and parse remittance page (or settlement detail as fallback)
   let remittanceMetadata: BatchMetadata | undefined;
+  let settlementDetailPages: Array<{ pageNumber: number; text: string }> = [];
   
   console.log(`[AUTO-BATCH] Processing ${pages.length} pages from OCR`);
   
@@ -65,12 +67,14 @@ export async function uploadPdfAndCreateBatch(
       continue;
     }
 
-    const docType = detectDocumentType(page.text);
-    console.log(`[AUTO-BATCH] Page ${page.pageNumber}: Detected as ${docType}, text length: ${page.text.length}`);
+    // Extract plain text in case it's JSON formatted from Gemini
+    const plainText = extractPlainText(page.text);
+    const docType = detectDocumentType(plainText);
+    console.log(`[AUTO-BATCH] Page ${page.pageNumber}: Detected as ${docType}, text length: ${plainText.length}`);
     
     if (docType === 'REMITTANCE') {
       console.log(`[AUTO-BATCH] Attempting to parse remittance from page ${page.pageNumber}`);
-      const parseResult = parseRemittance(page.text);
+      const parseResult = parseRemittance(plainText);
       
       if (parseResult.metadata) {
         console.log(`[AUTO-BATCH] Successfully parsed remittance metadata from page ${page.pageNumber}`);
@@ -80,18 +84,37 @@ export async function uploadPdfAndCreateBatch(
         console.log(`[AUTO-BATCH] Page ${page.pageNumber} detected as REMITTANCE but parsing failed`);
         console.log(`[AUTO-BATCH] Parse errors:`, parseResult.errors);
       }
+    } else if (docType === 'SETTLEMENT_DETAIL') {
+      // Store settlement detail pages as fallback
+      settlementDetailPages.push({ pageNumber: page.pageNumber, text: plainText });
+    }
+  }
+
+  // Fallback: Try to extract metadata from SETTLEMENT_DETAIL if no REMITTANCE found
+  if (!remittanceMetadata && settlementDetailPages.length > 0) {
+    console.log(`[AUTO-BATCH] No REMITTANCE page found, attempting to extract metadata from SETTLEMENT_DETAIL pages`);
+    
+    for (const sdPage of settlementDetailPages) {
+      const metadata = extractBatchMetadataFromSettlement(sdPage.text);
+      if (metadata) {
+        console.log(`[AUTO-BATCH] Successfully extracted metadata from SETTLEMENT_DETAIL page ${sdPage.pageNumber}`);
+        remittanceMetadata = metadata;
+        break;
+      }
     }
   }
 
   if (!remittanceMetadata) {
-    console.error('[AUTO-BATCH] Failed to parse remittance from any page');
+    console.error('[AUTO-BATCH] Failed to parse batch metadata from any page');
     console.error('[AUTO-BATCH] Pages detected:');
     for (const page of pages) {
-      const docType = detectDocumentType(page.text);
-      console.error(`  Page ${page.pageNumber}: ${docType} (text length: ${page.text?.length || 0})`);
+      const plainText = extractPlainText(page.text);
+      const docType = detectDocumentType(plainText);
+      console.error(`  Page ${page.pageNumber}: ${docType} (text length: ${plainText?.length || 0})`);
     }
-    console.error('[AUTO-BATCH] First page text sample:', pages[0]?.text?.substring(0, 800));
-    throw new Error('Could not extract batch metadata from remittance page. Please ensure the PDF contains a valid NVL remittance page.');
+    const firstPagePlain = extractPlainText(pages[0]?.text || '');
+    console.error('[AUTO-BATCH] First page text sample:', firstPagePlain.substring(0, 800));
+    throw new Error('Could not extract batch metadata from remittance or settlement detail page. Please ensure the PDF contains valid NVL settlement documents.');
   }
 
   // Validate essential metadata

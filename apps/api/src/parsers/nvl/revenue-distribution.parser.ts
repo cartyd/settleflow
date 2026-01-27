@@ -235,24 +235,36 @@ function extractBillOfLading(text: string): string | undefined {
  * May appear with or without forward slash
  */
 function extractShipperName(text: string): string | undefined {
-  // Format 1: "356985/357175 BELLI COD" or "356985/357175\nBELLI"
-  let match = text.match(/\d{6}\/\d{6}\s*\n?\s*([A-ZÀ-ÿ]+)\s+(?:COD|GOV|TRN|ORIGIN)/i);
+  // Format 1: After "SHIPPER NAME" header on next line
+  // Pattern: "SHIPPER NAME\nTAYLOR" or "SHIPPER NAME\nHANCOCK"
+  let match = text.match(/SHIPPER\s+NAME\s*\n\s*([A-ZÀ-ÿ\s'-]+?)\s*(?:\n|$)/i);
+  if (match) {
+    const name = match[1].trim();
+    // Filter out common non-name words and section headers
+    if (name && !name.match(/^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|DESTINATION|ORIGIN|INTER|REFERENCE|ZIP|WEIGHT|MILES)$/i) && name.length > 1) {
+      return name;
+    }
+  }
+  
+  // Format 2: "356985/357175 BELLI COD" or "356985/357175\nBELLI"
+  match = text.match(/\d{6}\/\d{6}\s*\n?\s*([A-ZÀ-ÿ]+)\s+(?:COD|GOV|TRN|ORIGIN)/i);
   if (match) {
     return match[1].trim();
   }
   
-  // Format 2: "357236/\nHARRIS" or "357236/ HARRIS"
+  // Format 3: "357236/\nHARRIS" or "357236/ HARRIS"
   match = text.match(/\d{6}\/\s*\n?\s*([A-ZÀ-ÿ]+)\s+(?:COD|GOV|TRN|ORIGIN)/i);
   if (match) {
     return match[1].trim();
   }
   
-  // Format 3: After SHIPPER NAME header and before ORIGIN
-  const headerMatch = text.match(/SHIPPER\s+NAME[\s\S]{0,100}?\n([A-ZÀ-ÿ\s']+?)\s*\n+ORIGIN/i);
-  if (headerMatch) {
-    const name = headerMatch[1].trim();
+  // Format 4: After B/L number (no slash) and before ORIGIN
+  // Pattern: "356833\nTAYLOR\nORIGIN"
+  match = text.match(/\d{6}\s*\n\s*([A-ZÀ-ÿ\s'-]+?)\s*\n\s*ORIGIN/i);
+  if (match) {
+    const name = match[1].trim();
     // Filter out common non-name words
-    if (name && !name.match(/^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL)$/i)) {
+    if (name && !name.match(/^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|SHIPPER|NAME)$/i)) {
       return name;
     }
   }
@@ -262,13 +274,28 @@ function extractShipperName(text: string): string | undefined {
 
 /**
  * Extract entry date (NVL ENTRY)
- * Pattern: "NVL ENTRY" followed by date
+ * Pattern: "NVL ENTRY" followed by DATE, then type (COD/GOV), then date value
+ * Example: "NVL ENTRY\nDATE\nCOD\n12 01 5"
  */
 function extractEntryDate(text: string): string | undefined {
-  const match = text.match(/NVL\s+ENTRY\s*\n[^\n]*\n(\d+)/i);
+  // Format 1: "NVL ENTRY\nDATE\nCOD\n12 01 5" or "NVL ENTRY\nDATE\nGOV\n11 29 5"
+  let match = text.match(/NVL\s+ENTRY\s*\n\s*DATE\s*\n\s*(?:COD|GOV|TRN)\s*\n\s*([\d\s]+)/i);
+  if (match) {
+    return parseDate(match[1].trim());
+  }
+  
+  // Format 2: Original format "NVL ENTRY\n...\n123456" (6-digit date)
+  match = text.match(/NVL\s+ENTRY\s*\n[^\n]*\n(\d{6})/i);
   if (match) {
     return parseDate(match[1]);
   }
+  
+  // Format 3: "NVL ENTRY\nDATE\n12 01 5" (without type)
+  match = text.match(/NVL\s+ENTRY\s*\n\s*DATE\s*\n\s*([\d\s]+)/i);
+  if (match) {
+    return parseDate(match[1].trim());
+  }
+  
   return undefined;
 }
 
@@ -277,6 +304,7 @@ function extractEntryDate(text: string): string | undefined {
  * Pattern: Can be standalone line, or on same line as destination
  * Example 1: "WESTBOROUGH MA"
  * Example 2: "MISSOURI C TX GERMANTOWN MD" (extract first city+state)
+ * Example 3: "ORIGIN\nARNOLD\nZIP...\nMO" (city right after ORIGIN, state comes later)
  */
 function extractOrigin(text: string): string | undefined {
   // Split into lines and find the origin line
@@ -284,37 +312,52 @@ function extractOrigin(text: string): string | undefined {
   const originIdx = lines.findIndex(l => l.trim().startsWith('ORIGIN'));
   
   if (originIdx >= 0) {
-    // Look in the next 10 lines for origin data
-    for (let i = originIdx + 1; i < Math.min(originIdx + 10, lines.length); i++) {
+    let city: string | undefined;
+    let state: string | undefined;
+    
+    // Look in the next 15 lines for origin data (state might come after ZIP)
+    for (let i = originIdx + 1; i < Math.min(originIdx + 15, lines.length); i++) {
       const line = lines[i].trim();
       
-      // Skip empty lines and headers
-      if (!line || line.match(/^(ZIP|INTER|REFERENCE|DESTINATION)/i)) continue;
+      // Skip empty lines
+      if (!line) continue;
       
-      // Format 1: "MISSOURI CTX" (missing space - handle concatenated city+state)
-      const noSpaceMatch = line.match(/^([A-Z][A-Z\s]+?)([A-Z]{2})$/);
-      if (noSpaceMatch) {
-        return `${noSpaceMatch[1].trim()}, ${noSpaceMatch[2]}`;
+      // Stop if we hit destination or shipper sections
+      if (line.match(/^(DESTINATION|SHIPPER)/i)) break;
+      
+      // Check if this is a state code (comes after ZIP usually)
+      if (!state && line.match(/^(MA|MD|OH|TX|CA|NY|FL|IL|PA|NJ|VA|NC|SC|GA|AL|MS|LA|AR|TN|KY|WV|MI|IN|WI|MN|IA|MO|ND|SD|NE|KS|OK|MT|WY|CO|NM|AZ|UT|NV|ID|WA|OR|AK|HI|ME|NH|VT|RI|CT|DE|DC)$/)) {
+        state = line;
+        if (city) {
+          return `${city}, ${state}`;
+        }
+        continue;
       }
       
-      // Format 2: Both origin and destination on same line with date
-      // Pattern: "CITY ST CITY ST DD DD D..." or "CITY C ST CITY ST DD DD D..."
+      // Check if this is a city (comes right after ORIGIN, before ZIP)
+      if (!city && line.match(/^[A-Z][A-Z\s]+$/) && !line.match(/^(ZIP|INTER|REFERENCE|DESTINATION|WEIGHT|MILES|SIT|PAY|SHIPPER|NAME)/i)) {
+        city = line;
+        if (state) {
+          return `${city}, ${state}`;
+        }
+        continue;
+      }
+      
+      // Format: "CITY ST" on same line
+      const cityState = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})$/);
+      if (cityState && cityState[2].match(/^(MA|MD|OH|TX|CA|NY|FL|IL|PA|NJ|VA|NC|SC|GA|AL|MS|LA|AR|TN|KY|WV|MI|IN|WI|MN|IA|MO|ND|SD|NE|KS|OK|MT|WY|CO|NM|AZ|UT|NV|ID|WA|OR|AK|HI|ME|NH|VT|RI|CT|DE|DC)$/)) {
+        return `${cityState[1].trim()}, ${cityState[2]}`;
+      }
+      
+      // Format: Both origin and destination on same line
       const sameLineWithDate = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+\d/);
       if (sameLineWithDate) {
         return `${sameLineWithDate[1].trim()}, ${sameLineWithDate[2]}`;
       }
       
-      // Format 3: Both origin and destination on same line without date
-      // Pattern: "CITY ST CITY ST" or "CITY C ST CITY ST"
       const sameLine = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+([A-Z][A-Z\s]+?)\s+([A-Z]{2})$/);
       if (sameLine) {
         return `${sameLine[1].trim()}, ${sameLine[2]}`;
-      }
-      
-      // Format 4: Standalone "CITY ST" or "CITY STATE" line
-      const standalone = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})$/);
-      if (standalone && standalone[2].length === 2) {
-        return `${standalone[1].trim()}, ${standalone[2]}`;
       }
     }
   }
@@ -327,6 +370,7 @@ function extractOrigin(text: string): string | undefined {
  * Pattern: Can be on same line as origin, or on separate lines
  * Example 1: "MISSOURI C TX GERMANTOWN MD" (both on same line)
  * Example 2: Line "AKRON" followed by line "OH" (separate lines)
+ * Example 3: "PRESCOTT V AZ" (city and state on same line with space before state)
  */
 function extractDestination(text: string): string | undefined {
   // Split into lines
@@ -338,24 +382,26 @@ function extractDestination(text: string): string | undefined {
   if (destIdx >= 0) {
     // Look in the next several lines after DESTINATION header
     for (let i = destIdx + 1; i < Math.min(destIdx + 10, lines.length); i++) {
-      const city = lines[i].trim();
-      if (!city || city.length < 2) continue;
+      const line = lines[i].trim();
+      if (!line || line.length < 2) continue;
       
       // Skip non-city lines (ZIP, WEIGHT, etc.)
-      if (city.match(/^(ZIP|WEIGHT|MILES|SIT|PAY|INTER)/i)) continue;
+      if (line.match(/^(ZIP|WEIGHT|MILES|SIT|PAY|INTER)/i)) continue;
       
-      // Check if this looks like a city name (all caps letters/spaces)
-      if (city.match(/^[A-Z\s]+$/)) {
+      // Format 1: "PRESCOTT V AZ" (city with abbreviated word and state on same line)
+      const cityStateMatch = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})$/);
+      if (cityStateMatch && cityStateMatch[2].match(/^(MA|MD|OH|TX|CA|NY|FL|IL|PA|NJ|VA|NC|SC|GA|AL|MS|LA|AR|TN|KY|WV|MI|IN|WI|MN|IA|MO|ND|SD|NE|KS|OK|MT|WY|CO|NM|AZ|UT|NV|ID|WA|OR|AK|HI|ME|NH|VT|RI|CT|DE|DC)$/)) {
+        return `${cityStateMatch[1].trim()}, ${cityStateMatch[2]}`;
+      }
+      
+      // Format 2: City name alone - check if this looks like a city name (all caps letters/spaces)
+      if (line.match(/^[A-Z\s]+$/)) {
         // Look for state in next several lines (may be after ZIP, WEIGHT, MILES)
         for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
-          const line = lines[j].trim();
+          const stateLine = lines[j].trim();
           // Check if this is a 2-letter state code
-          if (line.match(/^[A-Z]{2}$/) && !line.match(/^(MA|MD|OH|TX|CA|NY|FL|IL|PA|NJ)$/)) {
-            // Make sure it's actually a state by checking common ones
-            continue;
-          }
-          if (line.match(/^(MA|MD|OH|TX|CA|NY|FL|IL|PA|NJ|VA|NC|SC|GA|AL|MS|LA|AR|TN|KY|WV|MI|IN|WI|MN|IA|MO|ND|SD|NE|KS|OK|MT|WY|CO|NM|AZ|UT|NV|ID|WA|OR|AK|HI|ME|NH|VT|RI|CT|DE|DC)$/)) {
-            return `${city}, ${line}`;
+          if (stateLine.match(/^(MA|MD|OH|TX|CA|NY|FL|IL|PA|NJ|VA|NC|SC|GA|AL|MS|LA|AR|TN|KY|WV|MI|IN|WI|MN|IA|MO|ND|SD|NE|KS|OK|MT|WY|CO|NM|AZ|UT|NV|ID|WA|OR|AK|HI|ME|NH|VT|RI|CT|DE|DC)$/)) {
+            return `${line}, ${stateLine}`;
           }
         }
       }
@@ -410,7 +456,18 @@ function extractDeliveryDate(text: string): string | undefined {
     }
   }
   
-  // Format 2: Look for date in CUT*RATE line ("11 19 5 P68")
+  // Format 2: Look for date in CUT*RATE section ("11 19 5 P68")
+  // Pattern: "CUT*\nRATE\nBILLING\nRATE\nTARIFF\n12 1 5 P62"
+  match = text.match(/CUT\*[\s\S]{0,100}?TARIFF\s*\n\s*([\d\s]+)\s+P\d+/i);
+  if (match) {
+    const dateStr = match[1].trim();
+    const dateMatch = dateStr.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})/);
+    if (dateMatch) {
+      return parseDate(`${dateMatch[1]} ${dateMatch[2]} ${dateMatch[3]}`);
+    }
+  }
+  
+  // Format 2b: Simpler CUT*\nRATE\ndate pattern (fallback)
   match = text.match(/CUT\*\s*\n\s*RATE\s*\n([\d\s]+)\s+P\d+/i);
   if (match) {
     const dateStr = match[1].trim();

@@ -30,9 +30,19 @@ export interface SettlementDetailParseResult {
   accountName?: string;
   checkNumber?: string;
   checkDate?: string;
+  settlementDate?: string;
   lines: ParsedSettlementLine[];
   checkTotal?: number;
   errors: string[];
+}
+
+export interface SettlementBatchMetadata {
+  nvlPaymentRef: string;
+  agencyCode: string;
+  agencyName: string;
+  checkDate: string;
+  weekStartDate?: string;
+  weekEndDate?: string;
 }
 
 /**
@@ -179,6 +189,7 @@ function extractHeaderInfo(text: string): {
   checkNumber?: string;
   checkDate?: string;
   checkTotal?: number;
+  settlementDate?: string;
 } {
   const result: ReturnType<typeof extractHeaderInfo> = {};
 
@@ -207,6 +218,12 @@ function extractHeaderInfo(text: string): {
     result.checkDate = parseDate(dateMatch[1]);
   }
 
+  // Extract settlement date: "AS OF 12/03/25"
+  const settlementMatch = text.match(/AS\s+OF\s+(\d{2}\/\d{2}\/\d{2})/i);
+  if (settlementMatch) {
+    result.settlementDate = parseDate(settlementMatch[1]);
+  }
+
   // Extract check total: "<CHECK TOTAL> 3,330.53"
   const totalMatch = text.match(/CHECK\s+TOTAL[>\s]*(\d+,?\d*\.?\d+)/i);
   if (totalMatch) {
@@ -214,6 +231,45 @@ function extractHeaderInfo(text: string): {
   }
 
   return result;
+}
+
+/**
+ * Extract batch metadata from SETTLEMENT_DETAIL document
+ * Used as fallback when no REMITTANCE page is available
+ */
+export function extractBatchMetadata(ocrText: string): SettlementBatchMetadata | null {
+  const normalizedText = normalizeOcrText(ocrText, 'gemini');
+  const headerInfo = extractHeaderInfo(normalizedText);
+  
+  // Generate a payment reference from settlement date if no check number
+  let paymentRef = headerInfo.checkNumber;
+  if (!paymentRef && headerInfo.settlementDate) {
+    // Use settlement date as payment ref: 2025-12-03 -> 20251203
+    paymentRef = headerInfo.settlementDate.replace(/-/g, '');
+  }
+  
+  // Need at least account number and a date
+  if (!headerInfo.accountNumber || (!headerInfo.checkDate && !headerInfo.settlementDate)) {
+    return null;
+  }
+  
+  const checkDate = headerInfo.checkDate || headerInfo.settlementDate!;
+  
+  // Calculate week dates from check/settlement date
+  const dateObj = new Date(checkDate);
+  const weekEnd = new Date(dateObj);
+  weekEnd.setDate(weekEnd.getDate() - 7);
+  const weekStart = new Date(weekEnd);
+  weekStart.setDate(weekStart.getDate() - 6);
+  
+  return {
+    nvlPaymentRef: paymentRef || `SD-${headerInfo.accountNumber}-${checkDate}`,
+    agencyCode: headerInfo.accountNumber,
+    agencyName: headerInfo.accountName || 'Unknown Agency',
+    checkDate,
+    weekStartDate: weekStart.toISOString().split('T')[0],
+    weekEndDate: weekEnd.toISOString().split('T')[0],
+  };
 }
 
 /**
