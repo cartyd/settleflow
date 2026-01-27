@@ -8,6 +8,44 @@ import { parseAdvance } from '../parsers/nvl/advance.parser.js';
 import { parsePostingTicket } from '../parsers/nvl/posting-ticket.parser.js';
 
 /**
+ * Extract plain text from rawText field, handling both plain text and JSON formats.
+ * Some older documents have JSON format from Gemini: [{"page_number": 1, "text_content": "..."}]
+ */
+function extractPlainText(rawText: string): string {
+  // Remove markdown code fences if present (Gemini sometimes wraps JSON in ```json)
+  let cleanedText = rawText;
+  if (cleanedText.trimStart().startsWith('```')) {
+    cleanedText = cleanedText.replace(/^```[a-z]*\s*\n/, '').replace(/\n```\s*$/, '');
+  }
+  
+  // Try to parse as JSON first
+  if (cleanedText.trimStart().startsWith('[') || cleanedText.trimStart().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(cleanedText);
+      
+      // Handle array format: [{"page_number": 1, "text_content": "..."}]
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Concatenate all text_content fields
+        return parsed
+          .map(page => page.text_content || '')
+          .join('\n')
+          .trim();
+      }
+      
+      // Handle single object format: {"page_number": 1, "text_content": "..."}
+      if (parsed.text_content) {
+        return parsed.text_content.trim();
+      }
+    } catch (e) {
+      // Not valid JSON, treat as plain text
+    }
+  }
+  
+  // Return as-is if not JSON
+  return cleanedText;
+}
+
+/**
  * Parse ISO date string (YYYY-MM-DD) to Date in local timezone
  * Avoids UTC offset issues by explicitly using local timezone
  */
@@ -62,7 +100,8 @@ export async function parseAndSaveImportLines(
       // Settlement Detail is a VALIDATION document, not the primary source.
       // It contains a summary of transactions that should match the detail from
       // supporting documents (Revenue Distribution, Credit/Debit, etc.).
-      const parseResult = parseSettlementDetail(document.rawText);
+      const plainText = extractPlainText(document.rawText);
+      const parseResult = parseSettlementDetail(plainText);
       errors.push(...parseResult.errors);
 
       // Get all import lines already created from supporting documents in this batch
@@ -159,7 +198,8 @@ export async function parseAndSaveImportLines(
     case DocumentType.REVENUE_DISTRIBUTION: {
       // Revenue Distribution pages are the PRIMARY source for revenue transactions.
       // They contain full trip details: driver, route, service breakdown, net balance.
-      const parseResult = parseRevenueDistribution(document.rawText);
+      const plainText = extractPlainText(document.rawText);
+      const parseResult = parseRevenueDistribution(plainText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for revenue distribution
@@ -218,7 +258,8 @@ export async function parseAndSaveImportLines(
     case DocumentType.CREDIT_DEBIT: {
       // Credit/Debit Notification pages are the PRIMARY source for deduction transactions.
       // They contain full deduction details: transaction type, dates, amounts.
-      const parseResult = parseCreditDebit(document.rawText);
+      const plainText = extractPlainText(document.rawText);
+      const parseResult = parseCreditDebit(plainText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for credit/debit
@@ -275,7 +316,8 @@ export async function parseAndSaveImportLines(
     }
 
     case DocumentType.REMITTANCE: {
-      const parseResult = parseRemittance(document.rawText);
+      const plainText = extractPlainText(document.rawText);
+      const parseResult = parseRemittance(plainText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for remittance (metadata, not transactions)
@@ -317,7 +359,8 @@ export async function parseAndSaveImportLines(
 
     case DocumentType.ADVANCE_ADVICE: {
       // Advance Advice pages are the PRIMARY source for advance/comdata transactions.
-      const parseResult = parseAdvance(document.rawText);
+      const plainText = extractPlainText(document.rawText);
+      const parseResult = parseAdvance(plainText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for advances
@@ -357,7 +400,8 @@ export async function parseAndSaveImportLines(
 
     case DocumentType.POSTING_TICKET: {
       // Posting Ticket pages are the PRIMARY source for posting ticket deductions.
-      const parseResult = parsePostingTicket(document.rawText);
+      const plainText = extractPlainText(document.rawText);
+      const parseResult = parsePostingTicket(plainText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for posting tickets

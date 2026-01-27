@@ -65,27 +65,26 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
 
     // Extract advance amount with flexible patterns
     // The correct amount is in the "AMOUNT" field after the G/L # line
-    // Format: "G/L #\n1856\n2032-01\nAMOUNT\n1033.00"
+    // Format: "G/L #\n1856\n2032-01\nAMOUNT\n1033.00\nACCOUNT NAME"
     let advanceAmount = 0;
     
-    // Strategy 1: Look for "AMOUNT" field after G/L section (most reliable)
-    // Pattern: "G/L #" ... "AMOUNT" ... amount value
-    let amountMatch = normalizedText.match(/G\/L\s*#[\s\S]{0,100}?AMOUNT\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
+    // Strategy 1: Look for "AMOUNT" followed by number, then "ACCOUNT NAME" (most reliable)
+    // This is the dedicated amount field after the G/L section
+    let amountMatch = normalizedText.match(/AMOUNT\s+(\d+\.\d{2})\s+ACCOUNT\s+NAME/i);
     
     if (!amountMatch) {
-      // Strategy 2: Simple "AMOUNT" followed by number on next line
-      amountMatch = normalizedText.match(/\bAMOUNT\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
+      // Strategy 2: Simple "AMOUNT" followed by number
+      amountMatch = normalizedText.match(/AMOUNT\s+(\d+\.\d{2})/i);
     }
     
     if (!amountMatch) {
-      // Strategy 3: Look for "TOTAL\nCHARGE\n1033.00" format (last column in table)
-      // This is on the right side of the table
-      amountMatch = normalizedText.match(/TOTAL\s*\n\s*CHARGE\s*\n\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
+      // Strategy 3: More flexible - any non-digit chars between AMOUNT and number
+      amountMatch = normalizedText.match(/AMOUNT[^\d]+(\d+\.\d{2})/i);
     }
     
     if (!amountMatch) {
-      // Strategy 4: Look for amount at end of line with G/L pattern: "2032-01 1033.00"
-      amountMatch = normalizedText.match(/\d{4}-\d{2}\s+(\d{1,3}(?:,\d{3})*\.\d{2})/i);
+      // Strategy 4: Look for "TOTAL\nCHARGE\n1033.00" format (last column in table)
+      amountMatch = normalizedText.match(/TOTAL[\s\n]+CHARGE[\s\n]+(\d{1,3}(?:,\d{3})*\.\d{2})/i);
     }
     
     if (amountMatch) {

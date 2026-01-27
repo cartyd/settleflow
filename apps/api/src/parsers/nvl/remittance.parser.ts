@@ -139,7 +139,8 @@ function extractPayeeName(text: string): string | undefined {
 
   // Try Gemini format with line breaks: TO THE\nORDER\nOF\nDATE...\nNAME
   // Look for name between AMOUNT and next section
-  const geminiMatch = text.match(/AMOUNT\s+\$[^\n]*\n\s*([A-Z][A-Z\s'&,.-]+LLC)(?=\s|\n)/i);
+  // Note: Handle both straight (') and curly (') apostrophes
+  const geminiMatch = text.match(/AMOUNT\s+\$[^\n]*\n\s*([A-Z][A-Z\s''&,.-]+(?:LLC|INC|CORP|LTD))(?=\s|\n)/i);
   if (geminiMatch) {
     return geminiMatch[1].trim();
   }
@@ -205,16 +206,16 @@ function extractPaymentMethod(text: string): string | undefined {
  * Pattern: Account number in the account table or "ACCOUNT XXXX"
  */
 function extractAccountNumber(text: string): string | undefined {
+  // Try "GENERAL LEDGER AGENT" first (most reliable for Gemini format)
+  const generalLedgerMatch = text.match(/GENERAL\s+LEDGER\s+AGENT[\s\n]+(\d{3,5})/i);
+  if (generalLedgerMatch) {
+    return generalLedgerMatch[1];
+  }
+  
   // Try account table format
   const tableMatch = text.match(/ACCOUNT\s+NUMBER.*?\n.*?(\d+)\s+[0-9,]+\.\d{2}/is);
   if (tableMatch) {
     return tableMatch[1];
-  }
-
-  // Try "GENERAL LEDGER AGENT" followed by number on next line (Gemini format)
-  const generalLedgerMatch = text.match(/GENERAL\s+LEDGER\s+AGENT[\s\n]+(\d{3,5})/i);
-  if (generalLedgerMatch) {
-    return generalLedgerMatch[1];
   }
   
   // Try early in document (Gemini format often has "ACCOUNT 03101" near top)
@@ -227,7 +228,7 @@ function extractAccountNumber(text: string): string | undefined {
     }
   }
   
-  // Try simple "ACCOUNT XXXX" pattern anywhere
+  // Try simple "ACCOUNT XXXX" pattern anywhere (least reliable)
   const accountMatch = text.match(/ACCOUNT\s+(0?\d{3,5})/i);
   if (accountMatch) {
     // Remove leading zero if present
