@@ -215,7 +215,7 @@ function extractAmountsAndTypes(text: string): Array<{ amount: number; isDebit: 
   // If no amounts found, try the old single-amount extraction
   if (results.length === 0) {
     const singleResult = extractSingleAmountAndType(text);
-    if (singleResult.amount > 0) {
+    if (singleResult) {
       results.push(singleResult);
     }
   }
@@ -291,8 +291,9 @@ function tryFlexibleBalanceFormat(text: string): { amount: number; isDebit: bool
 /**
  * Extract single amount (fallback for old format)
  * Pattern: Amount in DEBITS or CREDITS column
+ * Returns undefined if no amount found (distinguishes from finding $0.00)
  */
-function extractSingleAmountAndType(text: string): { amount: number; isDebit: boolean } {
+function extractSingleAmountAndType(text: string): { amount: number; isDebit: boolean } | undefined {
   // Try extraction strategies in order
   return tryNewlineFormat(text)
     || tryDebitColumnFormat(text)
@@ -301,8 +302,7 @@ function extractSingleAmountAndType(text: string): { amount: number; isDebit: bo
     || tryCreditFormat(text)
     || tryBalanceMultiFormat(text)
     || tryBalanceSimpleFormat(text)
-    || tryFlexibleBalanceFormat(text)
-    || { amount: 0, isDebit: true };
+    || tryFlexibleBalanceFormat(text);
 }
 
 /**
@@ -355,26 +355,23 @@ export function parseCreditDebit(ocrText: string): CreditDebitParseResult {
     const reference = extractReference(normalizedText);
 
     // Match descriptions with amounts (they should be in the same order)
-    // Only create line items where we have both a valid description AND a non-zero amount
     const itemCount = Math.min(descriptions.length, amountsAndTypes.length);
     
     if (itemCount === 0) {
       // If we have amounts but no descriptions, try to use transaction type
       if (amountsAndTypes.length > 0 && transactionType) {
         for (const amountInfo of amountsAndTypes) {
-          if (amountInfo.amount > 0) {
-            lines.push({
-              transactionType,
-              description: transactionType,
-              amount: amountInfo.amount,
-              isDebit: amountInfo.isDebit,
-              entryDate,
-              processDate,
-              accountNumber,
-              reference,
-              rawText: ocrText,
-            });
-          }
+          lines.push({
+            transactionType,
+            description: transactionType,
+            amount: amountInfo.amount,
+            isDebit: amountInfo.isDebit,
+            entryDate,
+            processDate,
+            accountNumber,
+            reference,
+            rawText: ocrText,
+          });
         }
       }
     } else {
@@ -383,22 +380,19 @@ export function parseCreditDebit(ocrText: string): CreditDebitParseResult {
         const description = descriptions[i];
         const amountInfo = amountsAndTypes[i];
         
-        // Only create a line if we have a non-zero amount
-        if (amountInfo.amount > 0) {
-          const line: CreditDebitLine = {
-            transactionType,
-            description,
-            amount: amountInfo.amount,
-            isDebit: amountInfo.isDebit,
-            entryDate,
-            processDate,
-            accountNumber,
-            reference,
-            rawText: ocrText,
-          };
+        const line: CreditDebitLine = {
+          transactionType,
+          description,
+          amount: amountInfo.amount,
+          isDebit: amountInfo.isDebit,
+          entryDate,
+          processDate,
+          accountNumber,
+          reference,
+          rawText: ocrText,
+        };
 
-          lines.push(line);
-        }
+        lines.push(line);
       }
     }
     
