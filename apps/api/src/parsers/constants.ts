@@ -19,3 +19,7 @@ export const DEST_STATE_LOOKAHEAD_AFTER_CITY = 8;
 export const BOL_SECTION_SPAN = 200; // characters after BOL header to search
 export const NET_BALANCE_SECTION_SPAN = 500; // characters after NET BALANCE to search
 export const CUT_RATE_SECTION_SPAN = 100; // characters between CUT* and TARIFF
+
+// Additional scan spans used in revenue-distribution parser
+export const ORIGIN_SECTION_SCAN_CHARS = 1200; // characters after ORIGIN to scan when detecting decade
+export const DESTINATION_FALLBACK_LOOKAHEAD = 10; // lines to scan in ORIGIN section for destination fallback
