@@ -75,6 +75,18 @@ const CITY_STATE_WITH_DATE_PATTERN = (stateCapture: string) =>
 const CITY_STATE_PAIR_PATTERN = (stateCapture: string) => 
   new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${stateCapture})\\s+([A-Z][A-Z\\s]+?)\\s+(${stateCapture})$`, 'i');
 
+// Header keywords to skip when looking for city names
+const NON_CITY_KEYWORDS = /^(ZIP|INTER|REFERENCE|DESTINATION|WEIGHT|MILES|SIT|PAY|SHIPPER|NAME)/i;
+
+// Header keywords to skip when looking for destination cities
+const NON_DESTINATION_KEYWORDS = /^(ZIP|WEIGHT|MILES|SIT|PAY|INTER)/i;
+
+// Section header keywords that aren't shipper names
+const NON_SHIPPER_NAME_KEYWORDS = /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|DESTINATION|ORIGIN|INTER|REFERENCE|ZIP|WEIGHT|MILES)$/i;
+
+// Common non-name words after B/L numbers
+const NON_SHIPPER_NAME_KEYWORDS_SHORT = /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|SHIPPER|NAME)$/i;
+
 /**
  * Get the century prefix for two-digit years (e.g., "20" for 21st century)
  */
@@ -333,7 +345,7 @@ function extractShipperName(text: string): string | undefined {
   if (match) {
     const name = match[1].trim();
     // Filter out common non-name words and section headers
-    if (name && !name.match(/^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|DESTINATION|ORIGIN|INTER|REFERENCE|ZIP|WEIGHT|MILES)$/i) && name.length > 1) {
+    if (name && !NON_SHIPPER_NAME_KEYWORDS.test(name) && name.length > 1) {
       return name;
     }
   }
@@ -356,7 +368,7 @@ function extractShipperName(text: string): string | undefined {
   if (match) {
     const name = match[1].trim();
     // Filter out common non-name words
-    if (name && !name.match(/^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|SHIPPER|NAME)$/i)) {
+    if (name && !NON_SHIPPER_NAME_KEYWORDS_SHORT.test(name)) {
       return name;
     }
   }
@@ -433,7 +445,7 @@ function extractOrigin(text: string): string | undefined {
       }
 
       // Check if this is a city (comes right after ORIGIN, before ZIP)
-      if (!city && CITY_LINE_RE.test(line) && !line.match(/^(ZIP|INTER|REFERENCE|DESTINATION|WEIGHT|MILES|SIT|PAY|SHIPPER|NAME)/i)) {
+      if (!city && CITY_LINE_RE.test(line) && !NON_CITY_KEYWORDS.test(line)) {
         city = line;
         if (state) {
           return `${city}, ${state}`;
@@ -478,7 +490,7 @@ function extractDestination(text: string): string | undefined {
       if (!line || line.length < 2) continue;
       
       // Skip non-city lines (ZIP, WEIGHT, etc.)
-      if (line.match(/^(ZIP|WEIGHT|MILES|SIT|PAY|INTER)/i)) continue;
+      if (NON_DESTINATION_KEYWORDS.test(line)) continue;
       
       // Format 1: "PRESCOTT V AZ" (city with abbreviated word and state on same line)
       const cityStateMatch = line.match(CITY_STATE_PATTERN(STATE_CODE_CAPTURE));
