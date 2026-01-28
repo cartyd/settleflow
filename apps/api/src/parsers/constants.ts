@@ -30,3 +30,7 @@ export const DESTINATION_FALLBACK_LOOKAHEAD = 10; // lines to scan in ORIGIN sec
 
 // Posting Ticket parser scan span
 export const POSTING_TICKET_DEBIT_SECTION_SPAN = 200; // characters after DEBIT header to search for amount
+
+// Remittance week calculation offsets relative to check date
+export const WEEK_END_OFFSET_DAYS = -7; // Settlement week ends 7 days before check date
+export const WEEK_DURATION_DAYS = -6;  // Settlement week spans 7 days (start is 6 days before end)

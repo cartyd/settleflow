@@ -7,6 +7,7 @@
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { parseCompactDate } from '../utils/date-parser.js';
+import { removeLeadingZeros } from '../utils/string-utils.js';
 
 export interface AdvanceLine {
   tripNumber?: string;
@@ -23,6 +24,113 @@ export interface AdvanceParseResult {
   errors: string[];
 }
 
+// Regex pattern for currency amounts (e.g., "1,234.56" or "123.45")
+const AMOUNT_PATTERN = '(?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2}';
+
+
+/**
+ * Extract trip number from normalized text
+ */
+function extractTripNumber(normalizedText: string): string | undefined {
+  const tripMatch = normalizedText.match(OCR_PATTERNS.TRIP);
+  return tripMatch?.[1];
+}
+
+/**
+ * Extract account number from normalized text (removes leading zeros)
+ */
+function extractAccountNumber(normalizedText: string): string | undefined {
+  const accountMatch = normalizedText.match(OCR_PATTERNS.ACCOUNT);
+  return accountMatch ? removeLeadingZeros(accountMatch[1]) : undefined;
+}
+
+/**
+ * Extract driver name from normalized text
+ */
+function extractDriverName(normalizedText: string): string | undefined {
+  const driverMatch = normalizedText.match(OCR_PATTERNS.DRIVER);
+  return driverMatch ? driverMatch[1].trim().replace(/\s+/g, ' ') : undefined;
+}
+
+/**
+ * Extract date from normalized text
+ */
+function extractDate(normalizedText: string): string | undefined {
+  const dateMatch = normalizedText.match(/DATE[-\s]*>?\s*\n?\s*(\d{6})/i);
+  return parseCompactDate(dateMatch?.[1]);
+}
+
+/**
+ * Extract description from raw OCR text
+ */
+function extractDescription(ocrText: string): string {
+  const upperText = ocrText.toUpperCase();
+  if (upperText.includes('CASH ADVANCE')) {
+    return 'CASH ADVANCE';
+  }
+  return 'COMDATA';
+}
+
+/**
+ * Try extracting amount from G/L # AMOUNT table pattern
+ */
+function tryGLAmountPattern(normalizedText: string): number | undefined {
+  const pattern = new RegExp(`G/L\\s*#[^\\n]*AMOUNT[^\\n]*\\n[^\\n]*?(${AMOUNT_PATTERN})`, 'i');
+  const match = normalizedText.match(pattern);
+  return match ? parseFloat(match[1].replace(/,/g, '')) : undefined;
+}
+
+/**
+ * Try extracting amount from TOTAL CHARGE header pattern
+ */
+function tryTotalChargePattern(normalizedText: string): number | undefined {
+  const headerIdx = normalizedText.search(/TOTAL[\s\n]+CHARGE/i);
+  if (headerIdx < 0) return undefined;
+  
+  const after = normalizedText.slice(headerIdx).split('\n');
+  const amountRe = new RegExp(AMOUNT_PATTERN);
+  
+  // Find the first line containing an amount
+  for (let k = 1; k < after.length; k++) {
+    if (amountRe.test(after[k])) {
+      const amounts = Array.from(after[k].matchAll(new RegExp(AMOUNT_PATTERN, 'g')));
+      if (amounts.length > 0) {
+        const lastAmount = amounts[amounts.length - 1][0];
+        return parseFloat(lastAmount.replace(/,/g, ''));
+      }
+    }
+  }
+  
+  return undefined;
+}
+
+/**
+ * Try extracting amount from AMOUNT header with newline pattern
+ */
+function tryAmountHeaderPattern(normalizedText: string): number | undefined {
+  const pattern = new RegExp(`AMOUNT[^\\n]*\\n[^\\d]*(${AMOUNT_PATTERN})`, 'i');
+  const match = normalizedText.match(pattern);
+  return match ? parseFloat(match[1].replace(/,/g, '')) : undefined;
+}
+
+/**
+ * Try extracting amount from simple AMOUNT pattern
+ */
+function trySimpleAmountPattern(normalizedText: string): number | undefined {
+  const pattern = new RegExp(`AMOUNT\\s+(${AMOUNT_PATTERN})`, 'i');
+  const match = normalizedText.match(pattern);
+  return match ? parseFloat(match[1].replace(/,/g, '')) : undefined;
+}
+
+/**
+ * Extract advance amount using multiple strategies
+ */
+function extractAdvanceAmount(normalizedText: string): number | undefined {
+  return tryGLAmountPattern(normalizedText)
+    || tryTotalChargePattern(normalizedText)
+    || tryAmountHeaderPattern(normalizedText)
+    || trySimpleAmountPattern(normalizedText);
+}
 
 /**
  * Parse ADVANCE_ADVICE document using regex patterns
@@ -31,83 +139,21 @@ export interface AdvanceParseResult {
 export function parseAdvance(ocrText: string): AdvanceParseResult {
   const errors: string[] = [];
   const lines: AdvanceLine[] = [];
-  const AMOUNT = '(?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2}';
 
   try {
     // Normalize text to handle format variations between OCR providers
     const provider = detectOcrProvider(ocrText) ?? 'gemini';
     const normalizedText = normalizeOcrText(ocrText, provider);
 
-    // Extract trip number using flexible pattern
-    const tripMatch = normalizedText.match(OCR_PATTERNS.TRIP);
-    const tripNumber = tripMatch ? tripMatch[1] : undefined;
-
-    // Extract account number (remove leading zeros)
-    const accountMatch = normalizedText.match(OCR_PATTERNS.ACCOUNT);
-    const accountNumber = accountMatch ? accountMatch[1].replace(/^0+/, '') : undefined;
-
-    // Extract driver name (format: LASTNAME, FIRSTNAME or just name)
-    // Handles variations like "DRIVER-- BIDETTI, DONNY" or "DRIVER--\nBIDETTI, DONNY"
-    const driverMatch = normalizedText.match(OCR_PATTERNS.DRIVER);
-    const driverName = driverMatch ? driverMatch[1].trim().replace(/\s+/g, ' ') : undefined;
-
-    // Extract advance amount with flexible patterns
-    // The correct amount is in the "AMOUNT" column in the *FOR DATA ENTRY USE* section
-    // Format: "G/L #   AMOUNT\n2032-01 1033.00"
-    let advanceAmount = 0;
+    const tripNumber = extractTripNumber(normalizedText);
+    const accountNumber = extractAccountNumber(normalizedText);
+    const driverName = extractDriverName(normalizedText);
+    const date = extractDate(normalizedText);
+    const description = extractDescription(ocrText);
+    const advanceAmount = extractAdvanceAmount(normalizedText) ?? 0;
     
-    // Strategy 1: Look for amount after G/L # in the data entry table
-    // Pattern: "G/L #   AMOUNT\n2032-01 1033.00" or "G/L # AMOUNT\n2032-01 1033.00"
-    let amountMatch = normalizedText.match(new RegExp(`G/L\\s*#[^\\n]*AMOUNT[^\\n]*\\n[^\\n]*?(${AMOUNT})`, 'i'));
-    
-    if (!amountMatch) {
-      // Strategy 2: Look for "TOTAL CHARGE" in the table header, then parse the next line and take the last amount
-      const headerIdx = normalizedText.search(/TOTAL[\s\n]+CHARGE/i);
-      if (headerIdx >= 0) {
-        const after = normalizedText.slice(headerIdx).split('\n');
-        // Find the first subsequent line that contains at least one amount
-        let dataLine = '';
-        const amountRe = new RegExp(AMOUNT);
-        for (let k = 1; k < after.length; k++) {
-          if (amountRe.test(after[k])) { dataLine = after[k]; break; }
-        }
-        if (dataLine) {
-          const amounts = Array.from(dataLine.matchAll(new RegExp(AMOUNT, 'g')));
-          if (amounts.length > 0) {
-            const last = amounts[amounts.length - 1][0];
-            amountMatch = ['', last] as unknown as RegExpMatchArray;
-          }
-        }
-      }
-    }
-    
-    if (!amountMatch) {
-      // Strategy 3: Look for "AMOUNT" followed by number (with flexible spacing)
-      amountMatch = normalizedText.match(new RegExp(`AMOUNT[^\\n]*\\n[^\\d]*(${AMOUNT})`, 'i'));
-    }
-    
-    if (!amountMatch) {
-      // Strategy 4: Simple "AMOUNT" followed by number on same or next line
-      amountMatch = normalizedText.match(new RegExp(`AMOUNT\\s+(${AMOUNT})`, 'i'));
-    }
-    
-    if (amountMatch) {
-      advanceAmount = parseFloat(amountMatch[1].replace(/,/g, ''));
-    } else {
+    if (advanceAmount === 0) {
       errors.push('Could not extract advance amount from document');
-    }
-
-    // Extract date with flexible patterns
-    // Handles: "DATE--> 120525", "DATE\n120525", etc.
-    const dateMatch = normalizedText.match(/DATE[-\s]*>?\s*\n?\s*(\d{6})/i);
-    const date = parseCompactDate(dateMatch ? dateMatch[1] : undefined);
-
-    // Determine description (COMDATA, CASH ADVANCE, etc.)
-    let description = 'COMDATA';
-    if (ocrText.toUpperCase().includes('COMDATA')) {
-      description = 'COMDATA';
-    } else if (ocrText.toUpperCase().includes('CASH ADVANCE')) {
-      description = 'CASH ADVANCE';
     }
 
     lines.push({
@@ -121,7 +167,7 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
     });
 
   } catch (error) {
-    errors.push(`Error parsing advance: ${error}`);
+    errors.push(`Error parsing advance: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   return { lines, errors };

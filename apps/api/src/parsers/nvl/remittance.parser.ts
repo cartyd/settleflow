@@ -15,21 +15,12 @@
 
 import { parseSlashDate } from '../utils/date-parser.js';
 import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
+import { CHECK_SCAN_TOP_LINES, ACCOUNT_SCAN_TOP_LINES, WEEK_END_OFFSET_DAYS, WEEK_DURATION_DAYS } from '../constants.js';
+import { removeLeadingZeros } from '../utils/string-utils.js';
 
 // Type for payment method to ensure consistency
 type PaymentMethod = 'Electronic Transfer' | 'Check';
 
-// Local scan limits for top-of-document heuristics
-// NVL remittance checks typically place check number in first 10 lines
-const CHECK_SCAN_TOP_LINES = 10;
-// Account numbers can appear further down in various formats
-const ACCOUNT_SCAN_TOP_LINES = 20;
-
-// Week calculation offsets relative to check date
-// Settlement week ends 7 days before check date
-const WEEK_END_OFFSET_DAYS = -7;
-// Settlement week spans 7 days (start is 6 days before end)
-const WEEK_DURATION_DAYS = -6;
 
 // Character class for company names: supports ASCII, diacritics, apostrophes (straight & curly), ampersands, hyphens
 const COMPANY_NAME_CHARS = `[A-ZÀ-ÿ''&,.\-\s]+`;
@@ -219,13 +210,6 @@ function extractPaymentMethod(text: string): PaymentMethod | undefined {
 }
 
 /**
- * Remove leading zeros from account number, preserving at least one digit
- */
-function removeLeadingZeros(accountNumber: string): string {
-  return accountNumber.replace(/^0+/, '') || accountNumber;
-}
-
-/**
  * Try extracting account from "GENERAL LEDGER AGENT" pattern
  */
 function tryGeneralLedgerPattern(text: string): string | undefined {
@@ -302,8 +286,7 @@ function calculateWeekDates(checkDate: string): { weekStartDate: string; weekEnd
     const weekEndDate = addDaysUtc(checkDate, WEEK_END_OFFSET_DAYS);
     const weekStartDate = addDaysUtc(weekEndDate, WEEK_DURATION_DAYS);
     return { weekStartDate, weekEndDate };
-  } catch (error) {
-    console.warn(`Failed to calculate week dates from check date: ${checkDate}`, error);
+  } catch {
     return undefined;
   }
 }
