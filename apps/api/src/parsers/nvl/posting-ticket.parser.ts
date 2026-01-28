@@ -6,7 +6,7 @@
 import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { POSTING_TICKET_DEBIT_SECTION_SPAN } from '../constants.js';
 import { parseSlashDate } from '../utils/date-parser.js';
-import { parseSignedCurrency } from '../utils/string-utils.js';
+import { parseSignedCurrency, CURRENCY_AMOUNT_PATTERN, removeLeadingZeros } from '../utils/string-utils.js';
 
 export interface PostingTicketLine {
   ptNumber?: string;
@@ -40,13 +40,13 @@ export function parsePostingTicket(ocrText: string): PostingTicketParseResult {
 
     // Extract account number
     const accountMatch = text.match(/ACCOUNT\s*\n?NUMBER\s*\n?\s*(\d+)/i);
-    const accountNumber = accountMatch ? accountMatch[1] : undefined;
+    const accountNumber = accountMatch ? removeLeadingZeros(accountMatch[1]) : undefined;
 
     // Extract debit amount
     // Format: "DEBIT\nCICEROS' MOVING & ST\t3101\t10.00"
     // The debit amount appears after the account number on the same line
     // Look for decimal amount (xx.xx) after "DEBIT" header
-    const debitMatch = text.match(new RegExp(`DEBIT[\\s\\S]{0,${POSTING_TICKET_DEBIT_SECTION_SPAN}}?(\\d{1,3}(?:,\\d{3})*\\.\\d{2}-?)`, 'i'));
+    const debitMatch = text.match(new RegExp(`DEBIT[\\s\\S]{0,${POSTING_TICKET_DEBIT_SECTION_SPAN}}?(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i'));
     if (!debitMatch) {
       errors.push('Could not extract debit amount from posting ticket');
       return { lines, errors };
@@ -55,8 +55,8 @@ export function parsePostingTicket(ocrText: string): PostingTicketParseResult {
     const debitAmount = parseSignedCurrency(rawAmt);
 
     // Extract description (look for common patterns like "OTHER CHARGES")
-    const descMatch = text.match(/OTHER\s+CHARGES|DESCRIPTION\s*\n([^\n]+)/i);
-    const description = descMatch ? descMatch[0].trim() : 'OTHER CHARGES';
+    const descMatch = text.match(/(?:OTHER\s+CHARGES|DESCRIPTION\s*\n([^\n]+))/i);
+    const description = descMatch ? (descMatch[1]?.trim() ?? 'OTHER CHARGES') : 'OTHER CHARGES';
 
     // Extract date (at top of document, format MM/DD/YY)
     const dateMatch = text.match(/^(\d{1,2}\/\d{1,2}\/\d{2})/m);
