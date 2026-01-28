@@ -11,7 +11,7 @@
  * 356985 1854 12/12/25 RD REVENUE DISTR 3,890.63-
  */
 
-import { normalizeOcrText, OCR_PATTERNS } from '../../utils/ocr-normalizer.js';
+import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider, OcrProvider } from '../../utils/ocr-normalizer.js';
 
 export interface ParsedSettlementLine {
   billOfLading?: string;
@@ -43,6 +43,24 @@ export interface SettlementBatchMetadata {
   checkDate: string;
   weekStartDate?: string;
   weekEndDate?: string;
+}
+
+/**
+ * Light normalization for settlement detail: preserve line breaks and spacing.
+ * Avoids collapsing whitespace sequences to keep table rows intact.
+ */
+function normalizeForSettlement(text: string, provider?: OcrProvider): string {
+  if (!text) return '';
+  let t = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  // Trim trailing spaces per line
+  t = t.replace(/[ \t]+$/gm, '');
+  if (provider === 'gemini') {
+    // Minimal fixes for Gemini-specific splits without altering spacing drastically
+    t = t
+      .replace(/TRANSACTION\s*\/\s*\n\s*DESCRIPTION/gi, 'TRANSACTION/DESCRIPTION')
+      .replace(/\s*\/\s*/g, '/');
+  }
+  return t;
 }
 
 /**
@@ -111,73 +129,71 @@ function getLineType(transactionCode: string): 'REVENUE' | 'ADVANCE' | 'DEDUCTIO
  */
 function parseTransactionLine(line: string): ParsedSettlementLine | null {
   const trimmed = line.trim();
-  
+
   // Skip empty lines, headers, and other non-data lines
-  if (!trimmed || 
-      trimmed.includes('B/L') || 
-      trimmed.includes('TRIP') ||
-      trimmed.includes('TRANSACTION/DESCRIPTION') ||
-      trimmed.includes('CHECK TOTAL') ||
-      trimmed.includes('PAGE') ||
-      trimmed.length < 10) {
+  if (!trimmed ||
+    /\bB\/L\b/.test(trimmed) ||
+    /\bTRIP\b/.test(trimmed) ||
+    /TRANSACTION\/?DESCRIPTION/.test(trimmed) ||
+    /CHECK\s+TOTAL/.test(trimmed) ||
+    /\bPAGE\b/.test(trimmed) ||
+    trimmed.length < 10) {
     return null;
   }
 
-  // Pattern to match transaction lines with up to 3 optional leading numbers
-  // Captures: all leading numbers, date, code, description, amount
-  // Amount can be: 518.00, 3,890.63, 3,890.63-, etc.
-  const pattern = /^([\d\s]+)?(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/;
-  
-  const match = trimmed.match(pattern);
-  if (!match) {
-    return null;
+  // Try patterns from most specific to least
+  // 1) B/L Trip Ref# Date Code Desc Amount
+  let m = trimmed.match(/^(\d+)\s+(\d+)\s+(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/);
+  if (m) {
+    const [, n1, n2, date, code, description, amountStr] = m;
+    const amount = parseAmount(amountStr);
+    return {
+      billOfLading: n1.length > 4 ? n1 : undefined,
+      tripNumber: n1.length > 4 ? n2 : n1,
+      referenceNumber: n1.length > 4 ? undefined : n2,
+      date: parseDate(date),
+      transactionCode: code,
+      description: description.trim(),
+      amount,
+      lineType: getLineType(code),
+      rawLine: trimmed,
+    };
   }
 
-  const [, leadingNumbers, date, code, description, amountStr] = match;
-
-  // Parse leading numbers (can be B/L, Trip, Ref# in various combinations)
-  let billOfLading: string | undefined;
-  let tripNumber: string | undefined;
-  let referenceNumber: string | undefined;
-
-  if (leadingNumbers) {
-    const numbers = leadingNumbers.trim().split(/\s+/);
-    
-    if (numbers.length === 3) {
-      // B/L Trip Ref#
-      [billOfLading, tripNumber, referenceNumber] = numbers;
-    } else if (numbers.length === 2) {
-      // Could be: B/L Trip, or Trip Ref#
-      // Heuristic: if first number is long (>4 digits), it's likely B/L
-      if (numbers[0].length > 4) {
-        [billOfLading, tripNumber] = numbers;
-      } else {
-        [tripNumber, referenceNumber] = numbers;
-      }
-    } else if (numbers.length === 1) {
-      // Could be Trip or Ref# - use length heuristic
-      if (numbers[0].length <= 4) {
-        tripNumber = numbers[0];
-      } else {
-        referenceNumber = numbers[0];
-      }
-    }
+  // 2) One number + Date Code Desc Amount (Trip or Ref#)
+  m = trimmed.match(/^(\d+)\s+(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/);
+  if (m) {
+    const [, n1, date, code, description, amountStr] = m;
+    const amount = parseAmount(amountStr);
+    const isTrip = n1.length <= 4;
+    return {
+      tripNumber: isTrip ? n1 : undefined,
+      referenceNumber: isTrip ? undefined : n1,
+      date: parseDate(date),
+      transactionCode: code,
+      description: description.trim(),
+      amount,
+      lineType: getLineType(code),
+      rawLine: trimmed,
+    };
   }
 
-  const amount = parseAmount(amountStr);
-  const lineType = getLineType(code);
+  // 3) Date Code Desc Amount (minimal)
+  m = trimmed.match(/^(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/);
+  if (m) {
+    const [, date, code, description, amountStr] = m;
+    const amount = parseAmount(amountStr);
+    return {
+      date: parseDate(date),
+      transactionCode: code,
+      description: description.trim(),
+      amount,
+      lineType: getLineType(code),
+      rawLine: trimmed,
+    } as ParsedSettlementLine;
+  }
 
-  return {
-    billOfLading,
-    tripNumber,
-    referenceNumber,
-    date: parseDate(date),
-    transactionCode: code,
-    description: description.trim(),
-    amount,
-    lineType,
-    rawLine: trimmed,
-  };
+  return null;
 }
 
 /**
@@ -196,7 +212,8 @@ function extractHeaderInfo(text: string): {
   // Extract account number: "ACCOUNT 03101" (remove leading zeros)
   const accountMatch = text.match(OCR_PATTERNS.ACCOUNT);
   if (accountMatch) {
-    result.accountNumber = accountMatch[1].replace(/^0+/, '');
+    // Preserve leading zeros for SETTLEMENT_DETAIL account number (e.g., 03101)
+    result.accountNumber = accountMatch[1];
   }
 
   // Extract account name (usually appears after account number)
@@ -238,7 +255,8 @@ function extractHeaderInfo(text: string): {
  * Used as fallback when no REMITTANCE page is available
  */
 export function extractBatchMetadata(ocrText: string): SettlementBatchMetadata | null {
-  const normalizedText = normalizeOcrText(ocrText, 'gemini');
+  const provider = detectOcrProvider(ocrText) ?? 'gemini';
+  const normalizedText = normalizeForSettlement(ocrText, provider);
   const headerInfo = extractHeaderInfo(normalizedText);
   
   // Generate a payment reference from settlement date if no check number
@@ -281,7 +299,8 @@ export function parseSettlementDetail(ocrText: string): SettlementDetailParseRes
   const lines: ParsedSettlementLine[] = [];
 
   // Normalize text to handle format variations between OCR providers
-  const normalizedText = normalizeOcrText(ocrText, 'gemini');
+  const provider = detectOcrProvider(ocrText) ?? 'gemini';
+  const normalizedText = normalizeForSettlement(ocrText, provider);
 
   // Extract header information
   const headerInfo = extractHeaderInfo(normalizedText);

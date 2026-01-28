@@ -12,7 +12,8 @@
  * - Account info
  */
 
-import { normalizeOcrText, OCR_PATTERNS } from '../../utils/ocr-normalizer.js';
+import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
+import { NET_BALANCE_SECTION_SPAN } from '../constants.js';
 
 export interface CreditDebitLine {
   transactionType?: string;
@@ -123,6 +124,14 @@ function extractDescriptions(text: string): string[] {
       descriptions.push(tabMatch[1].trim());
     }
   }
+
+  // If still none, handle minimal case: DESCRIPTION then a single line before DEBITS/CREDITS
+  if (descriptions.length === 0) {
+    const minimalMatch = text.match(/DESCRIPTION[\s\t]*\n\s*([^\n]+)\s*\n\s*(?:DEBITS|CREDITS)/i);
+    if (minimalMatch && minimalMatch[1].trim()) {
+      descriptions.push(minimalMatch[1].trim());
+    }
+  }
   
   // Fallback: use transaction type if available
   if (descriptions.length === 0) {
@@ -160,6 +169,12 @@ function extractProcessDate(text: string): string | undefined {
 
   // Try standalone "PROCESS" label followed by date
   match = text.match(/PROCESS[\s\t]*\n?[\s\t]*(\d{6})/i);
+  if (match) {
+    return parseDate(match[1]);
+  }
+
+  // Try PROCESS DATE with slash format MM/DD/YY
+  match = text.match(/PROCESS\s+DATE[\s\t]*\n?[\s\t]*(\d{1,2}\/\d{1,2}\/\d{2})/i);
   if (match) {
     return parseDate(match[1]);
   }
@@ -265,19 +280,28 @@ function extractSingleAmountAndType(text: string): { amount: number; isDebit: bo
   }
 
   // Try NET BALANCE with multi-line format (DUE NVL / DUE ACCOUNT)
-  const balanceMultiMatch = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+[^\n]+\n\s*DUE\s+[^\n]+\n(\d+\.\d{2})/i);
+  const balanceMultiMatch = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+[^\n]+\n\s*DUE\s+[^\n]+\n(-?\d+(?:,\d+)*\.\d{2})/i);
   if (balanceMultiMatch) {
     return {
-      amount: parseFloat(balanceMultiMatch[1]),
+      amount: parseFloat(balanceMultiMatch[1].replace(/,/g, '')),
       isDebit: true,
     };
   }
 
   // Try simple NET BALANCE format
-  const balanceMatch = text.match(/NET\s+BALANCE[\s\t]*\n?[\s\t]*(\d+\.\d{2})/i);
+  const balanceMatch = text.match(/NET\s+BALANCE[\s\t]*\n?[\s\t]*(-?\d+(?:,\d+)*\.\d{2})/i);
   if (balanceMatch) {
     return {
-      amount: parseFloat(balanceMatch[1]),
+      amount: parseFloat(balanceMatch[1].replace(/,/g, '')),
+      isDebit: true,
+    };
+  }
+
+  // Flexible NET BALANCE within bounded span after header
+  const flexNet = text.match(new RegExp(`NET\\s+BALANCE[\\s\\S]{0,${NET_BALANCE_SECTION_SPAN}}?(?:^|\\n)\\s*(-?\\d+(?:,\\d+)*\\.\\d{2})\\s*(?:$|\\n)`, 'mi'));
+  if (flexNet) {
+    return {
+      amount: parseFloat(flexNet[1].replace(/,/g, '')),
       isDebit: true,
     };
   }
@@ -322,7 +346,8 @@ export function parseCreditDebit(ocrText: string): CreditDebitParseResult {
 
   try {
     // Normalize text to handle format variations between OCR providers
-    const normalizedText = normalizeOcrText(ocrText, 'gemini');
+    const provider = detectOcrProvider(ocrText) ?? 'gemini';
+    const normalizedText = normalizeOcrText(ocrText, provider);
     
     const transactionType = extractTransactionType(normalizedText);
     const descriptions = extractDescriptions(normalizedText);
@@ -382,6 +407,20 @@ export function parseCreditDebit(ocrText: string): CreditDebitParseResult {
     
     // If we still have no lines, add an error
     if (lines.length === 0) {
+      // If we at least captured a date, create a placeholder line
+      if (entryDate || processDate) {
+        lines.push({
+          transactionType,
+          description: descriptions[0] ?? transactionType ?? 'MISC',
+          amount: 0,
+          isDebit: true,
+          entryDate,
+          processDate,
+          accountNumber,
+          reference,
+          rawText: ocrText,
+        });
+      }
       errors.push('Could not extract any valid description/amount pairs from document');
     }
   } catch (error) {

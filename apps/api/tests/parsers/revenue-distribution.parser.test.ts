@@ -85,7 +85,7 @@ NET BALANCE 500.00
 DUE ACCOUNT`;
       
       const result = parseRevenueDistribution(text);
-      expect(result.lines[0].origin).toBe('NEW YORK NY');
+      expect(result.lines[0].origin).toBe('NEW YORK, NY');
       expect(result.lines[0].destination).toBe('LOS ANGELES, CA');
     });
 
@@ -107,10 +107,8 @@ NET BALANCE 600.00
 DUE ACCOUNT`;
       
       const result = parseRevenueDistribution(text);
-      expect(result.lines[0].origin).toBe('BOSTON MA');
-      // Note: Current parser expects dest on same line or immediately after origin
-      // This test format with DESTINATION header not fully supported
-      expect(result.lines[0].destination).toBeUndefined();
+      expect(result.lines[0].origin).toBe('BOSTON, MA');
+      expect(result.lines[0].destination).toBe('MIAMI, FL');
     });
 
     it('should handle multi-word city names', () => {
@@ -125,7 +123,7 @@ NET BALANCE 700.00
 DUE ACCOUNT`;
       
       const result = parseRevenueDistribution(text);
-      expect(result.lines[0].origin).toBe('SAN FRANCISCO CA');
+      expect(result.lines[0].origin).toBe('SAN FRANCISCO, CA');
       expect(result.lines[0].destination).toBe('NEW ORLEANS, LA');
     });
   });

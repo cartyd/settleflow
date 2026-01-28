@@ -15,6 +15,8 @@
  */
 
 import { normalizeOcrText, OCR_PATTERNS } from '../../utils/ocr-normalizer.js';
+import { detectOcrProvider } from '../../utils/ocr-normalizer.js';
+import { STATE_CODE_CAPTURE, STATE_CODE_LINE_RE, CITY_LINE_RE, ORIGIN_LOOKAHEAD_LINES, DEST_LOOKAHEAD_LINES, DEST_STATE_LOOKAHEAD_AFTER_CITY, BOL_SECTION_SPAN, NET_BALANCE_SECTION_SPAN, CUT_RATE_SECTION_SPAN } from '../constants.js';
 
 export interface RevenueDistributionLine {
   driverName?: string;
@@ -252,13 +254,13 @@ function extractTripNumber(text: string): string | undefined {
  */
 function extractBillOfLading(text: string): string | undefined {
   // Look for pattern like "356985/357175" or just "356985" after BILL OF LADING section
-  const match = text.match(/BILL\s+OF\s+LADING[\s\S]{0,200}?(\d{6})\s*\/\s*\d{6}/i);
+  const match = text.match(new RegExp(`BILL\\s+OF\\s+LADING[\\s\\S]{0,${BOL_SECTION_SPAN}}?(\\d{6})\\s*\\/\\s*\\d{6}`, 'i'));
   if (match) {
     return match[1];
   }
   
   // Fallback: try to find just a 6-digit number in the BOL section
-  const simpleMatch = text.match(/BILL\s+OF\s+LADING[\s\S]{0,200}?(\d{6})/i);
+  const simpleMatch = text.match(new RegExp(`BILL\\s+OF\\s+LADING[\\s\\S]{0,${BOL_SECTION_SPAN}}?(\\d{6})`, 'i'));
   if (simpleMatch) {
     return simpleMatch[1];
   }
@@ -352,8 +354,8 @@ function extractOrigin(text: string): string | undefined {
     let city: string | undefined;
     let state: string | undefined;
     
-    // Look in the next 15 lines for origin data (state might come after ZIP)
-    for (let i = originIdx + 1; i < Math.min(originIdx + 15, lines.length); i++) {
+    // Look ahead for origin data (state might come after ZIP)
+    for (let i = originIdx + 1; i < Math.min(originIdx + ORIGIN_LOOKAHEAD_LINES, lines.length); i++) {
       const line = lines[i].trim();
       
       // Skip empty lines
@@ -363,7 +365,7 @@ function extractOrigin(text: string): string | undefined {
       if (line.match(/^(DESTINATION|SHIPPER)/i)) break;
       
       // Check if this is a state code (comes after ZIP usually)
-      if (!state && line.match(/^(MA|MD|OH|TX|CA|NY|FL|IL|PA|NJ|VA|NC|SC|GA|AL|MS|LA|AR|TN|KY|WV|MI|IN|WI|MN|IA|MO|ND|SD|NE|KS|OK|MT|WY|CO|NM|AZ|UT|NV|ID|WA|OR|AK|HI|ME|NH|VT|RI|CT|DE|DC)$/)) {
+      if (!state && STATE_CODE_LINE_RE.test(line)) {
         state = line;
         if (city) {
           return `${city}, ${state}`;
@@ -371,8 +373,14 @@ function extractOrigin(text: string): string | undefined {
         continue;
       }
       
+      // Format: "CITY ST" on same line (prefer this before treating as city-only)
+      const cityState = line.match(new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})$`, 'i'));
+      if (cityState) {
+        return `${cityState[1].trim()}, ${cityState[2]}`;
+      }
+
       // Check if this is a city (comes right after ORIGIN, before ZIP)
-      if (!city && line.match(/^[A-Z][A-Z\s]+$/) && !line.match(/^(ZIP|INTER|REFERENCE|DESTINATION|WEIGHT|MILES|SIT|PAY|SHIPPER|NAME)/i)) {
+      if (!city && CITY_LINE_RE.test(line) && !line.match(/^(ZIP|INTER|REFERENCE|DESTINATION|WEIGHT|MILES|SIT|PAY|SHIPPER|NAME)/i)) {
         city = line;
         if (state) {
           return `${city}, ${state}`;
@@ -380,19 +388,13 @@ function extractOrigin(text: string): string | undefined {
         continue;
       }
       
-      // Format: "CITY ST" on same line
-      const cityState = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})$/);
-      if (cityState && cityState[2].match(/^(MA|MD|OH|TX|CA|NY|FL|IL|PA|NJ|VA|NC|SC|GA|AL|MS|LA|AR|TN|KY|WV|MI|IN|WI|MN|IA|MO|ND|SD|NE|KS|OK|MT|WY|CO|NM|AZ|UT|NV|ID|WA|OR|AK|HI|ME|NH|VT|RI|CT|DE|DC)$/)) {
-        return `${cityState[1].trim()}, ${cityState[2]}`;
-      }
-      
       // Format: Both origin and destination on same line
-      const sameLineWithDate = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+\d/);
+      const sameLineWithDate = line.match(new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+\\d`, 'i'));
       if (sameLineWithDate) {
         return `${sameLineWithDate[1].trim()}, ${sameLineWithDate[2]}`;
       }
       
-      const sameLine = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+([A-Z][A-Z\s]+?)\s+([A-Z]{2})$/);
+      const sameLine = line.match(new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})$`, 'i'));
       if (sameLine) {
         return `${sameLine[1].trim()}, ${sameLine[2]}`;
       }
@@ -418,7 +420,7 @@ function extractDestination(text: string): string | undefined {
   
   if (destIdx >= 0) {
     // Look in the next several lines after DESTINATION header
-    for (let i = destIdx + 1; i < Math.min(destIdx + 10, lines.length); i++) {
+    for (let i = destIdx + 1; i < Math.min(destIdx + DEST_LOOKAHEAD_LINES, lines.length); i++) {
       const line = lines[i].trim();
       if (!line || line.length < 2) continue;
       
@@ -426,18 +428,18 @@ function extractDestination(text: string): string | undefined {
       if (line.match(/^(ZIP|WEIGHT|MILES|SIT|PAY|INTER)/i)) continue;
       
       // Format 1: "PRESCOTT V AZ" (city with abbreviated word and state on same line)
-      const cityStateMatch = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})$/);
-      if (cityStateMatch && cityStateMatch[2].match(/^(MA|MD|OH|TX|CA|NY|FL|IL|PA|NJ|VA|NC|SC|GA|AL|MS|LA|AR|TN|KY|WV|MI|IN|WI|MN|IA|MO|ND|SD|NE|KS|OK|MT|WY|CO|NM|AZ|UT|NV|ID|WA|OR|AK|HI|ME|NH|VT|RI|CT|DE|DC)$/)) {
+      const cityStateMatch = line.match(new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})$`, 'i'));
+      if (cityStateMatch) {
         return `${cityStateMatch[1].trim()}, ${cityStateMatch[2]}`;
       }
       
       // Format 2: City name alone - check if this looks like a city name (all caps letters/spaces)
       if (line.match(/^[A-Z\s]+$/)) {
         // Look for state in next several lines (may be after ZIP, WEIGHT, MILES)
-        for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+        for (let j = i + 1; j < Math.min(i + DEST_STATE_LOOKAHEAD_AFTER_CITY, lines.length); j++) {
           const stateLine = lines[j].trim();
           // Check if this is a 2-letter state code
-          if (stateLine.match(/^(MA|MD|OH|TX|CA|NY|FL|IL|PA|NJ|VA|NC|SC|GA|AL|MS|LA|AR|TN|KY|WV|MI|IN|WI|MN|IA|MO|ND|SD|NE|KS|OK|MT|WY|CO|NM|AZ|UT|NV|ID|WA|OR|AK|HI|ME|NH|VT|RI|CT|DE|DC)$/)) {
+          if (STATE_CODE_LINE_RE.test(stateLine)) {
             return `${line}, ${stateLine}`;
           }
         }
@@ -453,13 +455,13 @@ function extractDestination(text: string): string | undefined {
       if (!line) continue;
       
       // Check if origin and destination are on the same line with date
-      const sameLineWithDate = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+\d/);
+      const sameLineWithDate = line.match(new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+\\d`,'i'));
       if (sameLineWithDate) {
         return `${sameLineWithDate[3].trim()}, ${sameLineWithDate[4]}`;
       }
       
       // Check if origin and destination are on the same line without date
-      const sameLine = line.match(/^([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+([A-Z][A-Z\s]+?)\s+([A-Z]{2})$/);
+      const sameLine = line.match(new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})$`, 'i'));
       if (sameLine) {
         return `${sameLine[3].trim()}, ${sameLine[4]}`;
       }
@@ -590,24 +592,18 @@ function extractServiceItems(text: string): Array<{
   const lines = serviceSection[1].split('\n');
   
   for (const line of lines) {
-    // Match pattern: SERVICE_NAME  AMOUNT  PERCENTAGE  CHARGES/EARNINGS
-    // Examples:
-    // HAULER    4639.54    62.5    2,899.95
-    // ATC       417.30     8.0     33.38
-    const match = line.match(/^([A-Z\s]+?)\s+(\d+(?:,\d+)*\.\d{2})\s+(\d+\.\d+)\s+(\d+(?:,\d+)*\.\d{2})/);
-    
+    // Flexible pattern: DESCRIPTION  AMOUNT  [PERCENT]  [EARNINGS]
+    // Allows negatives and optional percentage/earnings
+    const match = line.match(/^([A-ZÀ-ÿ&'\-\s]+?)\s+(-?\d[\d,]*\.\d{2})(?:\s+(\d+(?:\.\d+)?))?(?:\s+(-?\d[\d,]*\.\d{2}))?/);
     if (match) {
       const description = match[1].trim();
       const amount = parseFloat(match[2].replace(/,/g, ''));
-      const percentage = parseFloat(match[3]);
-      const earnings = parseFloat(match[4].replace(/,/g, ''));
+      const percentage = match[3] ? parseFloat(match[3]) : undefined;
+      const earnings = match[4] ? parseFloat(match[4].replace(/,/g, '')) : undefined;
 
-      items.push({
-        description,
-        amount,
-        percentage,
-        earnings,
-      });
+      if (!isNaN(amount)) {
+        items.push({ description, amount, percentage, earnings });
+      }
     }
   }
 
@@ -623,32 +619,32 @@ function extractServiceItems(text: string): Array<{
  */
 function extractNetBalance(text: string): number {
   // Try simplest format first: "NET BALANCE 314.83" (single line, no DUE)
-  let match = text.match(/NET\s+BALANCE\s+(\d+(?:,\d+)*\.\d{2})/i);
+  let match = text.match(/NET\s+BALANCE\s+(-?\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
     return parseFloat(match[1].replace(/,/g, ''));
   }
   
   // Try single-line format with DUE: "NET BALANCE DUE NVL 3890.63"
-  match = text.match(/NET\s+BALANCE\s+DUE\s+(?:N[.\/]?V[.\/]?L[.\/]?|ACCOUNT)\s+(\d+(?:,\d+)*\.\d{2})/i);
+  match = text.match(/NET\s+BALANCE\s+DUE\s+(?:N[.\/]?V[.\/]?L[.\/]?|ACCOUNT)\s+(-?\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
     return parseFloat(match[1].replace(/,/g, ''));
   }
   
   // Try format where amount appears after "NET BALANCE DUE NVL" with content in between
   // Example: "NET BALANCE DUE NVL\n*RATES...\n314.83\nDUE ACCOUNT"
-  match = text.match(/NET\s+BALANCE[\s\S]{0,500}?^\s*(\d+(?:,\d+)*\.\d{2})\s*$/m);
+  match = text.match(new RegExp(`NET\\s+BALANCE[\\s\\S]{0,${NET_BALANCE_SECTION_SPAN}}?^\\s*(-?\\d+(?:,\\d+)*\\.\\d{2})\\s*$`, 'mi'));
   if (match) {
     return parseFloat(match[1].replace(/,/g, ''));
   }
   
   // Try "NET BALANCE\nDUE NVL\n3,890.63" format (multi-line, direct)
-  match = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+(?:N\.?V\.?L\.?|ACCOUNT)\s*\n(\d+(?:,\d+)*\.\d{2})/i);
+  match = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+(?:N\.?V\.?L\.?|ACCOUNT)\s*\n(-?\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
     return parseFloat(match[1].replace(/,/g, ''));
   }
   
   // Try simple "NET BALANCE\n3,890.63" format
-  match = text.match(/NET\s+BALANCE\s*\n(\d+(?:,\d+)*\.\d{2})/i);
+  match = text.match(/NET\s+BALANCE\s*\n(-?\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
     return parseFloat(match[1].replace(/,/g, ''));
   }
@@ -671,8 +667,9 @@ export function parseRevenueDistribution(ocrText: string): RevenueDistributionPa
   }
 
   try {
-    // Normalize text to handle format variations between OCR providers
-    const normalizedText = normalizeOcrText(ocrText, 'gemini');
+    // Normalize text; auto-detect provider to avoid hard-coding
+    const provider = detectOcrProvider(ocrText);
+    const normalizedText = normalizeOcrText(ocrText, provider);
     
     const servicePerformedBy = extractServicePerformedBy(normalizedText);
     const driverName = extractDriverName(servicePerformedBy);
@@ -681,11 +678,8 @@ export function parseRevenueDistribution(ocrText: string): RevenueDistributionPa
     const accountNumber = extractAccountNumber(normalizedText);
     const tripNumber = extractTripNumber(normalizedText);
     
-    // Extract B/L - may be in format "356985/357175" where second number is supplier
-    let billOfLading = extractBillOfLading(normalizedText);
-    if (billOfLading && billOfLading.includes('/')) {
-      billOfLading = billOfLading.split('/')[0].trim();
-    }
+    // Extract B/L
+    const billOfLading = extractBillOfLading(normalizedText);
     
     const shipperName = extractShipperName(normalizedText);
     const entryDate = extractEntryDate(normalizedText);
