@@ -10,3 +10,18 @@
 export function removeLeadingZeros(value: string): string {
   return value.replace(/^0+/, '') || value;
 }
+
+/**
+ * Regex pattern for currency amounts with optional thousands separators
+ * Matches: "1,234.56", "123.45", "1234.56"
+ */
+export const CURRENCY_AMOUNT_PATTERN = '(?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2}';
+
+/**
+ * Parse a currency string to a number, removing thousands separators
+ * @param value - String with currency amount (e.g., "1,234.56", "123.45")
+ * @returns Parsed number (e.g., 1234.56, 123.45)
+ */
+export function parseCurrency(value: string): number {
+  return parseFloat(value.replace(/,/g, ''));
+}

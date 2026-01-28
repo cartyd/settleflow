@@ -7,7 +7,7 @@
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { parseCompactDate } from '../utils/date-parser.js';
-import { removeLeadingZeros } from '../utils/string-utils.js';
+import { removeLeadingZeros, CURRENCY_AMOUNT_PATTERN, parseCurrency } from '../utils/string-utils.js';
 
 export interface AdvanceLine {
   tripNumber?: string;
@@ -23,10 +23,6 @@ export interface AdvanceParseResult {
   lines: AdvanceLine[];
   errors: string[];
 }
-
-// Regex pattern for currency amounts (e.g., "1,234.56" or "123.45")
-const AMOUNT_PATTERN = '(?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2}';
-
 
 /**
  * Extract trip number from normalized text
@@ -75,9 +71,9 @@ function extractDescription(ocrText: string): string {
  * Try extracting amount from G/L # AMOUNT table pattern
  */
 function tryGLAmountPattern(normalizedText: string): number | undefined {
-  const pattern = new RegExp(`G/L\\s*#[^\\n]*AMOUNT[^\\n]*\\n[^\\n]*?(${AMOUNT_PATTERN})`, 'i');
+  const pattern = new RegExp(`G/L\\s*#[^\\n]*AMOUNT[^\\n]*\\n[^\\n]*?(${CURRENCY_AMOUNT_PATTERN})`, 'i');
   const match = normalizedText.match(pattern);
-  return match ? parseFloat(match[1].replace(/,/g, '')) : undefined;
+  return match ? parseCurrency(match[1]) : undefined;
 }
 
 /**
@@ -88,15 +84,15 @@ function tryTotalChargePattern(normalizedText: string): number | undefined {
   if (headerIdx < 0) return undefined;
   
   const after = normalizedText.slice(headerIdx).split('\n');
-  const amountRe = new RegExp(AMOUNT_PATTERN);
+  const amountRe = new RegExp(CURRENCY_AMOUNT_PATTERN);
   
   // Find the first line containing an amount
   for (let k = 1; k < after.length; k++) {
     if (amountRe.test(after[k])) {
-      const amounts = Array.from(after[k].matchAll(new RegExp(AMOUNT_PATTERN, 'g')));
+      const amounts = Array.from(after[k].matchAll(new RegExp(CURRENCY_AMOUNT_PATTERN, 'g')));
       if (amounts.length > 0) {
         const lastAmount = amounts[amounts.length - 1][0];
-        return parseFloat(lastAmount.replace(/,/g, ''));
+        return parseCurrency(lastAmount);
       }
     }
   }
@@ -108,18 +104,18 @@ function tryTotalChargePattern(normalizedText: string): number | undefined {
  * Try extracting amount from AMOUNT header with newline pattern
  */
 function tryAmountHeaderPattern(normalizedText: string): number | undefined {
-  const pattern = new RegExp(`AMOUNT[^\\n]*\\n[^\\d]*(${AMOUNT_PATTERN})`, 'i');
+  const pattern = new RegExp(`AMOUNT[^\\n]*\\n[^\\d]*(${CURRENCY_AMOUNT_PATTERN})`, 'i');
   const match = normalizedText.match(pattern);
-  return match ? parseFloat(match[1].replace(/,/g, '')) : undefined;
+  return match ? parseCurrency(match[1]) : undefined;
 }
 
 /**
  * Try extracting amount from simple AMOUNT pattern
  */
 function trySimpleAmountPattern(normalizedText: string): number | undefined {
-  const pattern = new RegExp(`AMOUNT\\s+(${AMOUNT_PATTERN})`, 'i');
+  const pattern = new RegExp(`AMOUNT\\s+(${CURRENCY_AMOUNT_PATTERN})`, 'i');
   const match = normalizedText.match(pattern);
-  return match ? parseFloat(match[1].replace(/,/g, '')) : undefined;
+  return match ? parseCurrency(match[1]) : undefined;
 }
 
 /**
