@@ -115,7 +115,7 @@ function parseDriverName(fullName: string): { firstName?: string; lastName?: str
  * Parse date in various formats to ISO string
  * Handles: MM DD Y (11 19 5), MM/DD/YY, MMDDYY
  * Validates date components before returning
- * Year is interpreted as current decade (e.g., 5 = 2025 in 2020s, 2035 in 2030s)
+ * Year is interpreted based on decadeBase (deterministic) or current decade (fallback)
  */
 function parseDate(dateStr: string | undefined, opts?: { decadeBase?: number }): string | undefined {
   if (!dateStr) return undefined;
@@ -133,12 +133,13 @@ function parseDate(dateStr: string | undefined, opts?: { decadeBase?: number }):
       return undefined; // Invalid date components
     }
     
-    // For single digit year (5), determine the decade (e.g., 2025)
-    // Get the current decade (e.g., 2020s)
-    const currentYear = new Date().getFullYear();
-    const currentDecade = Math.floor(currentYear / 10) * 10; // e.g., 2020
-    const twoDigitYear = currentDecade % 100 + parseInt(year); // e.g., 20 + 5 = 25
-    const fullYear = `${getCenturyPrefix()}${twoDigitYear.toString().padStart(2, '0')}`;
+    // For single digit year (5), determine the full year from decade base
+    // Use provided decadeBase for deterministic parsing, or fallback to current decade
+    const decadeBase = opts?.decadeBase ?? DEFAULT_DECADE_BASE;
+    const decadePrefix = Math.floor(decadeBase / 10) % 10; // e.g., 2020 -> 2
+    const twoDigitYear = (decadePrefix * 10) + parseInt(year); // e.g., 20 + 5 = 25
+    const century = Math.floor(decadeBase / 100); // e.g., 2020 -> 20
+    const fullYear = `${century}${twoDigitYear.toString().padStart(2, '0')}`;
     return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
 
