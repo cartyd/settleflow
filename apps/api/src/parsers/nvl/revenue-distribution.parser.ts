@@ -48,6 +48,13 @@ export interface RevenueDistributionParseResult {
   errors: string[];
 }
 
+// Use a deterministic fallback decade base when no anchor is available
+const DEFAULT_DECADE_BASE = 2020;
+
+function decadePrefixFromBase(base: number): string {
+  return Math.floor(base / 10).toString();
+}
+
 /**
  * Parse driver name into first and last name
  * Examples: "BIDETTI, DONNY" → {first: "DONNY", last: "BIDETTI"}
@@ -87,20 +94,12 @@ function isValidDate(month: number, day: number): boolean {
 }
 
 /**
- * Get the current decade prefix (e.g., "202" for 2020s, "203" for 2030s)
- */
-function getCurrentDecadePrefix(): string {
-  const currentYear = new Date().getFullYear();
-  return Math.floor(currentYear / 10).toString();
-}
-
-/**
  * Parse date in various formats to ISO string
  * Handles: MM DD Y (11 19 5), MM/DD/YY, MMDDYY
  * Validates date components before returning
  * Year is interpreted as current decade (e.g., 5 = 2025 in 2020s, 2035 in 2030s)
  */
-function parseDate(dateStr: string | undefined): string | undefined {
+function parseDate(dateStr: string | undefined, opts?: { decadeBase?: number }): string | undefined {
   if (!dateStr) return undefined;
 
   const cleanStr = dateStr.trim();
@@ -116,7 +115,8 @@ function parseDate(dateStr: string | undefined): string | undefined {
       return undefined; // Invalid date components
     }
     
-    const fullYear = `${getCurrentDecadePrefix()}${year}`;
+    const decadeBase = opts?.decadeBase ?? DEFAULT_DECADE_BASE;
+    const fullYear = `${decadePrefixFromBase(decadeBase)}${year}`;
     return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
 
@@ -150,6 +150,61 @@ function parseDate(dateStr: string | undefined): string | undefined {
     return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
 
+  return undefined;
+}
+
+/**
+ * Detect a decade base from text by finding a YY-bearing date and inferring its decade.
+ * Returns the decade base year (e.g., 2020) if found.
+ */
+function detectDecadeBaseFromText(text: string): number | undefined {
+  const yys: number[] = [];
+  // Collect all YY from MMDDYY
+  for (const m of text.matchAll(/\b(\d{2})(\d{2})(\d{2})\b/g)) {
+    const mm = parseInt(m[1], 10);
+    const dd = parseInt(m[2], 10);
+    const yy = parseInt(m[3], 10);
+    if (!Number.isNaN(yy) && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) yys.push(yy);
+  }
+  // Collect all YY from MM/DD/YY
+  for (const m of text.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{2})\b/g)) {
+    const mm = parseInt(m[1], 10);
+    const dd = parseInt(m[2], 10);
+    const yy = parseInt(m[3], 10);
+    if (!Number.isNaN(yy) && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) yys.push(yy);
+  }
+  if (yys.length === 0) return undefined;
+  // Prefer years in 2000-2029 to avoid drifting into 2030s anchors
+  const preferred = yys.filter(yy => yy >= 0 && yy <= 29);
+  const pick = (arr: number[]) => {
+    // Choose the mode (most frequent); fall back to min
+    const counts = new Map<number, number>();
+    for (const v of arr) counts.set(v, (counts.get(v) ?? 0) + 1);
+    let best: number | undefined;
+    let bestCount = -1;
+    for (const [v, c] of counts) {
+      if (c > bestCount || (c === bestCount && (best === undefined || v < best))) {
+        best = v; bestCount = c;
+      }
+    }
+    return best ?? Math.min(...arr);
+  };
+  const yy = (preferred.length > 0 ? pick(preferred) : undefined) ?? pick(yys);
+  const full = 2000 + yy;
+  return Math.floor(full / 10) * 10;
+}
+
+/**
+ * Try to detect a decade base using dates near the ORIGIN/route section,
+ * which is more relevant for delivery date than earlier headers like COD.
+ */
+function detectDecadeBaseAroundOrigin(text: string): number | undefined {
+  const originIdx = text.search(/ORIGIN/i);
+  if (originIdx >= 0) {
+    const endIdx = Math.min(text.length, originIdx + 1200);
+    const segment = text.slice(originIdx, endIdx);
+    return detectDecadeBaseFromText(segment);
+  }
   return undefined;
 }
 
@@ -325,23 +380,23 @@ function extractShipperName(text: string): string | undefined {
  * Pattern: "NVL ENTRY" followed by DATE, then type (COD/GOV), then date value
  * Example: "NVL ENTRY\nDATE\nCOD\n12 01 5"
  */
-function extractEntryDate(text: string): string | undefined {
+function extractEntryDate(text: string, opts?: { decadeBase?: number }): string | undefined {
   // Format 1: "NVL ENTRY\nDATE\nCOD\n12 01 5" or "NVL ENTRY\nDATE\nGOV\n11 29 5"
   let match = text.match(/NVL\s+ENTRY\s*\n\s*DATE\s*\n\s*(?:COD|GOV|TRN)\s*\n\s*([\d\s]+)/i);
   if (match) {
-    return parseDate(match[1].trim());
+    return parseDate(match[1].trim(), opts);
   }
   
   // Format 2: Original format "NVL ENTRY\n...\n123456" (6-digit date)
   match = text.match(/NVL\s+ENTRY\s*\n[^\n]*\n(\d{6})/i);
   if (match) {
-    return parseDate(match[1]);
+    return parseDate(match[1], opts);
   }
   
   // Format 3: "NVL ENTRY\nDATE\n12 01 5" (without type)
   match = text.match(/NVL\s+ENTRY\s*\n\s*DATE\s*\n\s*([\d\s]+)/i);
   if (match) {
-    return parseDate(match[1].trim());
+    return parseDate(match[1].trim(), opts);
   }
   
   return undefined;
@@ -486,7 +541,8 @@ function extractDestination(text: string): string | undefined {
  * Format: "MM DD Y P##" where date comes right before P-code
  * Special handling: OCR may merge day+year ("15" = "1 5")
  */
-function extractDeliveryDate(text: string): string | undefined {
+function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): string | undefined {
+  const localDecadeBase = detectDecadeBaseAroundOrigin(text) ?? opts?.decadeBase;
   // Strategy 1: Try standard 4-component pattern "MM DD Y P##"
   // Examples: "11 29 5 P65", "12 01 5 P62"
   let match = text.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})\s+P\d{2,3}/i);
@@ -497,7 +553,7 @@ function extractDeliveryDate(text: string): string | undefined {
     
     if (parseInt(month) >= 1 && parseInt(month) <= 12 &&
         parseInt(day) >= 1 && parseInt(day) <= 31) {
-      return parseDate(`${month} ${day} ${year}`);
+      return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
     }
   }
   
@@ -516,26 +572,26 @@ function extractDeliveryDate(text: string): string | undefined {
     
     if (parseInt(month) >= 1 && parseInt(month) <= 12 &&
         parseInt(day) >= 1 && parseInt(day) <= 9) {
-      return parseDate(`${month} ${day} ${year}`);
+      return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
     }
   }
   
   // Format 3: "MM.DD Y" format (dot separator)
   const dotMatch = text.match(/ORIGIN[^\n]*\n[\s\S]*?([A-Z]{2})\s*\n?(\d{1,2})\.(\d{1,2})\s+(\d{1})/i);
   if (dotMatch) {
-    return parseDate(`${dotMatch[2]} ${dotMatch[3]} ${dotMatch[4]}`);
+    return parseDate(`${dotMatch[2]} ${dotMatch[3]} ${dotMatch[4]}`, { decadeBase: localDecadeBase });
   }
   
   // Format 4: "MM DD Y" on line with origin/destination
   const originSectionMatch = text.match(/ORIGIN[^\n]*\n[^\n]*\n([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+([A-Z][A-Z\s]+?)\s+([A-Z]{2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1})/);
   if (originSectionMatch) {
-    return parseDate(`${originSectionMatch[5]} ${originSectionMatch[6]} ${originSectionMatch[7]}`);
+    return parseDate(`${originSectionMatch[5]} ${originSectionMatch[6]} ${originSectionMatch[7]}`, { decadeBase: localDecadeBase });
   }
   
   // Format 5: DELIVERY DATE header format
   const headerMatch = text.match(/DELIVERY\s*\n?DATE\s*\n(\d+\s+\d+\s+\d+)/i);
   if (headerMatch) {
-    return parseDate(headerMatch[1]);
+    return parseDate(headerMatch[1], { decadeBase: localDecadeBase });
   }
   
   return undefined;
@@ -679,6 +735,7 @@ export function parseRevenueDistribution(ocrText: string): RevenueDistributionPa
     // Normalize text; auto-detect provider to avoid hard-coding
     const provider = detectOcrProvider(ocrText);
     const normalizedText = normalizeOcrText(ocrText, provider);
+    const anchoredDecadeBase = detectDecadeBaseFromText(normalizedText) ?? DEFAULT_DECADE_BASE;
     
     const servicePerformedBy = extractServicePerformedBy(normalizedText);
     const driverName = extractDriverName(servicePerformedBy);
@@ -691,10 +748,10 @@ export function parseRevenueDistribution(ocrText: string): RevenueDistributionPa
     const billOfLading = extractBillOfLading(normalizedText);
     
     const shipperName = extractShipperName(normalizedText);
-    const entryDate = extractEntryDate(normalizedText);
+    const entryDate = extractEntryDate(normalizedText, { decadeBase: anchoredDecadeBase });
     const origin = extractOrigin(normalizedText);
     const destination = extractDestination(normalizedText);
-    const deliveryDate = extractDeliveryDate(normalizedText);
+    const deliveryDate = extractDeliveryDate(normalizedText, { decadeBase: anchoredDecadeBase });
     const weight = extractWeight(normalizedText);
     const miles = extractMiles(normalizedText);
     const overflowWeight = extractOverflowWeight(normalizedText);
