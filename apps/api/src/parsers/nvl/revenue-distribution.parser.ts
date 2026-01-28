@@ -16,7 +16,7 @@
 
 import { normalizeOcrText, OCR_PATTERNS } from '../../utils/ocr-normalizer.js';
 import { detectOcrProvider } from '../../utils/ocr-normalizer.js';
-import { STATE_CODE_CAPTURE, STATE_CODE_LINE_RE, CITY_LINE_RE, ORIGIN_LOOKAHEAD_LINES, DEST_LOOKAHEAD_LINES, DEST_STATE_LOOKAHEAD_AFTER_CITY, BOL_SECTION_SPAN, NET_BALANCE_SECTION_SPAN, CUT_RATE_SECTION_SPAN } from '../constants.js';
+import { STATE_CODE_CAPTURE, STATE_CODE_LINE_RE, CITY_LINE_RE, ORIGIN_LOOKAHEAD_LINES, DEST_LOOKAHEAD_LINES, DEST_STATE_LOOKAHEAD_AFTER_CITY, BOL_SECTION_SPAN, NET_BALANCE_SECTION_SPAN } from '../constants.js';
 
 export interface RevenueDistributionLine {
   driverName?: string;
