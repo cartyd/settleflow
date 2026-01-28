@@ -14,8 +14,7 @@
  * - Net balance: 3,890.63
  */
 
-import { normalizeOcrText, OCR_PATTERNS } from '../../utils/ocr-normalizer.js';
-import { detectOcrProvider } from '../../utils/ocr-normalizer.js';
+import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { STATE_CODE_CAPTURE, STATE_CODE_LINE_RE, CITY_LINE_RE, ORIGIN_LOOKAHEAD_LINES, DEST_LOOKAHEAD_LINES, DEST_STATE_LOOKAHEAD_AFTER_CITY, BOL_SECTION_SPAN, NET_BALANCE_SECTION_SPAN } from '../constants.js';
 import { isValidDate as validateDate, parseCompactDate, parseSlashDate, getCenturyPrefix } from '../utils/date-parser.js';
 
@@ -491,8 +490,8 @@ function extractDestination(text: string): string | undefined {
         return `${cityStateMatch[1].trim()}, ${cityStateMatch[2]}`;
       }
       
-      // Format 2: City name alone - check if this looks like a city name (all caps letters/spaces)
-      if (line.match(/^[A-Z\s]+$/)) {
+      // Format 2: City name alone - check if this looks like a city name
+      if (CITY_LINE_RE.test(line)) {
         // Look for state in next several lines (may be after ZIP, WEIGHT, MILES)
         for (let j = i + 1; j < Math.min(i + DEST_STATE_LOOKAHEAD_AFTER_CITY, lines.length); j++) {
           const stateLine = lines[j].trim();
