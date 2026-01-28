@@ -87,9 +87,18 @@ function isValidDate(month: number, day: number): boolean {
 }
 
 /**
+ * Get the current decade prefix (e.g., "202" for 2020s, "203" for 2030s)
+ */
+function getCurrentDecadePrefix(): string {
+  const currentYear = new Date().getFullYear();
+  return Math.floor(currentYear / 10).toString();
+}
+
+/**
  * Parse date in various formats to ISO string
  * Handles: MM DD Y (11 19 5), MM/DD/YY, MMDDYY
  * Validates date components before returning
+ * Year is interpreted as current decade (e.g., 5 = 2025 in 2020s, 2035 in 2030s)
  */
 function parseDate(dateStr: string | undefined): string | undefined {
   if (!dateStr) return undefined;
@@ -107,7 +116,7 @@ function parseDate(dateStr: string | undefined): string | undefined {
       return undefined; // Invalid date components
     }
     
-    const fullYear = `202${year}`;
+    const fullYear = `${getCurrentDecadePrefix()}${year}`;
     return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
 
