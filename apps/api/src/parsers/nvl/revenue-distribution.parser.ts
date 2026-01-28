@@ -64,15 +64,15 @@ const PREFERRED_YEAR_MAX = 29;
 const ORIGIN_SECTION_SCAN_CHARS = 1200; // Characters to scan after ORIGIN for decade detection
 const DESTINATION_FALLBACK_LOOKAHEAD = 10; // Lines to check in origin section for destination
 
-// Regex patterns for location parsing
+// Regex patterns for location parsing (supports diacritics and punctuation)
 const CITY_STATE_PATTERN = (stateCapture: string) => 
-  new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${stateCapture})$`, 'i');
+  new RegExp(`^([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${stateCapture})$`, 'i');
 
 const CITY_STATE_WITH_DATE_PATTERN = (stateCapture: string) => 
-  new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${stateCapture})\\s+([A-Z][A-Z\\s]+?)\\s+(${stateCapture})\\s+\\d`, 'i');
+  new RegExp(`^([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${stateCapture})\\s+([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${stateCapture})\\s+\\d`, 'i');
 
 const CITY_STATE_PAIR_PATTERN = (stateCapture: string) => 
-  new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${stateCapture})\\s+([A-Z][A-Z\\s]+?)\\s+(${stateCapture})$`, 'i');
+  new RegExp(`^([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${stateCapture})\\s+([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${stateCapture})$`, 'i');
 
 // Header keywords to skip when looking for city names
 const NON_CITY_KEYWORDS = /^(ZIP|INTER|REFERENCE|DESTINATION|WEIGHT|MILES|SIT|PAY|SHIPPER|NAME)/i;
@@ -675,8 +675,9 @@ function extractServiceItems(text: string): Array<{
  * Handles multiple formats:
  * - Single line: "NET BALANCE DUE N/V.L 3890.63"
  * - Multi-line: "NET BALANCE DUE NVL\n*RATES...\n314.83\nDUE ACCOUNT"
+ * Returns undefined if not found (allows distinguishing from actual zero balance)
  */
-function extractNetBalance(text: string): number {
+function extractNetBalance(text: string): number | undefined {
   // Try simplest format first: "NET BALANCE 314.83" (single line, no DUE)
   let match = text.match(/NET\s+BALANCE\s+(-?\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
@@ -708,7 +709,7 @@ function extractNetBalance(text: string): number {
     return parseFloat(match[1].replace(/,/g, ''));
   }
   
-  return 0;
+  return undefined;
 }
 
 /**
@@ -756,7 +757,7 @@ export function parseRevenueDistribution(ocrText: string): RevenueDistributionPa
     if (!tripNumber) {
       errors.push('Could not extract trip number from revenue distribution');
     }
-    if (netBalance === 0) {
+    if (netBalance === undefined) {
       errors.push('Could not extract net balance from revenue distribution');
     }
 
