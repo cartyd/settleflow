@@ -107,3 +107,19 @@ export function parseDate(dateStr: string | undefined): string | undefined {
   
   return undefined;
 }
+
+/**
+ * Add days to an ISO date string using UTC-safe arithmetic
+ * Avoids timezone/DST drift by performing date math in UTC
+ * 
+ * @param isoDate - Date string in ISO format (YYYY-MM-DD)
+ * @param days - Number of days to add (can be negative for subtraction)
+ * @returns New ISO date string (YYYY-MM-DD)
+ */
+export function addDaysUtc(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  if (!y || !m || !d) return isoDate;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}

@@ -15,7 +15,7 @@
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { NET_BALANCE_SECTION_SPAN } from '../constants.js';
 import { parseDate } from '../utils/date-parser.js';
-import { removeLeadingZeros, parseCurrency, parseSignedCurrency } from '../utils/string-utils.js';
+import { removeLeadingZeros, parseCurrency, parseSignedCurrency, CURRENCY_AMOUNT_PATTERN } from '../utils/string-utils.js';
 
 export interface CreditDebitLine {
   transactionType?: string;
@@ -38,7 +38,7 @@ export interface CreditDebitParseResult {
 const MIN_DESCRIPTION_LENGTH = 3;
 
 // Keywords to exclude from descriptions (headers, common words, etc.)
-const EXCLUDED_DESCRIPTION_KEYWORDS = /^(NVL|ENTRY|DATE|PROCESS|ACCOUNT|NUMBER|UNIT|AGENT|DRIVER|NAME|FOR|ANY|DISCREPANCIES|FOLLOWING|DEPARTMENTS|LEASE|CONVENTION|WATTS|PAYMENTS|PLEASE|CONTACT|THE|ACCOUNTING|DEPARTMENT|YELLOW|PAGES|AGENCY|BOND|TRAILER|EMERGENCY|FUNDING|SETTLEMENT|INQUIRES|SAFTEY|NET|BALANCE|DUE|DEBITS|CREDITS|N\.V\.L\.|#)$/i;
+const EXCLUDED_DESCRIPTION_KEYWORDS = /^(NVL|ENTRY|DATE|PROCESS|ACCOUNT|NUMBER|UNIT|AGENT|DRIVER|NAME|FOR|ANY|DISCREPANCIES|FOLLOWING|DEPARTMENTS|LEASE|CONVENTION|WATTS|PAYMENTS|PLEASE|CONTACT|THE|ACCOUNTING|DEPARTMENT|YELLOW|PAGES|AGENCY|BOND|TRAILER|EMERGENCY|FUNDING|SETTLEMENT|INQUIRIES|SAFETY|NET|BALANCE|DUE|DEBITS|CREDITS|N\.V\.L\.|#)$/i;
 
 // Pattern for valid description text (all caps with spaces)
 const VALID_DESCRIPTION_PATTERN = /^[A-Z][A-Z\s]+$/;
@@ -202,10 +202,10 @@ function extractAmountsAndTypes(text: string): Array<{ amount: number; isDebit: 
   if (debitSection) {
     const sectionText = debitSection[1];
     // Match all decimal numbers that look like amounts
-    const amountMatches = sectionText.matchAll(/(\d+\.\d{2})/g);
+    const amountMatches = sectionText.matchAll(new RegExp(`(${CURRENCY_AMOUNT_PATTERN}-?)`, 'g'));
     
     for (const match of amountMatches) {
-      const amount = parseCurrency(match[1]);
+      const amount = parseSignedCurrency(match[1]);
       // Check if this might be a credit by looking at context
       // For now, assume amounts in the DEBITS section are debits
       results.push({ amount, isDebit: true });
@@ -227,40 +227,42 @@ function extractAmountsAndTypes(text: string): Array<{ amount: number; isDebit: 
  * Try extracting amount from newline format: DESCRIPTION\nDEBITS\nCREDITS\nTEXT\nAMOUNT
  */
 function tryNewlineFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const match = text.match(/DESCRIPTION\s*\n\s*DEBITS\s*\n\s*CREDITS\s*\n[^\n]+\n(\d+\.\d{2})/i);
-  return match ? { amount: parseCurrency(match[1]), isDebit: true } : undefined;
+  const match = text.match(new RegExp(`DESCRIPTION[\\s\\t]*\\n[\\s\\t]*DEBITS[\\s\\t]*\\n[\\s\\t]*CREDITS[\\s\\t]*\\n[^\\n]+\\n(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i'));
+  return match ? { amount: parseSignedCurrency(match[1]), isDebit: true } : undefined;
 }
 
 /**
  * Try extracting amount from DEBITS column (tab-separated)
  */
 function tryDebitColumnFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const match = text.match(/DEBITS[\s\t]+CREDITS[\s\t]*\n[^\n]*[\s\t]+(\d+\.\d{2})/i);
-  return match ? { amount: parseCurrency(match[1]), isDebit: true } : undefined;
+  const match = text.match(new RegExp(`DEBITS[\\s\\t]+CREDITS[\\s\\t]*\\n[^\\n]*[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i'));
+  return match ? { amount: parseSignedCurrency(match[1]), isDebit: true } : undefined;
 }
 
 /**
  * Try extracting amount after DEBITS label (tab-separated format)
  */
 function tryDebitTabFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const match = text.match(/DEBITS[\s\t]*\n[^\n\t]+[\s\t]+(\d+\.\d{2})/i);
-  return match ? { amount: parseCurrency(match[1]), isDebit: true } : undefined;
+  const match = text.match(new RegExp(`DEBITS[\\s\\t]*\\n[^\\n\\t]+[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i'));
+  return match ? { amount: parseSignedCurrency(match[1]), isDebit: true } : undefined;
 }
 
 /**
  * Try extracting standalone DEBITS amount (single column)
  */
 function tryDebitSingleFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const match = text.match(/DEBITS[\s\t]*\n(\d+\.\d{2})/i);
-  return match ? { amount: parseCurrency(match[1]), isDebit: true } : undefined;
+  const match = text.match(new RegExp(`DEBITS[\\s\\t]*\\n(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i'));
+  return match ? { amount: parseSignedCurrency(match[1]), isDebit: true } : undefined;
 }
 
 /**
  * Try extracting amount from CREDITS column
  */
 function tryCreditFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const match = text.match(/CREDITS[\s\t]*\n[^\n]*[\s\t]+(\d+\.\d{2})/i);
-  return match ? { amount: -parseCurrency(match[1]), isDebit: false } : undefined;
+  const match = text.match(new RegExp(`CREDITS[\\s\\t]*\\n[^\\n]*[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i'));
+  if (!match) return undefined;
+  const parsed = parseSignedCurrency(match[1]);
+  return { amount: parsed < 0 ? parsed : -parsed, isDebit: false };
 }
 
 /**
