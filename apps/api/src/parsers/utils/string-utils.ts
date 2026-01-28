@@ -29,3 +29,14 @@ export const CURRENCY_AMOUNT_GLOBAL_RE = new RegExp(CURRENCY_AMOUNT_PATTERN, 'g'
 export function parseCurrency(value: string): number {
   return parseFloat(value.replace(/,/g, ''));
 }
+
+/**
+ * Parse a currency string that may use a trailing minus to indicate negative values
+ * Examples: "3,890.63-" -> -3890.63, "518.00" -> 518.00
+ */
+export function parseSignedCurrency(value: string): number {
+  const trimmed = value.trim();
+  const base = parseCurrency(trimmed);
+  const isTrailingMinus = trimmed.endsWith('-');
+  return isTrailingMinus ? -base : base;
+}

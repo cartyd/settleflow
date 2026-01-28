@@ -13,6 +13,8 @@
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider, OcrProvider } from '../../utils/ocr-normalizer.js';
 import { parseSlashDate } from '../utils/date-parser.js';
+import { parseSignedCurrency } from '../utils/string-utils.js';
+import { WEEK_END_OFFSET_DAYS, WEEK_DURATION_DAYS } from '../constants.js';
 
 export interface ParsedSettlementLine {
   billOfLading?: string;
@@ -131,10 +133,10 @@ function parseTransactionLine(line: string): ParsedSettlementLine | null {
 
   // Try patterns from most specific to least
   // 1) B/L Trip Ref# Date Code Desc Amount
-  let m = trimmed.match(/^(\d+)\s+(\d+)\s+(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/);
+  let m = trimmed.match(new RegExp('^(\\d+)\\s+(\\d+)\\s+(\\d{2}\\/\\d{2}\\/\\d{2})\\s+([A-Z]{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2}-?)$', 'i'));
   if (m) {
     const [, n1, n2, date, code, description, amountStr] = m;
-    const amount = parseAmount(amountStr);
+    const amount = parseSignedCurrency(amountStr);
     return {
       billOfLading: n1.length > 4 ? n1 : undefined,
       tripNumber: n1.length > 4 ? n2 : n1,
@@ -149,10 +151,10 @@ function parseTransactionLine(line: string): ParsedSettlementLine | null {
   }
 
   // 2) One number + Date Code Desc Amount (Trip or Ref#)
-  m = trimmed.match(/^(\d+)\s+(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/);
+  m = trimmed.match(new RegExp('^(\\d+)\\s+(\\d{2}\\/\\d{2}\\/\\d{2})\\s+([A-Z]{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2}-?)$', 'i'));
   if (m) {
     const [, n1, date, code, description, amountStr] = m;
-    const amount = parseAmount(amountStr);
+    const amount = parseSignedCurrency(amountStr);
     const isTrip = n1.length <= 4;
     return {
       tripNumber: isTrip ? n1 : undefined,
@@ -167,10 +169,10 @@ function parseTransactionLine(line: string): ParsedSettlementLine | null {
   }
 
   // 3) Date Code Desc Amount (minimal)
-  m = trimmed.match(/^(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/);
+  m = trimmed.match(new RegExp('^(\\d{2}\\/\\d{2}\\/\\d{2})\\s+([A-Z]{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2}-?)$', 'i'));
   if (m) {
     const [, date, code, description, amountStr] = m;
-    const amount = parseAmount(amountStr);
+    const amount = parseSignedCurrency(amountStr);
     return {
       date: parseSlashDate(date) ?? date,
       transactionCode: code,
@@ -232,7 +234,7 @@ function extractHeaderInfo(text: string): {
   // Extract check total: "<CHECK TOTAL> 3,330.53"
   const totalMatch = text.match(/CHECK\s+TOTAL[>\s]*(\d+,?\d*\.?\d+)/i);
   if (totalMatch) {
-    result.checkTotal = parseAmount(totalMatch[1]);
+    result.checkTotal = parseSignedCurrency(totalMatch[1]);
   }
 
   return result;
@@ -261,20 +263,24 @@ export function extractBatchMetadata(ocrText: string): SettlementBatchMetadata |
   
   const checkDate = headerInfo.checkDate || headerInfo.settlementDate!;
   
-  // Calculate week dates from check/settlement date
-  const dateObj = new Date(checkDate);
-  const weekEnd = new Date(dateObj);
-  weekEnd.setDate(weekEnd.getDate() - 7);
-  const weekStart = new Date(weekEnd);
-  weekStart.setDate(weekStart.getDate() - 6);
+  // Calculate week dates from check/settlement date using UTC-safe arithmetic
+  function addDaysUtc(isoDate: string, days: number): string {
+    const [y, m, d] = isoDate.split('-').map(Number);
+    if (!y || !m || !d) return isoDate;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + days);
+    return dt.toISOString().slice(0, 10);
+  }
+  const weekEndStr = addDaysUtc(checkDate, WEEK_END_OFFSET_DAYS);
+  const weekStartStr = addDaysUtc(weekEndStr, WEEK_DURATION_DAYS);
   
   return {
     nvlPaymentRef: paymentRef || `SD-${headerInfo.accountNumber}-${checkDate}`,
     agencyCode: headerInfo.accountNumber,
     agencyName: headerInfo.accountName || 'Unknown Agency',
     checkDate,
-    weekStartDate: weekStart.toISOString().split('T')[0],
-    weekEndDate: weekEnd.toISOString().split('T')[0],
+    weekStartDate: weekStartStr,
+    weekEndDate: weekEndStr,
   };
 }
 
