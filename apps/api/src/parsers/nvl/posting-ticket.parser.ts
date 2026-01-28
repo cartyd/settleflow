@@ -4,6 +4,7 @@
  * Posting tickets are deduction documents for miscellaneous charges
  */
 import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
+import { parseSlashDate } from '../utils/date-parser.js';
 
 export interface PostingTicketLine {
   ptNumber?: string;
@@ -19,21 +20,6 @@ export interface PostingTicketParseResult {
   errors: string[];
 }
 
-/**
- * Parse date in MM/DD/YY format to ISO string
- */
-function parseDate(dateStr: string | undefined): string | undefined {
-  if (!dateStr) return undefined;
-  
-  const match = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
-  if (match) {
-    const [, month, day, year] = match;
-    const fullYear = `20${year}`;
-    return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
-  
-  return undefined;
-}
 
 /**
  * Parse POSTING_TICKET document using regex patterns
@@ -73,7 +59,7 @@ export function parsePostingTicket(ocrText: string): PostingTicketParseResult {
 
     // Extract date (at top of document, format MM/DD/YY)
     const dateMatch = text.match(/^(\d{1,2}\/\d{1,2}\/\d{2})/m);
-    const date = parseDate(dateMatch ? dateMatch[1] : undefined);
+    const date = parseSlashDate(dateMatch ? dateMatch[1] : undefined);
 
     lines.push({
       ptNumber,

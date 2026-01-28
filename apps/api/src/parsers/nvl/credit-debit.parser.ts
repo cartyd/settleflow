@@ -14,6 +14,7 @@
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { NET_BALANCE_SECTION_SPAN } from '../constants.js';
+import { parseDate } from '../utils/date-parser.js';
 
 export interface CreditDebitLine {
   transactionType?: string;
@@ -32,39 +33,6 @@ export interface CreditDebitParseResult {
   errors: string[];
 }
 
-/**
- * Parse date string to ISO format
- * Handles: YYYY-MM-DD, MM/DD/YY, MMDDYY (6 digits) formats
- */
-function parseDate(dateStr: string | undefined): string | undefined {
-  if (!dateStr) return undefined;
-  
-  const cleanStr = dateStr.trim();
-  
-  // Try MMDDYY format (6 digits, no separators) - e.g., 121625 = 12/16/25
-  const compactMatch = cleanStr.match(/^(\d{2})(\d{2})(\d{2})$/);
-  if (compactMatch) {
-    const [, month, day, year] = compactMatch;
-    const fullYear = `20${year}`;
-    return `${fullYear}-${month}-${day}`;
-  }
-  
-  // Try YYYY-MM-DD format
-  const isoMatch = cleanStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) {
-    return cleanStr;
-  }
-  
-  // Try MM/DD/YY format
-  const slashMatch = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
-  if (slashMatch) {
-    const [, month, day, year] = slashMatch;
-    const fullYear = `20${year}`;
-    return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
-  
-  return undefined;
-}
 
 /**
  * Extract transaction type from the document

@@ -12,6 +12,7 @@
  */
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider, OcrProvider } from '../../utils/ocr-normalizer.js';
+import { parseSlashDate } from '../utils/date-parser.js';
 
 export interface ParsedSettlementLine {
   billOfLading?: string;
@@ -90,19 +91,6 @@ function parseAmount(amountStr: string): number {
   return isNegative ? -value : value;
 }
 
-/**
- * Parse a date string in MM/DD/YY format to ISO date string
- * Assumes 20xx for year (e.g., 12/02/25 -> 2025-12-02)
- */
-function parseDate(dateStr: string): string {
-  const parts = dateStr.split('/');
-  if (parts.length !== 3) {
-    return dateStr;
-  }
-  const [month, day, year] = parts;
-  const fullYear = `20${year}`;
-  return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-}
 
 /**
  * Extract transaction line type from code
@@ -151,7 +139,7 @@ function parseTransactionLine(line: string): ParsedSettlementLine | null {
       billOfLading: n1.length > 4 ? n1 : undefined,
       tripNumber: n1.length > 4 ? n2 : n1,
       referenceNumber: n1.length > 4 ? undefined : n2,
-      date: parseDate(date),
+      date: parseSlashDate(date) ?? date,
       transactionCode: code,
       description: description.trim(),
       amount,
@@ -169,7 +157,7 @@ function parseTransactionLine(line: string): ParsedSettlementLine | null {
     return {
       tripNumber: isTrip ? n1 : undefined,
       referenceNumber: isTrip ? undefined : n1,
-      date: parseDate(date),
+      date: parseSlashDate(date) ?? date,
       transactionCode: code,
       description: description.trim(),
       amount,
@@ -184,7 +172,7 @@ function parseTransactionLine(line: string): ParsedSettlementLine | null {
     const [, date, code, description, amountStr] = m;
     const amount = parseAmount(amountStr);
     return {
-      date: parseDate(date),
+      date: parseSlashDate(date) ?? date,
       transactionCode: code,
       description: description.trim(),
       amount,
@@ -232,13 +220,13 @@ function extractHeaderInfo(text: string): {
   // Extract check date: "ON 12/18/25"
   const dateMatch = text.match(/ON\s+(\d{2}\/\d{2}\/\d{2})/i);
   if (dateMatch) {
-    result.checkDate = parseDate(dateMatch[1]);
+    result.checkDate = parseSlashDate(dateMatch[1]);
   }
 
   // Extract settlement date: "AS OF 12/03/25"
   const settlementMatch = text.match(/AS\s+OF\s+(\d{2}\/\d{2}\/\d{2})/i);
   if (settlementMatch) {
-    result.settlementDate = parseDate(settlementMatch[1]);
+    result.settlementDate = parseSlashDate(settlementMatch[1]);
   }
 
   // Extract check total: "<CHECK TOTAL> 3,330.53"

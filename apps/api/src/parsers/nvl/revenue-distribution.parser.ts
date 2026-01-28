@@ -17,6 +17,7 @@
 import { normalizeOcrText, OCR_PATTERNS } from '../../utils/ocr-normalizer.js';
 import { detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { STATE_CODE_CAPTURE, STATE_CODE_LINE_RE, CITY_LINE_RE, ORIGIN_LOOKAHEAD_LINES, DEST_LOOKAHEAD_LINES, DEST_STATE_LOOKAHEAD_AFTER_CITY, BOL_SECTION_SPAN, NET_BALANCE_SECTION_SPAN } from '../constants.js';
+import { isValidDate as validateDate, parseCompactDate, parseSlashDate } from '../utils/date-parser.js';
 
 export interface RevenueDistributionLine {
   driverName?: string;
@@ -56,6 +57,14 @@ function decadePrefixFromBase(base: number): string {
 }
 
 /**
+ * Get the century prefix for two-digit years (e.g., "20" for 21st century)
+ */
+function getCenturyPrefix(): string {
+  const currentYear = new Date().getFullYear();
+  return Math.floor(currentYear / 100).toString();
+}
+
+/**
  * Parse driver name into first and last name
  * Examples: "BIDETTI, DONNY" → {first: "DONNY", last: "BIDETTI"}
  */
@@ -78,20 +87,6 @@ function parseDriverName(fullName: string): { firstName?: string; lastName?: str
   return { lastName: fullName };
 }
 
-/**
- * Validate date components
- * Returns true if month (1-12) and day (1-31) are valid
- */
-function isValidDate(month: number, day: number): boolean {
-  if (month < 1 || month > 12) return false;
-  if (day < 1 || day > 31) return false;
-  
-  // Check days in month (simplified - doesn't account for leap years)
-  const daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  if (day > daysInMonth[month - 1]) return false;
-  
-  return true;
-}
 
 /**
  * Parse date in various formats to ISO string
@@ -111,44 +106,26 @@ function parseDate(dateStr: string | undefined, opts?: { decadeBase?: number }):
     const monthNum = parseInt(month);
     const dayNum = parseInt(day);
     
-    if (!isValidDate(monthNum, dayNum)) {
+    if (!validateDate(monthNum, dayNum)) {
       return undefined; // Invalid date components
     }
     
-    const decadeBase = opts?.decadeBase ?? DEFAULT_DECADE_BASE;
-    const fullYear = `${decadePrefixFromBase(decadeBase)}${year}`;
+    // For single digit year (5), determine the decade (e.g., 2025)
+    // Get the current decade (e.g., 2020s)
+    const currentYear = new Date().getFullYear();
+    const currentDecade = Math.floor(currentYear / 10) * 10; // e.g., 2020
+    const twoDigitYear = currentDecade % 100 + parseInt(year); // e.g., 20 + 5 = 25
+    const fullYear = `${getCenturyPrefix()}${twoDigitYear.toString().padStart(2, '0')}`;
     return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
 
-  // Try MMDDYY format (121625)
-  const compactMatch = cleanStr.match(/^(\d{2})(\d{2})(\d{2})$/);
-  if (compactMatch) {
-    const [, month, day, year] = compactMatch;
-    const monthNum = parseInt(month);
-    const dayNum = parseInt(day);
-    
-    if (!isValidDate(monthNum, dayNum)) {
-      return undefined; // Invalid date components
-    }
-    
-    const fullYear = `20${year}`;
-    return `${fullYear}-${month}-${day}`;
-  }
+  // Try MMDDYY format - use shared utility
+  const compactResult = parseCompactDate(cleanStr);
+  if (compactResult) return compactResult;
 
-  // Try MM/DD/YY format
-  const slashMatch = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
-  if (slashMatch) {
-    const [, month, day, year] = slashMatch;
-    const monthNum = parseInt(month);
-    const dayNum = parseInt(day);
-    
-    if (!isValidDate(monthNum, dayNum)) {
-      return undefined; // Invalid date components
-    }
-    
-    const fullYear = `20${year}`;
-    return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
+  // Try MM/DD/YY format - use shared utility
+  const slashResult = parseSlashDate(cleanStr);
+  if (slashResult) return slashResult;
 
   return undefined;
 }
@@ -164,14 +141,14 @@ function detectDecadeBaseFromText(text: string): number | undefined {
     const mm = parseInt(m[1], 10);
     const dd = parseInt(m[2], 10);
     const yy = parseInt(m[3], 10);
-    if (!Number.isNaN(yy) && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) yys.push(yy);
+    if (!Number.isNaN(yy) && validateDate(mm, dd)) yys.push(yy);
   }
   // Collect all YY from MM/DD/YY
   for (const m of text.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{2})\b/g)) {
     const mm = parseInt(m[1], 10);
     const dd = parseInt(m[2], 10);
     const yy = parseInt(m[3], 10);
-    if (!Number.isNaN(yy) && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) yys.push(yy);
+    if (!Number.isNaN(yy) && validateDate(mm, dd)) yys.push(yy);
   }
   if (yys.length === 0) return undefined;
   // Prefer years in 2000-2029 to avoid drifting into 2030s anchors

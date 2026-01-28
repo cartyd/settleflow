@@ -13,6 +13,8 @@
  * - Payment method: Electronic transfer or Check
  */
 
+import { parseSlashDate } from '../utils/date-parser.js';
+
 export interface RemittanceLine {
   checkNumber?: string;
   checkDate?: string;
@@ -41,19 +43,6 @@ export interface BatchMetadata {
   weekEndDate?: string;
 }
 
-/**
- * Parse date string in MM/DD/YY format to ISO date string
- * Example: 12/18/25 -> 2025-12-18
- */
-function parseDate(dateStr: string): string {
-  const parts = dateStr.split('/');
-  if (parts.length !== 3) {
-    return dateStr;
-  }
-  const [month, day, year] = parts;
-  const fullYear = `20${year}`;
-  return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-}
 
 /**
  * Extract check number from the document
@@ -92,13 +81,13 @@ function extractCheckDate(text: string): string | undefined {
   // Try "DATE MM/DD/YY" pattern
   const dateMatch = text.match(/DATE\s+(\d{1,2}\/\d{1,2}\/\d{2})/i);
   if (dateMatch) {
-    return parseDate(dateMatch[1]);
+    return parseSlashDate(dateMatch[1]);
   }
 
   // Try date in "PAY TO THE ORDER OF" line
   const payMatch = text.match(/PAY TO THE ORDER OF.*?DATE\s+(\d{1,2}\/\d{1,2}\/\d{2})/i);
   if (payMatch) {
-    return parseDate(payMatch[1]);
+    return parseSlashDate(payMatch[1]);
   }
 
   return undefined;

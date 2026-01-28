@@ -6,6 +6,7 @@
  */
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
+import { parseCompactDate } from '../utils/date-parser.js';
 
 export interface AdvanceLine {
   tripNumber?: string;
@@ -22,21 +23,6 @@ export interface AdvanceParseResult {
   errors: string[];
 }
 
-/**
- * Parse date in MMDDYY format to ISO string
- */
-function parseDate(dateStr: string | undefined): string | undefined {
-  if (!dateStr) return undefined;
-  
-  const match = dateStr.match(/^(\d{2})(\d{2})(\d{2})$/);
-  if (match) {
-    const [, month, day, year] = match;
-    const fullYear = `20${year}`;
-    return `${fullYear}-${month}-${day}`;
-  }
-  
-  return undefined;
-}
 
 /**
  * Parse ADVANCE_ADVICE document using regex patterns
@@ -114,7 +100,7 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
     // Extract date with flexible patterns
     // Handles: "DATE--> 120525", "DATE\n120525", etc.
     const dateMatch = normalizedText.match(/DATE[-\s]*>?\s*\n?\s*(\d{6})/i);
-    const date = parseDate(dateMatch ? dateMatch[1] : undefined);
+    const date = parseCompactDate(dateMatch ? dateMatch[1] : undefined);
 
     // Determine description (COMDATA, CASH ADVANCE, etc.)
     let description = 'COMDATA';
