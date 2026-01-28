@@ -15,10 +15,9 @@
 
 import { parseSlashDate } from '../utils/date-parser.js';
 import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
+import { CHECK_SCAN_TOP_LINES, ACCOUNT_SCAN_TOP_LINES } from '../constants.js';
 
-// Local scan limits for top-of-document heuristics
-const CHECK_SCAN_TOP_LINES = 10;
-const ACCOUNT_SCAN_TOP_LINES = 20;
+// Scan limits sourced from shared constants for consistency
 
 // UTC-safe date arithmetic to avoid timezone/DST drift
 function addDaysUtc(isoDate: string, days: number): string {
