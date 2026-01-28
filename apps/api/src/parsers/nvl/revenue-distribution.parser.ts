@@ -17,6 +17,7 @@
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { STATE_CODE_CAPTURE, STATE_CODE_LINE_RE, CITY_LINE_RE, ORIGIN_LOOKAHEAD_LINES, DEST_LOOKAHEAD_LINES, DEST_STATE_LOOKAHEAD_AFTER_CITY, BOL_SECTION_SPAN, NET_BALANCE_SECTION_SPAN, ORIGIN_SECTION_SCAN_CHARS, DESTINATION_FALLBACK_LOOKAHEAD } from '../constants.js';
 import { isValidDate as validateDate, parseCompactDate, parseSlashDate } from '../utils/date-parser.js';
+import { parseCurrency } from '../utils/string-utils.js';
 
 export interface RevenueDistributionLine {
   driverName?: string;
@@ -649,9 +650,9 @@ function extractServiceItems(text: string): Array<{
     const match = line.match(/^([A-ZÀ-ÿ&'\-\s]+?)\s+(-?\d[\d,]*\.\d{2})(?:\s+(\d+(?:\.\d+)?))?(?:\s+(-?\d[\d,]*\.\d{2}))?/);
     if (match) {
       const description = match[1].trim();
-      const amount = parseFloat(match[2].replace(/,/g, ''));
+      const amount = parseCurrency(match[2]);
       const percentage = match[3] ? parseFloat(match[3]) : undefined;
-      const earnings = match[4] ? parseFloat(match[4].replace(/,/g, '')) : undefined;
+      const earnings = match[4] ? parseCurrency(match[4]) : undefined;
 
       if (!isNaN(amount)) {
         items.push({ description, amount, percentage, earnings });
@@ -674,32 +675,32 @@ function extractNetBalance(text: string): number | undefined {
   // Try simplest format first: "NET BALANCE 314.83" (single line, no DUE)
   let match = text.match(/NET\s+BALANCE\s+(-?\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
-    return parseFloat(match[1].replace(/,/g, ''));
+    return parseCurrency(match[1]);
   }
   
   // Try single-line format with DUE: "NET BALANCE DUE NVL 3890.63"
   match = text.match(/NET\s+BALANCE\s+DUE\s+(?:N[.\/]?V[.\/]?L[.\/]?|ACCOUNT)\s+(-?\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
-    return parseFloat(match[1].replace(/,/g, ''));
+    return parseCurrency(match[1]);
   }
   
   // Try format where amount appears after "NET BALANCE DUE NVL" with content in between
   // Example: "NET BALANCE DUE NVL\n*RATES...\n314.83\nDUE ACCOUNT"
   match = text.match(new RegExp(`NET\\s+BALANCE[\\s\\S]{0,${NET_BALANCE_SECTION_SPAN}}?^\\s*(-?\\d+(?:,\\d+)*\\.\\d{2})\\s*$`, 'mi'));
   if (match) {
-    return parseFloat(match[1].replace(/,/g, ''));
+    return parseCurrency(match[1]);
   }
   
   // Try "NET BALANCE\nDUE NVL\n3,890.63" format (multi-line, direct)
   match = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+(?:N\.?V\.?L\.?|ACCOUNT)\s*\n(-?\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
-    return parseFloat(match[1].replace(/,/g, ''));
+    return parseCurrency(match[1]);
   }
   
   // Try simple "NET BALANCE\n3,890.63" format
   match = text.match(/NET\s+BALANCE\s*\n(-?\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
-    return parseFloat(match[1].replace(/,/g, ''));
+    return parseCurrency(match[1]);
   }
   
   return undefined;
