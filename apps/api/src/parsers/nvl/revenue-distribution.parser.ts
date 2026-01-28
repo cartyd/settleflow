@@ -70,8 +70,24 @@ function parseDriverName(fullName: string): { firstName?: string; lastName?: str
 }
 
 /**
+ * Validate date components
+ * Returns true if month (1-12) and day (1-31) are valid
+ */
+function isValidDate(month: number, day: number): boolean {
+  if (month < 1 || month > 12) return false;
+  if (day < 1 || day > 31) return false;
+  
+  // Check days in month (simplified - doesn't account for leap years)
+  const daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (day > daysInMonth[month - 1]) return false;
+  
+  return true;
+}
+
+/**
  * Parse date in various formats to ISO string
  * Handles: MM DD Y (11 19 5), MM/DD/YY, MMDDYY
+ * Validates date components before returning
  */
 function parseDate(dateStr: string | undefined): string | undefined {
   if (!dateStr) return undefined;
@@ -82,6 +98,13 @@ function parseDate(dateStr: string | undefined): string | undefined {
   const spacedMatch = cleanStr.match(/^(\d{1,2})\s+(\d{1,2})\s+(\d{1})$/);
   if (spacedMatch) {
     const [, month, day, year] = spacedMatch;
+    const monthNum = parseInt(month);
+    const dayNum = parseInt(day);
+    
+    if (!isValidDate(monthNum, dayNum)) {
+      return undefined; // Invalid date components
+    }
+    
     const fullYear = `202${year}`;
     return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
@@ -90,6 +113,13 @@ function parseDate(dateStr: string | undefined): string | undefined {
   const compactMatch = cleanStr.match(/^(\d{2})(\d{2})(\d{2})$/);
   if (compactMatch) {
     const [, month, day, year] = compactMatch;
+    const monthNum = parseInt(month);
+    const dayNum = parseInt(day);
+    
+    if (!isValidDate(monthNum, dayNum)) {
+      return undefined; // Invalid date components
+    }
+    
     const fullYear = `20${year}`;
     return `${fullYear}-${month}-${day}`;
   }
@@ -98,6 +128,13 @@ function parseDate(dateStr: string | undefined): string | undefined {
   const slashMatch = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
   if (slashMatch) {
     const [, month, day, year] = slashMatch;
+    const monthNum = parseInt(month);
+    const dayNum = parseInt(day);
+    
+    if (!isValidDate(monthNum, dayNum)) {
+      return undefined; // Invalid date components
+    }
+    
     const fullYear = `20${year}`;
     return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
@@ -433,47 +470,42 @@ function extractDestination(text: string): string | undefined {
 }
 
 /**
- * Extract delivery date
- * Pattern: Date can be "11.19 5", "11 19 5", or "12 12 5"
- * Must appear after origin/destination info to avoid picking up wrong date
+ * Extract delivery date (RDD)
+ * Pattern: Date immediately precedes P-code (e.g., P62, P65)
+ * Format: "MM DD Y P##" where date comes right before P-code
+ * Special handling: OCR may merge day+year ("15" = "1 5")
  */
 function extractDeliveryDate(text: string): string | undefined {
-  // Format 1: Look for "DELIVERY\nDATE" followed by date with P-code
-  // Pattern: "11 19 5 P68" or "12 12 5 P62" 
-  let match = text.match(/DELIVERY\s*\n\s*DATE\s*[\s\S]{0,100}?([\d\s]+)\s+P\d+/i);
+  // Strategy 1: Try standard 4-component pattern "MM DD Y P##"
+  // Examples: "11 29 5 P65", "12 01 5 P62"
+  let match = text.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})\s+P\d{2,3}/i);
   if (match) {
-    // Extract actual date components - handle formats like "12 125" or "11 19 5"
-    const dateStr = match[1].trim();
-    // Try standard "MM DD Y" format first
-    let dateMatch = dateStr.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})/);
-    if (dateMatch) {
-      return parseDate(`${dateMatch[1]} ${dateMatch[2]} ${dateMatch[3]}`);
-    }
-    // Try malformed "MM DDY" format (missing space) like "12 125"
-    dateMatch = dateStr.match(/(\d{1,2})\s+(\d)(\d{2})/);
-    if (dateMatch) {
-      return parseDate(`${dateMatch[1]} ${dateMatch[2]}${dateMatch[3][0]} ${dateMatch[3][1]}`);
+    const month = match[1];
+    const day = match[2];
+    const year = match[3];
+    
+    if (parseInt(month) >= 1 && parseInt(month) <= 12 &&
+        parseInt(day) >= 1 && parseInt(day) <= 31) {
+      return parseDate(`${month} ${day} ${year}`);
     }
   }
   
-  // Format 2: Look for date in CUT*RATE section ("11 19 5 P68")
-  // Pattern: "CUT*\nRATE\nBILLING\nRATE\nTARIFF\n12 1 5 P62"
-  match = text.match(/CUT\*[\s\S]{0,100}?TARIFF\s*\n\s*([\d\s]+)\s+P\d+/i);
+  // Strategy 2: Handle OCR error where day+year are merged
+  // Pattern: "MM XY P##" where XY is a 2-digit number that should be "X Y"
+  // Example: "12 15 P62" should be "12 1 5 P62" (day=1, year=5)
+  // This happens when single-digit day (0X) merges with year (Y) → "XY"
+  match = text.match(/(\d{1,2})\s*\n?\s*(\d{2})\s+P\d{2,3}/i);
   if (match) {
-    const dateStr = match[1].trim();
-    const dateMatch = dateStr.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})/);
-    if (dateMatch) {
-      return parseDate(`${dateMatch[1]} ${dateMatch[2]} ${dateMatch[3]}`);
-    }
-  }
-  
-  // Format 2b: Simpler CUT*\nRATE\ndate pattern (fallback)
-  match = text.match(/CUT\*\s*\n\s*RATE\s*\n([\d\s]+)\s+P\d+/i);
-  if (match) {
-    const dateStr = match[1].trim();
-    const dateMatch = dateStr.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})/);
-    if (dateMatch) {
-      return parseDate(`${dateMatch[1]} ${dateMatch[2]} ${dateMatch[3]}`);
+    const month = match[1];
+    const merged = match[2]; // e.g., "15" should be "1" and "5"
+    
+    // Split the 2-digit merged value: first digit = day, second digit = year
+    const day = merged[0];
+    const year = merged[1];
+    
+    if (parseInt(month) >= 1 && parseInt(month) <= 12 &&
+        parseInt(day) >= 1 && parseInt(day) <= 9) {
+      return parseDate(`${month} ${day} ${year}`);
     }
   }
   

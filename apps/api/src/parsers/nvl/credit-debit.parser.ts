@@ -78,29 +78,61 @@ function extractTransactionType(text: string): string | undefined {
 }
 
 /**
- * Extract description from the document
- * Pattern: First non-empty value after "DESCRIPTION" header or in DEBITS/CREDITS section
+ * Extract descriptions from the document
+ * Pattern: Multiple lines after "DESCRIPTION" header before DEBITS/CREDITS
+ * Returns array of descriptions (one document can have multiple line items)
+ * Only returns descriptions that appear to be valid item names (not headers, dates, numbers, etc.)
  */
-function extractDescription(text: string): string {
-  // Try to find description in tab-separated format (DESCRIPTION\tDEBITS\tCREDITS\nVALUE\t...)
-  const tabMatch = text.match(/DESCRIPTION[\s\t]+DEBITS[\s\t]+CREDITS[\s\t]*\n([^\t\n]+)[\s\t]+\d+\.\d{2}/i);
-  if (tabMatch && tabMatch[1].trim()) {
-    return tabMatch[1].trim();
+function extractDescriptions(text: string): string[] {
+  const descriptions: string[] = [];
+  
+  // Find the DESCRIPTION section between DESCRIPTION header and the line with AGENT/DRIVER or NVL ENTRY
+  // This excludes the footer text
+  const sectionMatch = text.match(/DESCRIPTION[\s\t]*\n([\s\S]*?)(?:AGENT\/DRIVER\s+NAME|NVL\s+ENTRY|FOR\s+ANY\s+DISCREPANCIES)/i);
+  if (sectionMatch) {
+    const sectionText = sectionMatch[1].trim();
+    const lines = sectionText.split('\n');
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      // Skip empty lines
+      if (!trimmed) continue;
+      
+      // Skip if it's just numbers or dates (MMDDYY format, account numbers, etc.)
+      if (trimmed.match(/^\d+$/)) continue;
+      
+      // Skip common header words and fragments
+      if (trimmed.match(/^(NVL|ENTRY|DATE|PROCESS|ACCOUNT|NUMBER|UNIT|AGENT|DRIVER|NAME|FOR|ANY|DISCREPANCIES|FOLLOWING|DEPARTMENTS|LEASE|CONVENTION|WATTS|PAYMENTS|PLEASE|CONTACT|THE|ACCOUNTING|DEPARTMENT|YELLOW|PAGES|AGENCY|BOND|TRAILER|EMERGENCY|FUNDING|SETTLEMENT|INQUIRES|SAFTEY|NET|BALANCE|DUE|DEBITS|CREDITS|N\.V\.L\.|#)$/i)) continue;
+      
+      // Skip sentence fragments (lines that end with common prepositions or conjunctions)
+      if (trimmed.match(/(contact|please|or|and|for|the|to|of)$/i)) continue;
+      
+      // Only include lines that look like actual item descriptions
+      // Valid descriptions are typically all caps, can have spaces, and are 3+ chars
+      if (trimmed.length >= 3 && trimmed.match(/^[A-Z][A-Z\s]+$/)) {
+        descriptions.push(trimmed);
+      }
+    }
   }
-
-  // Try to find description after "DESCRIPTION" label on separate line
-  const descMatch = text.match(/DESCRIPTION[\s\t]*\n\s*([^\n\t]+)/i);
-  if (descMatch && descMatch[1].trim() && !descMatch[1].match(/DEBITS|CREDITS/i)) {
-    return descMatch[1].trim();
+  
+  // If no descriptions found, try to find in tab-separated format
+  if (descriptions.length === 0) {
+    const tabMatch = text.match(/DESCRIPTION[\s\t]+DEBITS[\s\t]+CREDITS[\s\t]*\n([^\t\n]+)[\s\t]+\d+\.\d{2}/i);
+    if (tabMatch && tabMatch[1].trim()) {
+      descriptions.push(tabMatch[1].trim());
+    }
   }
-
+  
   // Fallback: use transaction type if available
-  const transType = extractTransactionType(text);
-  if (transType) {
-    return transType;
+  if (descriptions.length === 0) {
+    const transType = extractTransactionType(text);
+    if (transType) {
+      descriptions.push(transType);
+    }
   }
-
-  return 'Unknown';
+  
+  return descriptions;
 }
 
 /**
@@ -149,10 +181,44 @@ function extractAccountNumber(text: string): string | undefined {
 }
 
 /**
- * Extract amount and determine if debit or credit
+ * Extract amounts and determine if debit or credit
+ * Pattern: Amounts in DEBITS or CREDITS column
+ * Returns array of amounts (one document can have multiple line items)
+ */
+function extractAmountsAndTypes(text: string): Array<{ amount: number; isDebit: boolean }> {
+  const results: Array<{ amount: number; isDebit: boolean }> = [];
+  
+  // Find all amounts in DEBITS column after the DEBITS header
+  const debitSection = text.match(/DEBITS[\s\t]+CREDITS[\s\t]*\n([\s\S]*?)(?:NET\s+BALANCE|DUE|FOR\s+ANY|$)/i);
+  if (debitSection) {
+    const sectionText = debitSection[1];
+    // Match all decimal numbers that look like amounts
+    const amountMatches = sectionText.matchAll(/(\d+\.\d{2})/g);
+    
+    for (const match of amountMatches) {
+      const amount = parseFloat(match[1]);
+      // Check if this might be a credit by looking at context
+      // For now, assume amounts in the DEBITS section are debits
+      results.push({ amount, isDebit: true });
+    }
+  }
+  
+  // If no amounts found, try the old single-amount extraction
+  if (results.length === 0) {
+    const singleResult = extractSingleAmountAndType(text);
+    if (singleResult.amount > 0) {
+      results.push(singleResult);
+    }
+  }
+  
+  return results;
+}
+
+/**
+ * Extract single amount (fallback for old format)
  * Pattern: Amount in DEBITS or CREDITS column
  */
-function extractAmountAndType(text: string): { amount: number; isDebit: boolean } {
+function extractSingleAmountAndType(text: string): { amount: number; isDebit: boolean } {
   // Look for amount after DESCRIPTION\nDEBITS\nCREDITS\nDESCRIPTION_TEXT\nAMOUNT format
   const newlineMatch = text.match(/DESCRIPTION\s*\n\s*DEBITS\s*\n\s*CREDITS\s*\n[^\n]+\n(\d+\.\d{2})/i);
   if (newlineMatch) {
@@ -248,6 +314,7 @@ function extractReference(text: string): string | undefined {
 /**
  * Parse CREDIT_DEBIT document using regex patterns
  * Handles both Ollama and Gemini OCR output formats
+ * Can extract multiple line items from a single document
  */
 export function parseCreditDebit(ocrText: string): CreditDebitParseResult {
   const errors: string[] = [];
@@ -258,31 +325,65 @@ export function parseCreditDebit(ocrText: string): CreditDebitParseResult {
     const normalizedText = normalizeOcrText(ocrText, 'gemini');
     
     const transactionType = extractTransactionType(normalizedText);
-    const description = extractDescription(normalizedText);
+    const descriptions = extractDescriptions(normalizedText);
     const entryDate = extractEntryDate(normalizedText);
     const processDate = extractProcessDate(normalizedText);
     const accountNumber = extractAccountNumber(normalizedText);
-    const { amount, isDebit } = extractAmountAndType(normalizedText);
+    const amountsAndTypes = extractAmountsAndTypes(normalizedText);
     const reference = extractReference(normalizedText);
 
-    // Validate that we extracted essential fields
-    if (amount === 0) {
-      errors.push('Could not extract amount from credit/debit document');
+    // Match descriptions with amounts (they should be in the same order)
+    // Only create line items where we have both a valid description AND a non-zero amount
+    const itemCount = Math.min(descriptions.length, amountsAndTypes.length);
+    
+    if (itemCount === 0) {
+      // If we have amounts but no descriptions, try to use transaction type
+      if (amountsAndTypes.length > 0 && transactionType) {
+        for (const amountInfo of amountsAndTypes) {
+          if (amountInfo.amount > 0) {
+            lines.push({
+              transactionType,
+              description: transactionType,
+              amount: amountInfo.amount,
+              isDebit: amountInfo.isDebit,
+              entryDate,
+              processDate,
+              accountNumber,
+              reference,
+              rawText: ocrText,
+            });
+          }
+        }
+      }
+    } else {
+      // Create line items for each description/amount pair
+      for (let i = 0; i < itemCount; i++) {
+        const description = descriptions[i];
+        const amountInfo = amountsAndTypes[i];
+        
+        // Only create a line if we have a non-zero amount
+        if (amountInfo.amount > 0) {
+          const line: CreditDebitLine = {
+            transactionType,
+            description,
+            amount: amountInfo.amount,
+            isDebit: amountInfo.isDebit,
+            entryDate,
+            processDate,
+            accountNumber,
+            reference,
+            rawText: ocrText,
+          };
+
+          lines.push(line);
+        }
+      }
     }
-
-    const line: CreditDebitLine = {
-      transactionType,
-      description,
-      amount,
-      isDebit,
-      entryDate,
-      processDate,
-      accountNumber,
-      reference,
-      rawText: ocrText,
-    };
-
-    lines.push(line);
+    
+    // If we still have no lines, add an error
+    if (lines.length === 0) {
+      errors.push('Could not extract any valid description/amount pairs from document');
+    }
   } catch (error) {
     errors.push(`Parsing failed: ${error instanceof Error ? error.message : String(error)}`);
   }

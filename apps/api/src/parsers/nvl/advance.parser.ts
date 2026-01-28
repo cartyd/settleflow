@@ -64,27 +64,28 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
     const driverName = driverMatch ? driverMatch[1].trim().replace(/\s+/g, ' ') : undefined;
 
     // Extract advance amount with flexible patterns
-    // The correct amount is in the "AMOUNT" field after the G/L # line
-    // Format: "G/L #\n1856\n2032-01\nAMOUNT\n1033.00\nACCOUNT NAME"
+    // The correct amount is in the "AMOUNT" column in the *FOR DATA ENTRY USE* section
+    // Format: "G/L #   AMOUNT\n2032-01 1033.00"
     let advanceAmount = 0;
     
-    // Strategy 1: Look for "AMOUNT" followed by number, then "ACCOUNT NAME" (most reliable)
-    // This is the dedicated amount field after the G/L section
-    let amountMatch = normalizedText.match(/AMOUNT\s+(\d+\.\d{2})\s+ACCOUNT\s+NAME/i);
+    // Strategy 1: Look for amount after G/L # in the data entry table
+    // Pattern: "G/L #   AMOUNT\n2032-01 1033.00" or "G/L # AMOUNT\n2032-01 1033.00"
+    let amountMatch = normalizedText.match(/G\/L\s*#[^\n]*AMOUNT[^\n]*\n[^\n]*?(\d{1,3}(?:,\d{3})*\.\d{2})/i);
     
     if (!amountMatch) {
-      // Strategy 2: Simple "AMOUNT" followed by number
-      amountMatch = normalizedText.match(/AMOUNT\s+(\d+\.\d{2})/i);
+      // Strategy 2: Look for "TOTAL CHARGE" in the table header, then get last number on the data line
+      // Format: "TOTAL\n     CHARGE\n357059 COD ... 1003.00     30.00   1033.00"
+      amountMatch = normalizedText.match(/TOTAL[\s\n]+CHARGE[^\n]*\n[^\n]+(\d{1,3}(?:,\d{3})*\.\d{2})$/im);
     }
     
     if (!amountMatch) {
-      // Strategy 3: More flexible - any non-digit chars between AMOUNT and number
-      amountMatch = normalizedText.match(/AMOUNT[^\d]+(\d+\.\d{2})/i);
+      // Strategy 3: Look for "AMOUNT" followed by number (with flexible spacing)
+      amountMatch = normalizedText.match(/AMOUNT[^\n]*\n[^\d]*(\d{1,3}(?:,\d{3})*\.\d{2})/i);
     }
     
     if (!amountMatch) {
-      // Strategy 4: Look for "TOTAL\nCHARGE\n1033.00" format (last column in table)
-      amountMatch = normalizedText.match(/TOTAL[\s\n]+CHARGE[\s\n]+(\d{1,3}(?:,\d{3})*\.\d{2})/i);
+      // Strategy 4: Simple "AMOUNT" followed by number on same or next line
+      amountMatch = normalizedText.match(/AMOUNT\s+(\d{1,3}(?:,\d{3})*\.\d{2})/i);
     }
     
     if (amountMatch) {
