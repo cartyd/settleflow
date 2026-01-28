@@ -42,9 +42,11 @@ function extractAccountNumber(normalizedText: string): string | undefined {
 
 /**
  * Extract driver name from normalized text
+ * Normalizes whitespace in extracted name
  */
 function extractDriverName(normalizedText: string): string | undefined {
   const driverMatch = normalizedText.match(OCR_PATTERNS.DRIVER);
+  // Normalize whitespace: trim and collapse multiple spaces to single space
   return driverMatch ? driverMatch[1].trim().replace(/\s+/g, ' ') : undefined;
 }
 
@@ -58,6 +60,7 @@ function extractDate(normalizedText: string): string | undefined {
 
 /**
  * Extract description from raw OCR text
+ * Uses raw text to preserve original OCR output for matching
  */
 function extractDescription(ocrText: string): string {
   const upperText = ocrText.toUpperCase();
@@ -164,7 +167,8 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
     });
 
   } catch (error) {
-    errors.push(`Error parsing advance: ${error instanceof Error ? error.message : String(error)}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    errors.push(`Error parsing advance: ${errorMessage}`);
   }
 
   return { lines, errors };
