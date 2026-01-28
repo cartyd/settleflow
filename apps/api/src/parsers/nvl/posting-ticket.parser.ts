@@ -3,6 +3,7 @@
  * 
  * Posting tickets are deduction documents for miscellaneous charges
  */
+import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 
 export interface PostingTicketLine {
   ptNumber?: string;
@@ -42,32 +43,36 @@ export function parsePostingTicket(ocrText: string): PostingTicketParseResult {
   const lines: PostingTicketLine[] = [];
 
   try {
+    const provider = detectOcrProvider(ocrText) ?? 'gemini';
+    const text = normalizeOcrText(ocrText, provider);
+    
     // Extract PT number
-    const ptMatch = ocrText.match(/PT\s+NUMBER\s*\n?\s*(\d+)/i);
+    const ptMatch = text.match(/PT\s+NUMBER\s*\n?\s*(\d+)/i);
     const ptNumber = ptMatch ? ptMatch[1] : undefined;
 
     // Extract account number
-    const accountMatch = ocrText.match(/ACCOUNT\s*\n?NUMBER\s*\n?\s*(\d+)/i);
+    const accountMatch = text.match(/ACCOUNT\s*\n?NUMBER\s*\n?\s*(\d+)/i);
     const accountNumber = accountMatch ? accountMatch[1] : undefined;
 
     // Extract debit amount
     // Format: "DEBIT\nCICEROS' MOVING & ST\t3101\t10.00"
     // The debit amount appears after the account number on the same line
     // Look for decimal amount (xx.xx) after "DEBIT" header
-    const debitMatch = ocrText.match(/DEBIT[\s\S]{0,200}?(\d+\.\d{2})/i);
+    const debitMatch = text.match(/DEBIT[\s\S]{0,200}?(\d{1,3}(?:,\d{3})*\.\d{2}-?)/i);
     if (!debitMatch) {
       errors.push('Could not extract debit amount from posting ticket');
       return { lines, errors };
     }
-    
-    const debitAmount = parseFloat(debitMatch[1]);
+    const rawAmt = debitMatch[1];
+    const isTrailingMinus = rawAmt.endsWith('-');
+    const debitAmount = parseFloat(rawAmt.replace(/,/g, '').replace(/-$/, '')) * (isTrailingMinus ? -1 : 1);
 
     // Extract description (look for common patterns like "OTHER CHARGES")
-    const descMatch = ocrText.match(/OTHER\s+CHARGES|DESCRIPTION\s*\n([^\n]+)/i);
+    const descMatch = text.match(/OTHER\s+CHARGES|DESCRIPTION\s*\n([^\n]+)/i);
     const description = descMatch ? descMatch[0].trim() : 'OTHER CHARGES';
 
     // Extract date (at top of document, format MM/DD/YY)
-    const dateMatch = ocrText.match(/^(\d{1,2}\/\d{1,2}\/\d{2})/m);
+    const dateMatch = text.match(/^(\d{1,2}\/\d{1,2}\/\d{2})/m);
     const date = parseDate(dateMatch ? dateMatch[1] : undefined);
 
     lines.push({
