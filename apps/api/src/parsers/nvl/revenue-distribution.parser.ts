@@ -75,10 +75,6 @@ const CITY_STATE_WITH_DATE_PATTERN = (stateCapture: string) =>
 const CITY_STATE_PAIR_PATTERN = (stateCapture: string) => 
   new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${stateCapture})\\s+([A-Z][A-Z\\s]+?)\\s+(${stateCapture})$`, 'i');
 
-function decadePrefixFromBase(base: number): string {
-  return Math.floor(base / 10).toString();
-}
-
 /**
  * Get the century prefix for two-digit years (e.g., "20" for 21st century)
  */
@@ -261,13 +257,6 @@ function extractServicePerformedBy(text: string): { agent?: string; driver?: str
   }
   
   return {};
-}
-
-/**
- * Extract driver name from service performed by result
- */
-function extractDriverName(servicePerformedBy: { agent?: string; driver?: string }): string | undefined {
-  return servicePerformedBy.driver;
 }
 
 /**
@@ -738,7 +727,7 @@ export function parseRevenueDistribution(ocrText: string): RevenueDistributionPa
     const anchoredDecadeBase = detectDecadeBaseFromText(normalizedText) ?? DEFAULT_DECADE_BASE;
     
     const servicePerformedBy = extractServicePerformedBy(normalizedText);
-    const driverName = extractDriverName(servicePerformedBy);
+    const driverName = servicePerformedBy.driver;
     const { firstName, lastName } = driverName ? parseDriverName(driverName) : {};
     
     const accountNumber = extractAccountNumber(normalizedText);
