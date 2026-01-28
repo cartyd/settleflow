@@ -7,7 +7,8 @@
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { parseCompactDate } from '../utils/date-parser.js';
-import { removeLeadingZeros, CURRENCY_AMOUNT_PATTERN, parseCurrency } from '../utils/string-utils.js';
+import { removeLeadingZeros, CURRENCY_AMOUNT_PATTERN, parseCurrency, CURRENCY_AMOUNT_GLOBAL_RE } from '../utils/string-utils.js';
+import { ADVANCE_TOTAL_CHARGE_SCAN_SPAN } from '../constants.js';
 
 export interface AdvanceLine {
   tripNumber?: string;
@@ -85,18 +86,17 @@ function tryGLAmountPattern(normalizedText: string): number | undefined {
 function tryTotalChargePattern(normalizedText: string): number | undefined {
   const headerIdx = normalizedText.search(/TOTAL[\s\n]+CHARGE/i);
   if (headerIdx < 0) return undefined;
+  // Bound search to limited span after header to avoid drift
+  const bounded = normalizedText.substring(headerIdx, headerIdx + ADVANCE_TOTAL_CHARGE_SCAN_SPAN);
+  const lines = bounded.split('\n');
   
-  const after = normalizedText.slice(headerIdx).split('\n');
-  const amountRe = new RegExp(CURRENCY_AMOUNT_PATTERN);
-  
-  // Find the first line containing an amount
-  for (let k = 1; k < after.length; k++) {
-    if (amountRe.test(after[k])) {
-      const amounts = Array.from(after[k].matchAll(new RegExp(CURRENCY_AMOUNT_PATTERN, 'g')));
-      if (amounts.length > 0) {
-        const lastAmount = amounts[amounts.length - 1][0];
-        return parseCurrency(lastAmount);
-      }
+  // Inspect a few lines after header; select right-most amount token if present
+  for (let k = 1; k < Math.min(lines.length, 5); k++) {
+    const line = lines[k];
+    const matches = Array.from(line.matchAll(CURRENCY_AMOUNT_GLOBAL_RE));
+    if (matches.length > 0) {
+      const rightMost = matches[matches.length - 1][0];
+      return parseCurrency(rightMost);
     }
   }
   

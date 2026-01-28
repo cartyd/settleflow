@@ -34,3 +34,6 @@ export const POSTING_TICKET_DEBIT_SECTION_SPAN = 200; // characters after DEBIT 
 // Remittance week calculation offsets relative to check date
 export const WEEK_END_OFFSET_DAYS = -7; // Settlement week ends 7 days before check date
 export const WEEK_DURATION_DAYS = -6;  // Settlement week spans 7 days (start is 6 days before end)
+
+// Advance parser scan span for TOTAL CHARGE search
+export const ADVANCE_TOTAL_CHARGE_SCAN_SPAN = 300; // characters after TOTAL CHARGE header to search

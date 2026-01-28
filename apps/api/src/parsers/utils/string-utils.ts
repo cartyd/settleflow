@@ -17,6 +17,10 @@ export function removeLeadingZeros(value: string): string {
  */
 export const CURRENCY_AMOUNT_PATTERN = '(?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2}';
 
+// Precompiled regexes for currency amounts
+export const CURRENCY_AMOUNT_RE = new RegExp(CURRENCY_AMOUNT_PATTERN);
+export const CURRENCY_AMOUNT_GLOBAL_RE = new RegExp(CURRENCY_AMOUNT_PATTERN, 'g');
+
 /**
  * Parse a currency string to a number, removing thousands separators
  * @param value - String with currency amount (e.g., "1,234.56", "123.45")
