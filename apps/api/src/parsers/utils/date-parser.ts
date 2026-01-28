@@ -12,7 +12,7 @@
  * Get the century prefix for two-digit years (e.g., "20" for 21st century)
  * This ensures date parsing remains valid across decade boundaries
  */
-function getCenturyPrefix(): string {
+export function getCenturyPrefix(): string {
   const currentYear = new Date().getFullYear();
   // Extract first two digits (century): 2025 -> 20, 2099 -> 20, 2100 -> 21
   return Math.floor(currentYear / 100).toString();

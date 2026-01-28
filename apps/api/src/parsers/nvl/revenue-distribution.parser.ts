@@ -17,7 +17,7 @@
 import { normalizeOcrText, OCR_PATTERNS } from '../../utils/ocr-normalizer.js';
 import { detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { STATE_CODE_CAPTURE, STATE_CODE_LINE_RE, CITY_LINE_RE, ORIGIN_LOOKAHEAD_LINES, DEST_LOOKAHEAD_LINES, DEST_STATE_LOOKAHEAD_AFTER_CITY, BOL_SECTION_SPAN, NET_BALANCE_SECTION_SPAN } from '../constants.js';
-import { isValidDate as validateDate, parseCompactDate, parseSlashDate } from '../utils/date-parser.js';
+import { isValidDate as validateDate, parseCompactDate, parseSlashDate, getCenturyPrefix } from '../utils/date-parser.js';
 
 export interface RevenueDistributionLine {
   driverName?: string;
@@ -86,14 +86,6 @@ const NON_SHIPPER_NAME_KEYWORDS = /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|
 
 // Common non-name words after B/L numbers
 const NON_SHIPPER_NAME_KEYWORDS_SHORT = /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|SHIPPER|NAME)$/i;
-
-/**
- * Get the century prefix for two-digit years (e.g., "20" for 21st century)
- */
-function getCenturyPrefix(): string {
-  const currentYear = new Date().getFullYear();
-  return Math.floor(currentYear / 100).toString();
-}
 
 /**
  * Parse driver name into first and last name
