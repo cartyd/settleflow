@@ -175,7 +175,7 @@ function detectDecadeBaseFromText(text: string): number | undefined {
   }
   if (yys.length === 0) return undefined;
   // Prefer years in 2000-2029 to avoid drifting into 2030s anchors
-  const preferred = yys.filter(yy => yy >= 0 && yy <= 29);
+  const preferred = yys.filter(yy => yy >= PREFERRED_YEAR_MIN && yy <= PREFERRED_YEAR_MAX);
   const pick = (arr: number[]) => {
     // Choose the mode (most frequent); fall back to min
     const counts = new Map<number, number>();
@@ -190,7 +190,7 @@ function detectDecadeBaseFromText(text: string): number | undefined {
     return best ?? Math.min(...arr);
   };
   const yy = (preferred.length > 0 ? pick(preferred) : undefined) ?? pick(yys);
-  const full = 2000 + yy;
+  const full = CENTURY_BASE + yy;
   return Math.floor(full / 10) * 10;
 }
 
@@ -201,7 +201,7 @@ function detectDecadeBaseFromText(text: string): number | undefined {
 function detectDecadeBaseAroundOrigin(text: string): number | undefined {
   const originIdx = text.search(/ORIGIN/i);
   if (originIdx >= 0) {
-    const endIdx = Math.min(text.length, originIdx + 1200);
+    const endIdx = Math.min(text.length, originIdx + ORIGIN_SECTION_SCAN_CHARS);
     const segment = text.slice(originIdx, endIdx);
     return detectDecadeBaseFromText(segment);
   }
@@ -438,7 +438,7 @@ function extractOrigin(text: string): string | undefined {
       }
       
       // Format: "CITY ST" on same line (prefer this before treating as city-only)
-      const cityState = line.match(new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})$`, 'i'));
+      const cityState = line.match(CITY_STATE_PATTERN(STATE_CODE_CAPTURE));
       if (cityState) {
         return `${cityState[1].trim()}, ${cityState[2]}`;
       }
@@ -453,12 +453,12 @@ function extractOrigin(text: string): string | undefined {
       }
       
       // Format: Both origin and destination on same line
-      const sameLineWithDate = line.match(new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+\\d`, 'i'));
+      const sameLineWithDate = line.match(CITY_STATE_WITH_DATE_PATTERN(STATE_CODE_CAPTURE));
       if (sameLineWithDate) {
         return `${sameLineWithDate[1].trim()}, ${sameLineWithDate[2]}`;
       }
       
-      const sameLine = line.match(new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})$`, 'i'));
+      const sameLine = line.match(CITY_STATE_PAIR_PATTERN(STATE_CODE_CAPTURE));
       if (sameLine) {
         return `${sameLine[1].trim()}, ${sameLine[2]}`;
       }
@@ -492,7 +492,7 @@ function extractDestination(text: string): string | undefined {
       if (line.match(/^(ZIP|WEIGHT|MILES|SIT|PAY|INTER)/i)) continue;
       
       // Format 1: "PRESCOTT V AZ" (city with abbreviated word and state on same line)
-      const cityStateMatch = line.match(new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})$`, 'i'));
+      const cityStateMatch = line.match(CITY_STATE_PATTERN(STATE_CODE_CAPTURE));
       if (cityStateMatch) {
         return `${cityStateMatch[1].trim()}, ${cityStateMatch[2]}`;
       }
@@ -514,18 +514,18 @@ function extractDestination(text: string): string | undefined {
   // Fallback: Look in ORIGIN section for combined format
   const originIdx = lines.findIndex(l => l.trim().startsWith('ORIGIN'));
   if (originIdx >= 0) {
-    for (let i = originIdx + 1; i < Math.min(originIdx + 10, lines.length); i++) {
+    for (let i = originIdx + 1; i < Math.min(originIdx + DESTINATION_FALLBACK_LOOKAHEAD, lines.length); i++) {
       const line = lines[i].trim();
       if (!line) continue;
       
       // Check if origin and destination are on the same line with date
-      const sameLineWithDate = line.match(new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+\\d`,'i'));
+      const sameLineWithDate = line.match(CITY_STATE_WITH_DATE_PATTERN(STATE_CODE_CAPTURE));
       if (sameLineWithDate) {
         return `${sameLineWithDate[3].trim()}, ${sameLineWithDate[4]}`;
       }
       
       // Check if origin and destination are on the same line without date
-      const sameLine = line.match(new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-Z][A-Z\\s]+?)\\s+(${STATE_CODE_CAPTURE})$`, 'i'));
+      const sameLine = line.match(CITY_STATE_PAIR_PATTERN(STATE_CODE_CAPTURE));
       if (sameLine) {
         return `${sameLine[3].trim()}, ${sameLine[4]}`;
       }
