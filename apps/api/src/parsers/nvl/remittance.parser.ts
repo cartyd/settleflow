@@ -15,10 +15,24 @@
 
 import { parseSlashDate } from '../utils/date-parser.js';
 import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
-import { CHECK_SCAN_TOP_LINES, ACCOUNT_SCAN_TOP_LINES } from '../constants.js';
 
-// Scan limits sourced from shared constants for consistency
+// Type for payment method to ensure consistency
+type PaymentMethod = 'Electronic Transfer' | 'Check';
 
+// Local scan limits for top-of-document heuristics
+// NVL remittance checks typically place check number in first 10 lines
+const CHECK_SCAN_TOP_LINES = 10;
+// Account numbers can appear further down in various formats
+const ACCOUNT_SCAN_TOP_LINES = 20;
+
+// Week calculation offsets relative to check date
+// Settlement week ends 7 days before check date
+const WEEK_END_OFFSET_DAYS = -7;
+// Settlement week spans 7 days (start is 6 days before end)
+const WEEK_DURATION_DAYS = -6;
+
+// Character class for company names: supports ASCII, diacritics, apostrophes (straight & curly), ampersands, hyphens
+const COMPANY_NAME_CHARS = `[A-ZÀ-ÿ''&,.\-\s]+`;
 // UTC-safe date arithmetic to avoid timezone/DST drift
 function addDaysUtc(isoDate: string, days: number): string {
   const [y, m, d] = isoDate.split('-').map(Number);
@@ -35,7 +49,7 @@ export interface RemittanceLine {
   payeeName?: string;
   payeeAddress?: string;
   bankAccount?: string;
-  paymentMethod?: string;
+  paymentMethod?: PaymentMethod;
   accountNumber?: string;
   reference?: string;
   rawText: string;
@@ -141,14 +155,15 @@ function extractPayeeName(text: string): string | undefined {
 
   // Try Gemini format with line breaks: TO THE\nORDER\nOF\nDATE...\nNAME
   // Look for name between AMOUNT and next section
-  // Note: Handle both straight (') and curly (') apostrophes
-  const geminiMatch = text.match(/AMOUNT\s+\$[^\n]*\n\s*([A-Z][A-Z\s''&,.-]+(?:LLC|INC|CORP|LTD))(?=\s|\n)/i);
+  const companyPattern = new RegExp(`AMOUNT\\s+\\$[^\\n]*\\n\\s*([A-Z]${COMPANY_NAME_CHARS}(?:LLC|INC|CORP|LTD))(?=\\s|\\n)`, 'i');
+  const geminiMatch = text.match(companyPattern);
   if (geminiMatch) {
     return geminiMatch[1].trim();
   }
   
   // Alternative: Name appears after amount/date section
-  const altMatch = text.match(/TO THE[\s\n]+ORDER[\s\n]+OF[\s\n]+(?:DATE[^\n]*\n)?(?:AMOUNT[^\n]*\n)?\s*([A-Z][A-Z\s'&,.-]+?)(?:\n|$)/i);
+  const altPattern = new RegExp(`TO THE[\\s\\n]+ORDER[\\s\\n]+OF[\\s\\n]+(?:DATE[^\\n]*\\n)?(?:AMOUNT[^\\n]*\\n)?\\s*([A-Z]${COMPANY_NAME_CHARS}?)(?:\\n|$)`, 'i');
+  const altMatch = text.match(altPattern);
   if (altMatch) {
     const name = altMatch[1].trim();
     // Make sure it's not a header/keyword
@@ -191,7 +206,7 @@ function extractBankAccount(text: string): string | undefined {
  * Extract payment method from the document
  * Pattern: Check for "ELECTRONICALLY TRANSFERRED" or default to "CHECK"
  */
-function extractPaymentMethod(text: string): string | undefined {
+function extractPaymentMethod(text: string): PaymentMethod | undefined {
   if (text.match(/ELECTRONICALLY\s+TRANSFERRED/i)) {
     return 'Electronic Transfer';
   }
@@ -277,12 +292,18 @@ function extractAccountNumber(text: string): string | undefined {
  * Assumes settlement is for the week ending ~1 week before check date
  */
 function calculateWeekDates(checkDate: string): { weekStartDate: string; weekEndDate: string } | undefined {
+  // Validate ISO date format (YYYY-MM-DD)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(checkDate)) {
+    return undefined;
+  }
+  
   try {
     // Use UTC math on ISO date strings to avoid TZ/DST drift
-    const weekEndDate = addDaysUtc(checkDate, -7);
-    const weekStartDate = addDaysUtc(weekEndDate, -6);
+    const weekEndDate = addDaysUtc(checkDate, WEEK_END_OFFSET_DAYS);
+    const weekStartDate = addDaysUtc(weekEndDate, WEEK_DURATION_DAYS);
     return { weekStartDate, weekEndDate };
-  } catch {
+  } catch (error) {
+    console.warn(`Failed to calculate week dates from check date: ${checkDate}`, error);
     return undefined;
   }
 }
