@@ -204,46 +204,72 @@ function extractPaymentMethod(text: string): string | undefined {
 }
 
 /**
- * Extract account number from the document
- * Pattern: Account number in the account table or "ACCOUNT XXXX"
+ * Remove leading zeros from account number, preserving at least one digit
  */
-function extractAccountNumber(text: string): string | undefined {
-  // Try "GENERAL LEDGER AGENT" first (most reliable for Gemini format)
-  const generalLedgerMatch = text.match(/GENERAL\s+LEDGER\s+AGENT[\s\n]+(\d{3,5})/i);
-  if (generalLedgerMatch) {
-    return generalLedgerMatch[1];
-  }
-  
-  // Try account table format
-  const tableMatch = text.match(/ACCOUNT\s+NUMBER.*?\n.*?(\d+)\s+[0-9,]+\.\d{2}/is);
-  if (tableMatch) {
-    return tableMatch[1];
-  }
-  
-  // Try early in document (Gemini format often has "ACCOUNT 03101" near top)
+function removeLeadingZeros(accountNumber: string): string {
+  return accountNumber.replace(/^0+/, '') || accountNumber;
+}
+
+/**
+ * Try extracting account from "GENERAL LEDGER AGENT" pattern
+ */
+function tryGeneralLedgerPattern(text: string): string | undefined {
+  const match = text.match(/GENERAL\s+LEDGER\s+AGENT[\s\n]+(\d{3,5})/i);
+  return match?.[1];
+}
+
+/**
+ * Try extracting account from account table format
+ */
+function tryTablePattern(text: string): string | undefined {
+  const match = text.match(/ACCOUNT\s+NUMBER.*?\n.*?(\d+)\s+[0-9,]+\.\d{2}/is);
+  return match?.[1];
+}
+
+/**
+ * Try extracting account from top of document (Gemini format)
+ */
+function tryTopOfDocumentPattern(text: string): string | undefined {
   const lines = text.split('\n');
   for (let i = 0; i < Math.min(ACCOUNT_SCAN_TOP_LINES, lines.length); i++) {
     const match = lines[i].match(/^ACCOUNT\s+(0?\d{3,5})$/i);
     if (match) {
-      // Remove leading zero if present (03101 -> 3101)
-      return match[1].replace(/^0+/, '') || match[1];
+      return removeLeadingZeros(match[1]);
     }
   }
-  
-  // Try simple "ACCOUNT XXXX" pattern anywhere (least reliable)
-  const accountMatch = text.match(/ACCOUNT\s+(0?\d{3,5})/i);
-  if (accountMatch) {
-    // Remove leading zero if present
-    return accountMatch[1].replace(/^0+/, '') || accountMatch[1];
-  }
-  
-  // Try "AGENCY ACCOUNT" at bottom of document
-  const agencyMatch = text.match(/AGENCY ACCOUNT[\s\S]*?GENERAL LEDGER\s+(\d+)/i);
-  if (agencyMatch) {
-    return agencyMatch[1];
-  }
-
   return undefined;
+}
+
+/**
+ * Try extracting account from simple "ACCOUNT XXXX" pattern
+ */
+function trySimpleAccountPattern(text: string): string | undefined {
+  const match = text.match(/ACCOUNT\s+(0?\d{3,5})/i);
+  if (match) {
+    return removeLeadingZeros(match[1]);
+  }
+  return undefined;
+}
+
+/**
+ * Try extracting account from "AGENCY ACCOUNT" at document bottom
+ */
+function tryAgencyAccountPattern(text: string): string | undefined {
+  const match = text.match(/AGENCY ACCOUNT[\s\S]*?GENERAL LEDGER\s+(\d+)/i);
+  return match?.[1];
+}
+
+/**
+ * Extract account number from the document
+ * Pattern: Account number in the account table or "ACCOUNT XXXX"
+ */
+function extractAccountNumber(text: string): string | undefined {
+  // Try patterns in order of reliability
+  return tryGeneralLedgerPattern(text)
+    || tryTablePattern(text)
+    || tryTopOfDocumentPattern(text)
+    || trySimpleAccountPattern(text)
+    || tryAgencyAccountPattern(text);
 }
 
 /**
