@@ -142,6 +142,7 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
 
   try {
     // Normalize text to handle format variations between OCR providers
+    // Default to Gemini if provider cannot be detected from text patterns
     const provider = detectOcrProvider(ocrText) ?? 'gemini';
     const normalizedText = normalizeOcrText(ocrText, provider);
 
