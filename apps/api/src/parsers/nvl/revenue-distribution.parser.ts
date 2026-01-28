@@ -16,7 +16,7 @@
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { STATE_CODE_CAPTURE, STATE_CODE_LINE_RE, CITY_LINE_RE, ORIGIN_LOOKAHEAD_LINES, DEST_LOOKAHEAD_LINES, DEST_STATE_LOOKAHEAD_AFTER_CITY, BOL_SECTION_SPAN, NET_BALANCE_SECTION_SPAN } from '../constants.js';
-import { isValidDate as validateDate, parseCompactDate, parseSlashDate, getCenturyPrefix } from '../utils/date-parser.js';
+import { isValidDate as validateDate, parseCompactDate, parseSlashDate } from '../utils/date-parser.js';
 
 export interface RevenueDistributionLine {
   driverName?: string;
@@ -39,7 +39,7 @@ export interface RevenueDistributionLine {
     percentage?: number;
     earnings?: number;
   }>;
-  netBalance: number;
+  netBalance?: number;
   rawText: string;
 }
 
@@ -132,14 +132,10 @@ function parseDate(dateStr: string | undefined, opts?: { decadeBase?: number }):
       return undefined; // Invalid date components
     }
     
-    // For single digit year (5), determine the full year from decade base
-    // Use provided decadeBase for deterministic parsing, or fallback to current decade
+    // Compute full year deterministically from provided decadeBase (e.g., 2020 + 5 = 2025)
     const decadeBase = opts?.decadeBase ?? DEFAULT_DECADE_BASE;
-    const decadePrefix = Math.floor(decadeBase / 10) % 10; // e.g., 2020 -> 2
-    const twoDigitYear = (decadePrefix * 10) + parseInt(year); // e.g., 20 + 5 = 25
-    const century = Math.floor(decadeBase / 100); // e.g., 2020 -> 20
-    const fullYear = `${century}${twoDigitYear.toString().padStart(2, '0')}`;
-    return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    const fullYearNum = decadeBase + parseInt(year, 10);
+    return `${fullYearNum}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
 
   // Try MMDDYY format - use shared utility
