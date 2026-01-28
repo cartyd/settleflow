@@ -540,8 +540,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     const day = match[2];
     const year = match[3];
     
-    if (parseInt(month) >= 1 && parseInt(month) <= 12 &&
-        parseInt(day) >= 1 && parseInt(day) <= 31) {
+    if (validateDate(parseInt(month), parseInt(day))) {
       return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
     }
   }
@@ -559,8 +558,10 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     const day = merged[0];
     const year = merged[1];
     
-    if (parseInt(month) >= 1 && parseInt(month) <= 12 &&
-        parseInt(day) >= 1 && parseInt(day) <= 9) {
+    // Validate: month 1-12, day 1-9 (single digit only for merged case)
+    const monthNum = parseInt(month);
+    const dayNum = parseInt(day);
+    if (validateDate(monthNum, dayNum) && dayNum <= 9) {
       return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
     }
   }
