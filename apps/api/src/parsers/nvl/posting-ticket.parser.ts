@@ -4,6 +4,7 @@
  * Posting tickets are deduction documents for miscellaneous charges
  */
 import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
+import { POSTING_TICKET_DEBIT_SECTION_SPAN } from '../constants.js';
 import { parseSlashDate } from '../utils/date-parser.js';
 
 export interface PostingTicketLine {
@@ -44,7 +45,7 @@ export function parsePostingTicket(ocrText: string): PostingTicketParseResult {
     // Format: "DEBIT\nCICEROS' MOVING & ST\t3101\t10.00"
     // The debit amount appears after the account number on the same line
     // Look for decimal amount (xx.xx) after "DEBIT" header
-    const debitMatch = text.match(/DEBIT[\s\S]{0,200}?(\d{1,3}(?:,\d{3})*\.\d{2}-?)/i);
+    const debitMatch = text.match(new RegExp(`DEBIT[\\s\\S]{0,${POSTING_TICKET_DEBIT_SECTION_SPAN}}?(\\d{1,3}(?:,\\d{3})*\\.\\d{2}-?)`, 'i'));
     if (!debitMatch) {
       errors.push('Could not extract debit amount from posting ticket');
       return { lines, errors };

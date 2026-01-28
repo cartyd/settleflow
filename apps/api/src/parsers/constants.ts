@@ -27,3 +27,6 @@ export const ACCOUNT_SCAN_TOP_LINES = 20;
 // Additional scan spans used in revenue-distribution parser
 export const ORIGIN_SECTION_SCAN_CHARS = 1200; // characters after ORIGIN to scan when detecting decade
 export const DESTINATION_FALLBACK_LOOKAHEAD = 10; // lines to scan in ORIGIN section for destination fallback
+
+// Posting Ticket parser scan span
+export const POSTING_TICKET_DEBIT_SECTION_SPAN = 200; // characters after DEBIT header to search for amount
