@@ -14,6 +14,20 @@
  */
 
 import { parseSlashDate } from '../utils/date-parser.js';
+import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
+
+// Local scan limits for top-of-document heuristics
+const CHECK_SCAN_TOP_LINES = 10;
+const ACCOUNT_SCAN_TOP_LINES = 20;
+
+// UTC-safe date arithmetic to avoid timezone/DST drift
+function addDaysUtc(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  if (!y || !m || !d) return isoDate;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
 
 export interface RemittanceLine {
   checkNumber?: string;
@@ -63,7 +77,7 @@ function extractCheckNumber(text: string): string | undefined {
 
   // Look for 6-digit number near the top (usually standalone line)
   const lines = text.split('\n');
-  for (let i = 0; i < Math.min(10, lines.length); i++) {
+  for (let i = 0; i < Math.min(CHECK_SCAN_TOP_LINES, lines.length); i++) {
     const line = lines[i].trim();
     if (/^\d{6}$/.test(line)) {
       return line;
@@ -209,7 +223,7 @@ function extractAccountNumber(text: string): string | undefined {
   
   // Try early in document (Gemini format often has "ACCOUNT 03101" near top)
   const lines = text.split('\n');
-  for (let i = 0; i < Math.min(20, lines.length); i++) {
+  for (let i = 0; i < Math.min(ACCOUNT_SCAN_TOP_LINES, lines.length); i++) {
     const match = lines[i].match(/^ACCOUNT\s+(0?\d{3,5})$/i);
     if (match) {
       // Remove leading zero if present (03101 -> 3101)
@@ -239,20 +253,10 @@ function extractAccountNumber(text: string): string | undefined {
  */
 function calculateWeekDates(checkDate: string): { weekStartDate: string; weekEndDate: string } | undefined {
   try {
-    const check = new Date(checkDate);
-    // Settlement is typically for week ending 7-14 days before check
-    // We'll use 7 days before check as the week end
-    const weekEnd = new Date(check);
-    weekEnd.setDate(weekEnd.getDate() - 7);
-    
-    // Week starts 6 days before week end (Sunday to Saturday)
-    const weekStart = new Date(weekEnd);
-    weekStart.setDate(weekStart.getDate() - 6);
-    
-    return {
-      weekStartDate: weekStart.toISOString().split('T')[0],
-      weekEndDate: weekEnd.toISOString().split('T')[0],
-    };
+    // Use UTC math on ISO date strings to avoid TZ/DST drift
+    const weekEndDate = addDaysUtc(checkDate, -7);
+    const weekStartDate = addDaysUtc(weekEndDate, -6);
+    return { weekStartDate, weekEndDate };
   } catch {
     return undefined;
   }
@@ -267,14 +271,18 @@ export function parseRemittance(ocrText: string): RemittanceParseResult {
   let metadata: BatchMetadata | undefined;
 
   try {
-    const checkNumber = extractCheckNumber(ocrText);
-    const checkDate = extractCheckDate(ocrText);
-    const checkAmount = extractCheckAmount(ocrText);
-    const payeeName = extractPayeeName(ocrText);
-    const payeeAddress = extractPayeeAddress(ocrText);
-    const bankAccount = extractBankAccount(ocrText);
-    const paymentMethod = extractPaymentMethod(ocrText);
-    const accountNumber = extractAccountNumber(ocrText);
+    // Normalize OCR text based on detected provider (Ollama, Gemini, etc.)
+    const provider = detectOcrProvider(ocrText);
+    const normalizedText = normalizeOcrText(ocrText, provider);
+
+    const checkNumber = extractCheckNumber(normalizedText);
+    const checkDate = extractCheckDate(normalizedText);
+    const checkAmount = extractCheckAmount(normalizedText);
+    const payeeName = extractPayeeName(normalizedText);
+    const payeeAddress = extractPayeeAddress(normalizedText);
+    const bankAccount = extractBankAccount(normalizedText);
+    const paymentMethod = extractPaymentMethod(normalizedText);
+    const accountNumber = extractAccountNumber(normalizedText);
 
     // Validate that we extracted at least the essential fields
     if (!checkNumber && !checkAmount) {
@@ -298,12 +306,6 @@ export function parseRemittance(ocrText: string): RemittanceParseResult {
     lines.push(line);
 
     // Extract batch metadata if we have the essential fields
-    console.log('[REMITTANCE PARSER] Extracted fields:', {
-      checkNumber,
-      accountNumber,
-      checkDate,
-      payeeName,
-    });
     
     if (checkNumber && accountNumber && checkDate) {
       const weekDates = calculateWeekDates(checkDate);
@@ -316,14 +318,11 @@ export function parseRemittance(ocrText: string): RemittanceParseResult {
         weekStartDate: weekDates?.weekStartDate,
         weekEndDate: weekDates?.weekEndDate,
       };
-      
-      console.log('[REMITTANCE PARSER] Created metadata successfully');
     } else {
       const missing = [];
       if (!checkNumber) missing.push('checkNumber');
       if (!accountNumber) missing.push('accountNumber');
       if (!checkDate) missing.push('checkDate');
-      console.log('[REMITTANCE PARSER] Missing required fields for metadata:', missing.join(', '));
       errors.push(`Missing required fields: ${missing.join(', ')}`);
     }
   } catch (error) {

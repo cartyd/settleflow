@@ -49,8 +49,31 @@ export interface RevenueDistributionParseResult {
   errors: string[];
 }
 
+// ===== CONSTANTS =====
+
 // Use a deterministic fallback decade base when no anchor is available
 const DEFAULT_DECADE_BASE = 2020;
+
+// Century base for YY date calculations (e.g., 2000 for 2000-2099)
+const CENTURY_BASE = 2000;
+
+// Year range preferences for decade detection (prefer 2000-2029 over 2030+)
+const PREFERRED_YEAR_MIN = 0;
+const PREFERRED_YEAR_MAX = 29;
+
+// Section scanning spans
+const ORIGIN_SECTION_SCAN_CHARS = 1200; // Characters to scan after ORIGIN for decade detection
+const DESTINATION_FALLBACK_LOOKAHEAD = 10; // Lines to check in origin section for destination
+
+// Regex patterns for location parsing
+const CITY_STATE_PATTERN = (stateCapture: string) => 
+  new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${stateCapture})$`, 'i');
+
+const CITY_STATE_WITH_DATE_PATTERN = (stateCapture: string) => 
+  new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${stateCapture})\\s+([A-Z][A-Z\\s]+?)\\s+(${stateCapture})\\s+\\d`, 'i');
+
+const CITY_STATE_PAIR_PATTERN = (stateCapture: string) => 
+  new RegExp(`^([A-Z][A-Z\\s]+?)\\s+(${stateCapture})\\s+([A-Z][A-Z\\s]+?)\\s+(${stateCapture})$`, 'i');
 
 function decadePrefixFromBase(base: number): string {
   return Math.floor(base / 10).toString();
