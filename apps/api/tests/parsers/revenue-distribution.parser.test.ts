@@ -180,6 +180,67 @@ DUE ACCOUNT`;
       // Should extract 12/25 from ORIGIN, not 2/12 from COD line
       expect(result.lines[0].deliveryDate).toBe('2025-12-25');
     });
+
+    it('should extract date with P-code anchor (standard format)', () => {
+      const text = `TRIP NUMBER
+444
+
+ORIGIN DESTINATION
+
+CITY ST DEST MD 11 29 5 P65
+
+NET BALANCE 400.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].deliveryDate).toBe('2025-11-29');
+    });
+
+    it('should extract date with P-code anchor (P62 format)', () => {
+      const text = `TRIP NUMBER
+555
+
+ORIGIN
+
+CITY ST 12 1 5 P62
+
+NET BALANCE 500.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].deliveryDate).toBe('2025-12-01');
+    });
+
+    it('should handle OCR merged day+year with P-code', () => {
+      const text = `TRIP NUMBER
+666
+
+ORIGIN
+
+CITY ST 12 15 P62
+
+NET BALANCE 600.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      // "12 15 P62" should be parsed as month=12, day=1, year=5
+      expect(result.lines[0].deliveryDate).toBe('2025-12-01');
+    });
+
+    it('should extract from DELIVERY DATE header', () => {
+      const text = `TRIP NUMBER
+777
+
+DELIVERY
+DATE
+11 30 5
+
+NET BALANCE 700.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].deliveryDate).toBe('2025-11-30');
+    });
   });
 
   describe('Required fields', () => {
