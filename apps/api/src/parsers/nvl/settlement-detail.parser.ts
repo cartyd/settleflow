@@ -12,7 +12,7 @@
  */
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider, OcrProvider } from '../../utils/ocr-normalizer.js';
-import { parseSlashDate } from '../utils/date-parser.js';
+import { parseSlashDate, addDaysUtc } from '../utils/date-parser.js';
 import { parseSignedCurrency } from '../utils/string-utils.js';
 import { WEEK_END_OFFSET_DAYS, WEEK_DURATION_DAYS } from '../constants.js';
 
@@ -48,6 +48,21 @@ export interface SettlementBatchMetadata {
   weekEndDate?: string;
 }
 
+// Minimum line length for valid transaction lines
+const MIN_LINE_LENGTH = 10;
+
+// Maximum length for trip numbers (to distinguish from B/L numbers)
+const MAX_TRIP_NUMBER_LENGTH = 4;
+
+// Floating point tolerance for check total validation
+const AMOUNT_TOLERANCE = 0.01;
+
+// Prefix for generated settlement detail payment references
+const SETTLEMENT_DETAIL_REF_PREFIX = 'SD';
+
+// Default agency name when not found in document
+const DEFAULT_AGENCY_NAME = 'Unknown Agency';
+
 /**
  * Light normalization for settlement detail: preserve line breaks and spacing.
  * Avoids collapsing whitespace sequences to keep table rows intact.
@@ -82,23 +97,86 @@ const TRANSACTION_CODE_MAP: Record<string, 'REVENUE' | 'ADVANCE' | 'DEDUCTION' |
 };
 
 /**
- * Parse amount string, handling negative values with trailing minus sign
- * Examples: "518.00" -> 518.00, "3,890.63-" -> -3890.63
- */
-function parseAmount(amountStr: string): number {
-  const cleaned = amountStr.replace(/,/g, '').trim();
-  const isNegative = cleaned.endsWith('-');
-  const numericStr = cleaned.replace(/-/g, '');
-  const value = parseFloat(numericStr);
-  return isNegative ? -value : value;
-}
-
-
-/**
  * Extract transaction line type from code
  */
 function getLineType(transactionCode: string): 'REVENUE' | 'ADVANCE' | 'DEDUCTION' | 'OTHER' {
   return TRANSACTION_CODE_MAP[transactionCode] || 'OTHER';
+}
+
+/**
+ * Check if a line is a header or invalid (should be skipped)
+ */
+function isHeaderOrInvalidLine(trimmed: string): boolean {
+  return !trimmed ||
+    /\bB\/L\b/.test(trimmed) ||
+    /\bTRIP\b/.test(trimmed) ||
+    /TRANSACTION\/?DESCRIPTION/.test(trimmed) ||
+    /CHECK\s+TOTAL/.test(trimmed) ||
+    /\bPAGE\b/.test(trimmed) ||
+    trimmed.length < MIN_LINE_LENGTH;
+}
+
+/**
+ * Try parsing full format: B/L Trip Ref# Date Code Description Amount
+ */
+function tryFullFormat(trimmed: string): ParsedSettlementLine | null {
+  const m = trimmed.match(new RegExp('^(\\d+)\\s+(\\d+)\\s+(\\d{2}\\/\\d{2}\\/\\d{2})\\s+([A-Z]{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2}-?)$', 'i'));
+  if (!m) return null;
+  
+  const [, n1, n2, date, code, description, amountStr] = m;
+  const amount = parseSignedCurrency(amountStr);
+  return {
+    billOfLading: n1.length > MAX_TRIP_NUMBER_LENGTH ? n1 : undefined,
+    tripNumber: n1.length > MAX_TRIP_NUMBER_LENGTH ? n2 : n1,
+    referenceNumber: n1.length > MAX_TRIP_NUMBER_LENGTH ? undefined : n2,
+    date: parseSlashDate(date) ?? date,
+    transactionCode: code,
+    description: description.trim(),
+    amount,
+    lineType: getLineType(code),
+    rawLine: trimmed,
+  };
+}
+
+/**
+ * Try parsing one number format: Trip/Ref# Date Code Description Amount
+ */
+function tryOneNumberFormat(trimmed: string): ParsedSettlementLine | null {
+  const m = trimmed.match(new RegExp('^(\\d+)\\s+(\\d{2}\\/\\d{2}\\/\\d{2})\\s+([A-Z]{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2}-?)$', 'i'));
+  if (!m) return null;
+  
+  const [, n1, date, code, description, amountStr] = m;
+  const amount = parseSignedCurrency(amountStr);
+  const isTrip = n1.length <= MAX_TRIP_NUMBER_LENGTH;
+  return {
+    tripNumber: isTrip ? n1 : undefined,
+    referenceNumber: isTrip ? undefined : n1,
+    date: parseSlashDate(date) ?? date,
+    transactionCode: code,
+    description: description.trim(),
+    amount,
+    lineType: getLineType(code),
+    rawLine: trimmed,
+  };
+}
+
+/**
+ * Try parsing minimal format: Date Code Description Amount
+ */
+function tryMinimalFormat(trimmed: string): ParsedSettlementLine | null {
+  const m = trimmed.match(new RegExp('^(\\d{2}\\/\\d{2}\\/\\d{2})\\s+([A-Z]{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2}-?)$', 'i'));
+  if (!m) return null;
+  
+  const [, date, code, description, amountStr] = m;
+  const amount = parseSignedCurrency(amountStr);
+  return {
+    date: parseSlashDate(date) ?? date,
+    transactionCode: code,
+    description: description.trim(),
+    amount,
+    lineType: getLineType(code),
+    rawLine: trimmed,
+  } as ParsedSettlementLine;
 }
 
 /**
@@ -120,70 +198,15 @@ function getLineType(transactionCode: string): 'REVENUE' | 'ADVANCE' | 'DEDUCTIO
 function parseTransactionLine(line: string): ParsedSettlementLine | null {
   const trimmed = line.trim();
 
-  // Skip empty lines, headers, and other non-data lines
-  if (!trimmed ||
-    /\bB\/L\b/.test(trimmed) ||
-    /\bTRIP\b/.test(trimmed) ||
-    /TRANSACTION\/?DESCRIPTION/.test(trimmed) ||
-    /CHECK\s+TOTAL/.test(trimmed) ||
-    /\bPAGE\b/.test(trimmed) ||
-    trimmed.length < 10) {
+  // Skip headers and invalid lines
+  if (isHeaderOrInvalidLine(trimmed)) {
     return null;
   }
 
-  // Try patterns from most specific to least
-  // 1) B/L Trip Ref# Date Code Desc Amount
-  let m = trimmed.match(new RegExp('^(\\d+)\\s+(\\d+)\\s+(\\d{2}\\/\\d{2}\\/\\d{2})\\s+([A-Z]{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2}-?)$', 'i'));
-  if (m) {
-    const [, n1, n2, date, code, description, amountStr] = m;
-    const amount = parseSignedCurrency(amountStr);
-    return {
-      billOfLading: n1.length > 4 ? n1 : undefined,
-      tripNumber: n1.length > 4 ? n2 : n1,
-      referenceNumber: n1.length > 4 ? undefined : n2,
-      date: parseSlashDate(date) ?? date,
-      transactionCode: code,
-      description: description.trim(),
-      amount,
-      lineType: getLineType(code),
-      rawLine: trimmed,
-    };
-  }
-
-  // 2) One number + Date Code Desc Amount (Trip or Ref#)
-  m = trimmed.match(new RegExp('^(\\d+)\\s+(\\d{2}\\/\\d{2}\\/\\d{2})\\s+([A-Z]{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2}-?)$', 'i'));
-  if (m) {
-    const [, n1, date, code, description, amountStr] = m;
-    const amount = parseSignedCurrency(amountStr);
-    const isTrip = n1.length <= 4;
-    return {
-      tripNumber: isTrip ? n1 : undefined,
-      referenceNumber: isTrip ? undefined : n1,
-      date: parseSlashDate(date) ?? date,
-      transactionCode: code,
-      description: description.trim(),
-      amount,
-      lineType: getLineType(code),
-      rawLine: trimmed,
-    };
-  }
-
-  // 3) Date Code Desc Amount (minimal)
-  m = trimmed.match(new RegExp('^(\\d{2}\\/\\d{2}\\/\\d{2})\\s+([A-Z]{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2}-?)$', 'i'));
-  if (m) {
-    const [, date, code, description, amountStr] = m;
-    const amount = parseSignedCurrency(amountStr);
-    return {
-      date: parseSlashDate(date) ?? date,
-      transactionCode: code,
-      description: description.trim(),
-      amount,
-      lineType: getLineType(code),
-      rawLine: trimmed,
-    } as ParsedSettlementLine;
-  }
-
-  return null;
+  // Try parsing strategies from most specific to least
+  return tryFullFormat(trimmed)
+    || tryOneNumberFormat(trimmed)
+    || tryMinimalFormat(trimmed);
 }
 
 /**
@@ -245,6 +268,7 @@ function extractHeaderInfo(text: string): {
  * Used as fallback when no REMITTANCE page is available
  */
 export function extractBatchMetadata(ocrText: string): SettlementBatchMetadata | null {
+  // Default to Gemini if provider cannot be detected from text patterns
   const provider = detectOcrProvider(ocrText) ?? 'gemini';
   const normalizedText = normalizeForSettlement(ocrText, provider);
   const headerInfo = extractHeaderInfo(normalizedText);
@@ -264,20 +288,13 @@ export function extractBatchMetadata(ocrText: string): SettlementBatchMetadata |
   const checkDate = headerInfo.checkDate || headerInfo.settlementDate!;
   
   // Calculate week dates from check/settlement date using UTC-safe arithmetic
-  function addDaysUtc(isoDate: string, days: number): string {
-    const [y, m, d] = isoDate.split('-').map(Number);
-    if (!y || !m || !d) return isoDate;
-    const dt = new Date(Date.UTC(y, m - 1, d));
-    dt.setUTCDate(dt.getUTCDate() + days);
-    return dt.toISOString().slice(0, 10);
-  }
   const weekEndStr = addDaysUtc(checkDate, WEEK_END_OFFSET_DAYS);
   const weekStartStr = addDaysUtc(weekEndStr, WEEK_DURATION_DAYS);
   
   return {
-    nvlPaymentRef: paymentRef || `SD-${headerInfo.accountNumber}-${checkDate}`,
+    nvlPaymentRef: paymentRef || `${SETTLEMENT_DETAIL_REF_PREFIX}-${headerInfo.accountNumber}-${checkDate}`,
     agencyCode: headerInfo.accountNumber,
-    agencyName: headerInfo.accountName || 'Unknown Agency',
+    agencyName: headerInfo.accountName || DEFAULT_AGENCY_NAME,
     checkDate,
     weekStartDate: weekStartStr,
     weekEndDate: weekEndStr,
@@ -293,6 +310,7 @@ export function parseSettlementDetail(ocrText: string): SettlementDetailParseRes
   const lines: ParsedSettlementLine[] = [];
 
   // Normalize text to handle format variations between OCR providers
+  // Default to Gemini if provider cannot be detected from text patterns
   const provider = detectOcrProvider(ocrText) ?? 'gemini';
   const normalizedText = normalizeForSettlement(ocrText, provider);
 
@@ -309,7 +327,8 @@ export function parseSettlementDetail(ocrText: string): SettlementDetailParseRes
         lines.push(parsed);
       }
     } catch (error) {
-      errors.push(`Failed to parse line: ${textLine.substring(0, 50)}... - ${error}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      errors.push(`Failed to parse line: ${textLine.substring(0, 50)}... - ${errorMessage}`);
     }
   }
 
@@ -320,7 +339,8 @@ export function parseSettlementDetail(ocrText: string): SettlementDetailParseRes
     const absoluteCalculated = Math.abs(calculatedTotal);
     const difference = Math.abs(absoluteCalculated - headerInfo.checkTotal);
     
-    if (difference > 0.01) { // Allow for small floating point errors
+    // Allow for small floating point errors
+    if (difference > AMOUNT_TOLERANCE) {
       errors.push(
         `Check total mismatch: parsed ${absoluteCalculated.toFixed(2)} but expected ${headerInfo.checkTotal.toFixed(2)}`
       );
