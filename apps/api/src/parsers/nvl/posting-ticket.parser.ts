@@ -6,6 +6,7 @@
 import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { POSTING_TICKET_DEBIT_SECTION_SPAN } from '../constants.js';
 import { parseSlashDate } from '../utils/date-parser.js';
+import { parseSignedCurrency } from '../utils/string-utils.js';
 
 export interface PostingTicketLine {
   ptNumber?: string;
@@ -51,8 +52,7 @@ export function parsePostingTicket(ocrText: string): PostingTicketParseResult {
       return { lines, errors };
     }
     const rawAmt = debitMatch[1];
-    const isTrailingMinus = rawAmt.endsWith('-');
-    const debitAmount = parseFloat(rawAmt.replace(/,/g, '').replace(/-$/, '')) * (isTrailingMinus ? -1 : 1);
+    const debitAmount = parseSignedCurrency(rawAmt);
 
     // Extract description (look for common patterns like "OTHER CHARGES")
     const descMatch = text.match(/OTHER\s+CHARGES|DESCRIPTION\s*\n([^\n]+)/i);

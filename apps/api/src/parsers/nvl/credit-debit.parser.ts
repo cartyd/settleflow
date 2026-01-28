@@ -15,7 +15,7 @@
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { NET_BALANCE_SECTION_SPAN } from '../constants.js';
 import { parseDate } from '../utils/date-parser.js';
-import { removeLeadingZeros, parseCurrency } from '../utils/string-utils.js';
+import { removeLeadingZeros, parseCurrency, parseSignedCurrency } from '../utils/string-utils.js';
 
 export interface CreditDebitLine {
   transactionType?: string;
@@ -267,25 +267,25 @@ function tryCreditFormat(text: string): { amount: number; isDebit: boolean } | u
  * Try NET BALANCE with multi-line format (DUE NVL / DUE ACCOUNT)
  */
 function tryBalanceMultiFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const match = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+[^\n]+\n\s*DUE\s+[^\n]+\n(-?\d+(?:,\d+)*\.\d{2})/i);
-  return match ? { amount: parseCurrency(match[1]), isDebit: true } : undefined;
+  const match = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+[^\n]+\n\s*DUE\s+[^\n]+\n(-?\d+(?:,\d+)*\.\d{2}-?)/i);
+  return match ? { amount: parseSignedCurrency(match[1]), isDebit: true } : undefined;
 }
 
 /**
  * Try simple NET BALANCE format
  */
 function tryBalanceSimpleFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const match = text.match(/NET\s+BALANCE[\s\t]*\n?[\s\t]*(-?\d+(?:,\d+)*\.\d{2})/i);
-  return match ? { amount: parseCurrency(match[1]), isDebit: true } : undefined;
+  const match = text.match(/NET\s+BALANCE[\s\t]*\n?[\s\t]*(-?\d+(?:,\d+)*\.\d{2}-?)/i);
+  return match ? { amount: parseSignedCurrency(match[1]), isDebit: true } : undefined;
 }
 
 /**
  * Try flexible NET BALANCE within bounded span after header
  */
 function tryFlexibleBalanceFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const pattern = new RegExp(`NET\\s+BALANCE[\\s\\S]{0,${NET_BALANCE_SECTION_SPAN}}?(?:^|\\n)\\s*(-?\\d+(?:,\\d+)*\\.\\d{2})\\s*(?:$|\\n)`, 'mi');
+  const pattern = new RegExp(`NET\\s+BALANCE[\\s\\S]{0,${NET_BALANCE_SECTION_SPAN}}?(?:^|\\n)\\s*(-?\\d+(?:,\\d+)*\\.\\d{2}-?)\\s*(?:$|\\n)`, 'mi');
   const match = text.match(pattern);
-  return match ? { amount: parseCurrency(match[1]), isDebit: true } : undefined;
+  return match ? { amount: parseSignedCurrency(match[1]), isDebit: true } : undefined;
 }
 
 /**
