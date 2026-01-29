@@ -1,11 +1,50 @@
 import { PrismaClient } from '@prisma/client';
 import { DocumentType } from '@settleflow/shared-types';
-import { parseSettlementDetail } from '../parsers/nvl/settlement-detail.parser.js';
-import { parseRevenueDistribution } from '../parsers/nvl/revenue-distribution.parser.js';
-import { parseCreditDebit } from '../parsers/nvl/credit-debit.parser.js';
-import { parseRemittance } from '../parsers/nvl/remittance.parser.js';
+
 import { parseAdvance } from '../parsers/nvl/advance.parser.js';
+import { parseCreditDebit } from '../parsers/nvl/credit-debit.parser.js';
 import { parsePostingTicket } from '../parsers/nvl/posting-ticket.parser.js';
+import { parseRemittance } from '../parsers/nvl/remittance.parser.js';
+import { parseRevenueDistribution } from '../parsers/nvl/revenue-distribution.parser.js';
+import { parseSettlementDetail } from '../parsers/nvl/settlement-detail.parser.js';
+
+/**
+ * Extract plain text from rawText field, handling both plain text and JSON formats.
+ * Some older documents have JSON format from Gemini: [{"page_number": 1, "text_content": "..."}]
+ */
+export function extractPlainText(rawText: string): string {
+  // Remove markdown code fences if present (Gemini sometimes wraps JSON in ```json)
+  let cleanedText = rawText;
+  if (cleanedText.trimStart().startsWith('```')) {
+    cleanedText = cleanedText.replace(/^```[a-z]*\s*\n/, '').replace(/\n```\s*$/, '');
+  }
+
+  // Try to parse as JSON first
+  if (cleanedText.trimStart().startsWith('[') || cleanedText.trimStart().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(cleanedText);
+
+      // Handle array format: [{"page_number": 1, "text_content": "..."}]
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Concatenate all text_content fields
+        return parsed
+          .map((page) => page.text_content || '')
+          .join('\n')
+          .trim();
+      }
+
+      // Handle single object format: {"page_number": 1, "text_content": "..."}
+      if (parsed.text_content) {
+        return parsed.text_content.trim();
+      }
+    } catch (e) {
+      // Not valid JSON, treat as plain text
+    }
+  }
+
+  // Return as-is if not JSON
+  return cleanedText;
+}
 
 /**
  * Parse ISO date string (YYYY-MM-DD) to Date in local timezone
@@ -50,7 +89,7 @@ export async function parseAndSaveImportLines(
     return {
       importDocumentId,
       linesCreated: 0,
-      errors: [`Document already parsed at ${document.parsedAt}`],
+      errors: [`Document already parsed at ${document.parsedAt.toISOString()}`],
     };
   }
 
@@ -62,7 +101,8 @@ export async function parseAndSaveImportLines(
       // Settlement Detail is a VALIDATION document, not the primary source.
       // It contains a summary of transactions that should match the detail from
       // supporting documents (Revenue Distribution, Credit/Debit, etc.).
-      const parseResult = parseSettlementDetail(document.rawText);
+      const plainText = extractPlainText(document.rawText);
+      const parseResult = parseSettlementDetail(plainText);
       errors.push(...parseResult.errors);
 
       // Get all import lines already created from supporting documents in this batch
@@ -83,24 +123,24 @@ export async function parseAndSaveImportLines(
           const matchingLine = existingLines.find(
             (el) => el.lineType === 'REVENUE' && el.billOfLading === settlementLine.billOfLading
           );
-          
+
           if (matchingLine) {
             // Validate amounts match (within 0.01 tolerance for rounding)
             if (Math.abs(Math.abs(matchingLine.amount) - Math.abs(settlementLine.amount)) > 0.01) {
               errors.push(
                 `Revenue mismatch for B/L ${settlementLine.billOfLading}: ` +
-                `Settlement Detail shows $${Math.abs(settlementLine.amount).toFixed(2)}, ` +
-                `but Revenue Distribution shows $${Math.abs(matchingLine.amount).toFixed(2)}`
+                  `Settlement Detail shows $${Math.abs(settlementLine.amount).toFixed(2)}, ` +
+                  `but Revenue Distribution shows $${Math.abs(matchingLine.amount).toFixed(2)}`
               );
             }
           } else {
             errors.push(
               `Settlement Detail references Revenue Distribution B/L ${settlementLine.billOfLading}, ` +
-              `but no matching Revenue Distribution document was found`
+                `but no matching Revenue Distribution document was found`
             );
           }
         }
-        
+
         // Match MC (Miscellaneous Charge) lines by description and amount
         else if (settlementLine.transactionCode === 'MC') {
           const matchingLine = existingLines.find(
@@ -109,30 +149,21 @@ export async function parseAndSaveImportLines(
               el.description.toUpperCase().includes(settlementLine.description.toUpperCase()) &&
               Math.abs(el.amount - settlementLine.amount) < 0.01
           );
-          
+
           if (!matchingLine) {
             errors.push(
               `Settlement Detail shows MC deduction "${settlementLine.description}" ($${settlementLine.amount}), ` +
-              `but no matching Credit/Debit document was found`
+                `but no matching Credit/Debit document was found`
             );
           }
         }
-        
+
         // Match CM (Comdata/Advance) lines
         else if (settlementLine.transactionCode === 'CM') {
-          const matchingLine = existingLines.find(
-            (el) =>
-              el.lineType === 'ADVANCE' &&
-              Math.abs(el.amount - settlementLine.amount) < 0.01 &&
-              el.tripNumber === settlementLine.tripNumber
-          );
-          
-          if (!matchingLine) {
-            // This is expected - CM advances might not have supporting docs
-            // Just note it, don't error
-          }
+          // CM advances might not have supporting docs - this is expected
+          // Just note it, don't error
         }
-        
+
         // Match PT (Posting Ticket) lines
         else if (settlementLine.transactionCode === 'PT') {
           // PT lines might not have supporting docs either
@@ -152,7 +183,8 @@ export async function parseAndSaveImportLines(
     case DocumentType.REVENUE_DISTRIBUTION: {
       // Revenue Distribution pages are the PRIMARY source for revenue transactions.
       // They contain full trip details: driver, route, service breakdown, net balance.
-      const parseResult = parseRevenueDistribution(document.rawText);
+      const plainText = extractPlainText(document.rawText);
+      const parseResult = parseRevenueDistribution(plainText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for revenue distribution
@@ -162,7 +194,7 @@ export async function parseAndSaveImportLines(
         const origin = line.origin || 'Unknown';
         const destination = line.destination || 'Unknown';
         const description = `${shipper}: ${origin} → ${destination}`;
-        
+
         await prisma.importLine.create({
           data: {
             importDocumentId: document.id,
@@ -170,7 +202,7 @@ export async function parseAndSaveImportLines(
             category: 'REV DIST',
             lineType: 'REVENUE',
             description,
-            amount: -Math.abs(line.netBalance), // Revenue is negative (owed to driver)
+            amount: -Math.abs(line.netBalance ?? 0), // Revenue is negative (owed to driver)
             date: line.entryDate ? parseISODateLocal(line.entryDate) : null,
             reference: line.tripNumber,
             accountNumber: line.accountNumber,
@@ -199,12 +231,11 @@ export async function parseAndSaveImportLines(
         linesCreated++;
       }
 
-      if (linesCreated > 0) {
-        await prisma.importDocument.update({
-          where: { id: document.id },
-          data: { parsedAt: new Date() },
-        });
-      }
+      // Mark as parsed (even if 0 lines created)
+      await prisma.importDocument.update({
+        where: { id: document.id },
+        data: { parsedAt: new Date() },
+      });
 
       break;
     }
@@ -212,7 +243,8 @@ export async function parseAndSaveImportLines(
     case DocumentType.CREDIT_DEBIT: {
       // Credit/Debit Notification pages are the PRIMARY source for deduction transactions.
       // They contain full deduction details: transaction type, dates, amounts.
-      const parseResult = parseCreditDebit(document.rawText);
+      const plainText = extractPlainText(document.rawText);
+      const parseResult = parseCreditDebit(plainText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for credit/debit
@@ -223,12 +255,20 @@ export async function parseAndSaveImportLines(
           if (line.processDate) {
             lineDate = new Date(line.processDate);
             // Validate date is reasonable (between 1900 and 2100)
-            if (isNaN(lineDate.getTime()) || lineDate.getFullYear() < 1900 || lineDate.getFullYear() > 2100) {
+            if (
+              isNaN(lineDate.getTime()) ||
+              lineDate.getFullYear() < 1900 ||
+              lineDate.getFullYear() > 2100
+            ) {
               lineDate = null;
             }
           } else if (line.entryDate) {
             lineDate = new Date(line.entryDate);
-            if (isNaN(lineDate.getTime()) || lineDate.getFullYear() < 1900 || lineDate.getFullYear() > 2100) {
+            if (
+              isNaN(lineDate.getTime()) ||
+              lineDate.getFullYear() < 1900 ||
+              lineDate.getFullYear() > 2100
+            ) {
               lineDate = null;
             }
           }
@@ -259,18 +299,18 @@ export async function parseAndSaveImportLines(
         linesCreated++;
       }
 
-      if (linesCreated > 0) {
-        await prisma.importDocument.update({
-          where: { id: document.id },
-          data: { parsedAt: new Date() },
-        });
-      }
+      // Mark as parsed (even if 0 lines created, to avoid "not parsed" errors)
+      await prisma.importDocument.update({
+        where: { id: document.id },
+        data: { parsedAt: new Date() },
+      });
 
       break;
     }
 
     case DocumentType.REMITTANCE: {
-      const parseResult = parseRemittance(document.rawText);
+      const plainText = extractPlainText(document.rawText);
+      const parseResult = parseRemittance(plainText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for remittance (metadata, not transactions)
@@ -301,19 +341,19 @@ export async function parseAndSaveImportLines(
         linesCreated++;
       }
 
-      if (linesCreated > 0) {
-        await prisma.importDocument.update({
-          where: { id: document.id },
-          data: { parsedAt: new Date() },
-        });
-      }
+      // Mark as parsed (even if 0 lines created)
+      await prisma.importDocument.update({
+        where: { id: document.id },
+        data: { parsedAt: new Date() },
+      });
 
       break;
     }
 
     case DocumentType.ADVANCE_ADVICE: {
       // Advance Advice pages are the PRIMARY source for advance/comdata transactions.
-      const parseResult = parseAdvance(document.rawText);
+      const plainText = extractPlainText(document.rawText);
+      const parseResult = parseAdvance(plainText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for advances
@@ -334,7 +374,6 @@ export async function parseAndSaveImportLines(
               tripNumber: line.tripNumber,
               accountNumber: line.accountNumber,
               driverName: line.driverName,
-              driverNumber: line.driverNumber,
               advanceAmount: line.advanceAmount,
               description: line.description,
             }),
@@ -343,19 +382,19 @@ export async function parseAndSaveImportLines(
         linesCreated++;
       }
 
-      if (linesCreated > 0) {
-        await prisma.importDocument.update({
-          where: { id: document.id },
-          data: { parsedAt: new Date() },
-        });
-      }
+      // Mark as parsed (even if 0 lines created)
+      await prisma.importDocument.update({
+        where: { id: document.id },
+        data: { parsedAt: new Date() },
+      });
 
       break;
     }
 
     case DocumentType.POSTING_TICKET: {
       // Posting Ticket pages are the PRIMARY source for posting ticket deductions.
-      const parseResult = parsePostingTicket(document.rawText);
+      const plainText = extractPlainText(document.rawText);
+      const parseResult = parsePostingTicket(plainText);
       errors.push(...parseResult.errors);
 
       // Create ImportLine records for posting tickets
@@ -382,12 +421,11 @@ export async function parseAndSaveImportLines(
         linesCreated++;
       }
 
-      if (linesCreated > 0) {
-        await prisma.importDocument.update({
-          where: { id: document.id },
-          data: { parsedAt: new Date() },
-        });
-      }
+      // Mark as parsed (even if 0 lines created)
+      await prisma.importDocument.update({
+        where: { id: document.id },
+        data: { parsedAt: new Date() },
+      });
 
       break;
     }
@@ -441,8 +479,9 @@ export async function parseImportFile(
         totalLinesCreated += result.linesCreated;
         allErrors.push(...result.errors);
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
         allErrors.push(
-          `Failed to parse ${document.documentType} document ${document.id} (page ${document.pageNumber}): ${error}`
+          `Failed to parse ${document.documentType} document ${document.id} (page ${document.pageNumber}): ${errorMsg}`
         );
       }
     }
@@ -461,8 +500,9 @@ export async function parseImportFile(
         totalLinesCreated += result.linesCreated;
         allErrors.push(...result.errors);
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
         allErrors.push(
-          `Failed to parse document ${document.id} (page ${document.pageNumber}): ${error}`
+          `Failed to parse document ${document.id} (page ${document.pageNumber}): ${errorMsg}`
         );
       }
     }

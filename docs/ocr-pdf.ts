@@ -5,11 +5,11 @@
  * Usage: ts-node ocr-pdf.ts <pdf-file> [--model MODEL] [--output OUTPUT] [--separate-pages]
  */
 
-import { readFile, writeFile, readdir, mkdtemp } from 'fs/promises';
-import { existsSync } from 'fs';
-import { basename, join } from 'path';
 import { execFile } from 'child_process';
+import { existsSync } from 'fs';
+import { readFile, writeFile, readdir, mkdtemp } from 'fs/promises';
 import os from 'os';
+import { basename, join } from 'path';
 import { promisify } from 'util';
 
 const execFilePromise = promisify(execFile);
@@ -46,13 +46,13 @@ async function convertPdfToImages(pdfPath: string): Promise<string[]> {
 
     // pdftocairo creates files like: prefix-1.png, prefix-2.png, etc.
     const files = (await readdir(outputDir))
-      .filter(f => f.startsWith(prefix) && f.endsWith('.png'))
+      .filter((f) => f.startsWith(prefix) && f.endsWith('.png'))
       .sort((a, b) => {
         const numA = parseInt(a.match(/-?(\d+)\.png$/)?.[1] || '0');
         const numB = parseInt(b.match(/-?(\d+)\.png$/)?.[1] || '0');
         return numA - numB;
       })
-      .map(f => join(outputDir, f));
+      .map((f) => join(outputDir, f));
 
     if (files.length === 0) {
       throw new Error('No images were generated from PDF conversion.');
@@ -76,7 +76,9 @@ async function ensureBinaryAvailable(binaryName: string): Promise<void> {
   try {
     await execFilePromise('which', [binaryName]);
   } catch {
-    throw new Error(`Required binary not found: ${binaryName}. Please install it (e.g., brew install poppler).`);
+    throw new Error(
+      `Required binary not found: ${binaryName}. Please install it (e.g., brew install poppler).`
+    );
   }
 }
 
@@ -96,27 +98,30 @@ async function ocrImageWithOllama(
   ) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
   const fetchFn = (globalThis as unknown as { fetch?: FetchLike }).fetch;
   if (!fetchFn) {
-    throw new Error('Global fetch is not available. Use Node 18+ or add a fetch polyfill (e.g., undici).');
+    throw new Error(
+      'Global fetch is not available. Use Node 18+ or add a fetch polyfill (e.g., undici).'
+    );
   }
   const payload: OllamaRequest = {
     model,
-    prompt: 'Extract and return all text from this image. Provide only the text content without any additional commentary.',
+    prompt:
+      'Extract and return all text from this image. Provide only the text content without any additional commentary.',
     stream: false,
-    images: [base64Image]
+    images: [base64Image],
   };
 
   try {
     const response = await fetchFn(serverUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const data = await response.json() as OllamaResponse;
+    const data = (await response.json()) as OllamaResponse;
     return data.response || '';
   } catch (error) {
     // Propagate errors to be handled at call site
@@ -126,9 +131,11 @@ async function ocrImageWithOllama(
 
 function parseArgs(): CliArgs {
   const args = process.argv.slice(2);
-  
+
   if (args.length === 0 || args[0].startsWith('--')) {
-    console.error('Usage: ts-node ocr-pdf.ts <pdf-file> [--model MODEL] [--output OUTPUT] [--server SERVER] [--separate-pages]');
+    console.error(
+      'Usage: ts-node ocr-pdf.ts <pdf-file> [--model MODEL] [--output OUTPUT] [--server SERVER] [--separate-pages]'
+    );
     process.exit(1);
   }
 
@@ -136,7 +143,7 @@ function parseArgs(): CliArgs {
     pdfFile: args[0],
     model: 'gemma3:27b',
     server: 'http://10.147.17.205:11434/api/generate',
-    separatePages: false
+    separatePages: false,
   };
 
   for (let i = 1; i < args.length; i++) {
@@ -181,7 +188,9 @@ async function main() {
       const text = await ocrImageWithOllama(base64Image, args.model, args.server);
       allText.push(`--- Page ${i + 1} ---\n${text}\n`);
     } catch (err) {
-      console.error(`Warning: OCR failed for page ${i + 1}: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(
+        `Warning: OCR failed for page ${i + 1}: ${err instanceof Error ? err.message : String(err)}`
+      );
       allText.push(`--- Page ${i + 1} ---\n\n`);
     }
   }
@@ -189,7 +198,9 @@ async function main() {
   if (args.separatePages) {
     // Write each page to a separate file
     const outputBase = args.output || basename(args.pdfFile, '.pdf');
-    const outputDir = outputBase.includes('/') ? outputBase.substring(0, outputBase.lastIndexOf('/')) : '.';
+    const outputDir = outputBase.includes('/')
+      ? outputBase.substring(0, outputBase.lastIndexOf('/'))
+      : '.';
     const outputName = basename(outputBase, '.txt');
 
     for (let i = 0; i < allText.length; i++) {
@@ -210,7 +221,7 @@ async function main() {
   }
 }
 
-main().catch(error => {
+main().catch((error) => {
   console.error(`Fatal error: ${error}`);
   process.exit(1);
 });

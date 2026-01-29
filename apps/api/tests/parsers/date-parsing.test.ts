@@ -6,9 +6,9 @@ import { describe, it, expect } from 'vitest';
  */
 function parseDate(dateStr: string | undefined): Date | null {
   if (!dateStr) return null;
-  
+
   const cleanStr = dateStr.trim();
-  
+
   // Try MMDDYY format (6 digits, no separators) - e.g., 121625 = 12/16/25
   const compactMatch = cleanStr.match(/^(\d{2})(\d{2})(\d{2})$/);
   if (compactMatch) {
@@ -22,7 +22,7 @@ function parseDate(dateStr: string | undefined): Date | null {
       return date;
     }
   }
-  
+
   // Try YYYY-MM-DD format
   const isoMatch = cleanStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (isoMatch) {
@@ -36,7 +36,7 @@ function parseDate(dateStr: string | undefined): Date | null {
       return date;
     }
   }
-  
+
   // Try MM/DD/YY format
   const slashMatch = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
   if (slashMatch) {
@@ -49,7 +49,7 @@ function parseDate(dateStr: string | undefined): Date | null {
       return date;
     }
   }
-  
+
   return null;
 }
 

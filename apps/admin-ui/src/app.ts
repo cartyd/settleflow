@@ -1,9 +1,15 @@
-import Fastify, { FastifyInstance } from 'fastify';
-import fastifyView from '@fastify/view';
-import fastifyStatic from '@fastify/static';
-import * as nunjucks from 'nunjucks';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+import fastifyStatic from '@fastify/static';
+import fastifyView from '@fastify/view';
 import { AppConfig } from '@settleflow/shared-config';
+import Fastify, { FastifyInstance } from 'fastify';
+import nunjucks from 'nunjucks';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 import { batchRoutes } from './routes/batches';
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
@@ -38,12 +44,40 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
         // Add date filter
         env.addFilter('date', (dateString: string, format: string) => {
           const date = new Date(dateString);
-          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-          
+          if (isNaN(date.getTime())) return dateString;
+
+          const months = [
+            'Jan',
+            'Feb',
+            'Mar',
+            'Apr',
+            'May',
+            'Jun',
+            'Jul',
+            'Aug',
+            'Sep',
+            'Oct',
+            'Nov',
+            'Dec',
+          ];
+
+          const pad2 = (n: number) => String(n).padStart(2, '0');
+          const hours = date.getHours();
+          const minutes = pad2(date.getMinutes());
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          const hours12 = hours % 12 === 0 ? 12 : hours % 12;
+
           if (format === 'MMM D') {
             return `${months[date.getMonth()]} ${date.getDate()}`;
-          } else if (format === 'MMM D, YYYY') {
+          }
+          if (format === 'MMM D, YYYY') {
             return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+          }
+          if (format === 'MMM D, YYYY h:mm A') {
+            return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()} ${hours12}:${minutes} ${ampm}`;
+          }
+          if (format === 'MM/DD/YYYY') {
+            return `${pad2(date.getMonth() + 1)}/${pad2(date.getDate())}/${date.getFullYear()}`;
           }
           return dateString;
         });
@@ -60,6 +94,15 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
           }
           return [];
         });
+
+        // Add json_parse filter
+        env.addFilter('json_parse', (str: string) => {
+          try {
+            return typeof str === 'string' ? JSON.parse(str) : str;
+          } catch (e) {
+            return {};
+          }
+        });
       },
     },
   });
@@ -69,7 +112,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     prefix: '/public/',
   });
 
-  app.get('/', async (request, reply) => {
+  app.get('/', async (_request, reply) => {
     return reply.redirect('/admin/batches');
   });
 

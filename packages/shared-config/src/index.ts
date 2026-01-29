@@ -1,14 +1,15 @@
-import * as dotenv from 'dotenv';
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
+
+import * as dotenv from 'dotenv';
 
 // Find the monorepo root by looking for package.json with workspaces
 function findMonorepoRoot(): string {
   let currentDir = process.cwd();
-  
+
   while (currentDir !== path.parse(currentDir).root) {
     const packageJsonPath = path.join(currentDir, 'package.json');
-    
+
     if (fs.existsSync(packageJsonPath)) {
       try {
         const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
@@ -20,10 +21,10 @@ function findMonorepoRoot(): string {
         // Continue searching if package.json is invalid
       }
     }
-    
+
     currentDir = path.dirname(currentDir);
   }
-  
+
   // Fallback to process.cwd() if no monorepo root found
   return process.cwd();
 }
@@ -60,6 +61,8 @@ export interface AppConfig {
   sentry: {
     dsn?: string;
     enabled: boolean;
+    environment?: string;
+    tracesSampleRate?: number;
   };
   logging: {
     level: string;
@@ -73,8 +76,14 @@ export interface AppConfig {
   };
   ocr: {
     enabled: boolean;
+    provider: 'ollama' | 'gemini';
+    // Ollama config
     serverUrl: string;
     model: string;
+    timeoutMs: number;
+    // Gemini config
+    geminiApiKey?: string;
+    geminiModel?: string;
   };
   storage: {
     pdfPath: string;
@@ -90,7 +99,7 @@ function getEnvVar(key: string, defaultValue?: string): string {
     console.warn(`Warning: Missing environment variable: ${key}`);
     return '';
   }
-  return value || defaultValue || '';
+  return value ?? defaultValue ?? '';
 }
 
 function getEnvVarAsNumber(key: string, defaultValue: number): number {
@@ -138,8 +147,10 @@ export function loadConfig(): AppConfig {
       provider: databaseProvider,
     },
     sentry: {
-      dsn: process.env.SENTRY_DSN,
+      ...(process.env.SENTRY_DSN ? { dsn: process.env.SENTRY_DSN } : {}),
       enabled: !!process.env.SENTRY_DSN,
+      environment: nodeEnv,
+      tracesSampleRate: getEnvVarAsNumber('SENTRY_TRACES_SAMPLE_RATE', isDevelopment ? 1.0 : 0.1),
     },
     logging: {
       level: getEnvVar('LOG_LEVEL', 'info'),
@@ -153,8 +164,14 @@ export function loadConfig(): AppConfig {
     },
     ocr: {
       enabled: getEnvVar('OCR_ENABLED', 'true') === 'true',
+      provider: getEnvVar('OCR_PROVIDER', 'ollama') as 'ollama' | 'gemini',
+      // Ollama config
       serverUrl: getEnvVar('OCR_SERVER_URL', 'http://10.147.17.205:11434/api/generate'),
       model: getEnvVar('OCR_MODEL', 'gemma3:27b'),
+      timeoutMs: getEnvVarAsNumber('OCR_TIMEOUT_MS', 120000), // Default 120 seconds
+      // Gemini config
+      ...(process.env.GEMINI_API_KEY ? { geminiApiKey: process.env.GEMINI_API_KEY } : {}),
+      geminiModel: getEnvVar('GEMINI_MODEL', 'gemini-2.0-flash-exp'),
     },
     storage: {
       pdfPath: resolvedPdfPath,

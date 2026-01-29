@@ -1,9 +1,10 @@
-import { FastifyPluginAsync } from 'fastify';
-import fp from 'fastify-plugin';
-import { PrismaClient } from '@prisma/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+import { PrismaLibSql } from '@prisma/adapter-libsql';
+import { PrismaClient } from '@prisma/client';
+import { FastifyPluginAsync } from 'fastify';
+import fp from 'fastify-plugin';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,7 +17,8 @@ declare module 'fastify' {
 
 const prismaPlugin: FastifyPluginAsync = async (fastify) => {
   // Database path for SQLite
-  const dbPath = process.env.DATABASE_URL || `file:${path.join(__dirname, '..', '..', 'prisma', 'dev.db')}`;
+  const dbPath =
+    process.env.DATABASE_URL || `file:${path.join(__dirname, '..', '..', 'prisma', 'dev.db')}`;
 
   // Create adapter for Prisma using PrismaLibSql
   const adapter = new PrismaLibSql({ url: dbPath });

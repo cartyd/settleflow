@@ -1,4 +1,3 @@
-
 # Claude Sonnet 4.5 Prompt
 
 ## Scaffold a TypeScript Monorepo Trip Settlement Application (API + UI)
@@ -61,41 +60,41 @@ README.md
 
 ### Backend API (`apps/api`)
 
-* Node.js (LTS)
-* TypeScript
-* Fastify
-* Prisma ORM
-* SQLite (development)
-* PostgreSQL (production)
-* Vitest (unit + integration)
-* Supertest
-* Zod
-* Helmet
-* Pino
-* Sentry
-* Fastify Swagger
-* Fastify Rate Limit
-* Fastify Env
+- Node.js (LTS)
+- TypeScript
+- Fastify
+- Prisma ORM
+- SQLite (development)
+- PostgreSQL (production)
+- Vitest (unit + integration)
+- Supertest
+- Zod
+- Helmet
+- Pino
+- Sentry
+- Fastify Swagger
+- Fastify Rate Limit
+- Fastify Env
 
 ### Admin UI (`apps/admin-ui`)
 
-* Node.js + TypeScript
-* Fastify (SSR server)
-* Nunjucks
-* Shared types from `/packages`
-* Vitest for UI route tests
+- Node.js + TypeScript
+- Fastify (SSR server)
+- Nunjucks
+- Shared types from `/packages`
+- Vitest for UI route tests
 
 ### Shared packages
 
-* `shared-types`: domain & API DTOs
-* `shared-validation`: Zod schemas
-* `shared-config`: typed env loading
+- `shared-types`: domain & API DTOs
+- `shared-validation`: Zod schemas
+- `shared-config`: typed env loading
 
 ❌ Do not use:
 
-* Docker
-* Frontend frameworks (React, Vue, etc.)
-* In-memory databases
+- Docker
+- Frontend frameworks (React, Vue, etc.)
+- In-memory databases
 
 ---
 
@@ -105,14 +104,14 @@ README.md
 
 > **One NVL payment = one settlement batch**
 
-* NVL payment = check number OR ACH id
-* Unique per agency
-* Cannot import data from multiple NVL payments into one batch
+- NVL payment = check number OR ACH id
+- Unique per agency
+- Cannot import data from multiple NVL payments into one batch
 
 **Implementation**
 
-* Prisma unique constraint `(agencyId, nvlPaymentRef)`
-* Service-layer guard
+- Prisma unique constraint `(agencyId, nvlPaymentRef)`
+- Service-layer guard
 
 ---
 
@@ -124,27 +123,26 @@ README.md
 
 Driver requests not present in NVL:
 
-* Remain `PENDING`
-* Not deducted
-* Flagged for review
+- Remain `PENDING`
+- Not deducted
+- Flagged for review
 
 ---
 
 ### 3.3 Import immutability
 
-* NVL import tables are **write-once**
-* No updates allowed
-* Adjustments:
+- NVL import tables are **write-once**
+- No updates allowed
+- Adjustments:
+  - Reference original record
+  - Include reason
+  - Require approval
 
-  * Reference original record
-  * Include reason
-  * Require approval
-* Audit log required for:
-
-  * Import approval
-  * Adjustment approval
-  * Batch locking
-  * Funds cleared
+- Audit log required for:
+  - Import approval
+  - Adjustment approval
+  - Batch locking
+  - Funds cleared
 
 ---
 
@@ -170,30 +168,30 @@ Located in `apps/api/prisma/schema.prisma`
 
 Models must include:
 
-* Agency
-* Driver
-* SettlementBatch
-* ImportFile
-* ImportDocument
-* ImportLine
-* RevenueDistribution
-* Advance
-* Deduction
-* DriverRequest
-* Adjustment
-* AuditLog
+- Agency
+- Driver
+- SettlementBatch
+- ImportFile
+- ImportDocument
+- ImportLine
+- RevenueDistribution
+- Advance
+- Deduction
+- DriverRequest
+- Adjustment
+- AuditLog
 
 Rules:
 
-* Imported rows immutable
-* Adjustments reference:
+- Imported rows immutable
+- Adjustments reference:
+  - table
+  - record id
+  - field
+  - original value
+  - adjusted value
 
-  * table
-  * record id
-  * field
-  * original value
-  * adjusted value
-* Audit logs store before/after snapshots
+- Audit logs store before/after snapshots
 
 ---
 
@@ -221,10 +219,10 @@ GET    /batches/:id/audit
 
 Requirements:
 
-* Zod validation on every route
-* Swagger auto-generation
-* Pino logging per request
-* Sentry error capture
+- Zod validation on every route
+- Swagger auto-generation
+- Pino logging per request
+- Sentry error capture
 
 ---
 
@@ -268,10 +266,10 @@ Required routes:
 
 Rules:
 
-* Server-rendered only
-* No JS frameworks
-* Uses shared types
-* Calls API via internal HTTP client
+- Server-rendered only
+- No JS frameworks
+- Uses shared types
+- Calls API via internal HTTP client
 
 ---
 
@@ -292,8 +290,8 @@ RATE_LIMIT_WINDOW=
 CORS_ORIGIN=
 ```
 
-* Shared config loader in `/packages/shared-config`
-* Fail fast in production
+- Shared config loader in `/packages/shared-config`
+- Fail fast in production
 
 ---
 
@@ -303,41 +301,41 @@ CORS_ORIGIN=
 
 `apps/api/tests/unit`
 
-* Batch uniqueness
-* Status transitions
-* Adjustment immutability
-* Effective value calculation
-* NVL doc detection
+- Batch uniqueness
+- Status transitions
+- Adjustment immutability
+- Effective value calculation
+- NVL doc detection
 
 ### Integration tests
 
 `apps/api/tests/integration`
 
-* Prisma + services
-* Import → approve → lock flow
-* Validation errors
+- Prisma + services
+- Import → approve → lock flow
+- Validation errors
 
 ### API e2e tests
 
 `/tests/e2e`
 
-* Boot API
-* HTTP requests via Supertest
-* Real SQLite test DB
+- Boot API
+- HTTP requests via Supertest
+- Real SQLite test DB
 
 ### Admin UI tests
 
 `apps/admin-ui/tests`
 
-* Route rendering
-* Error states
-* API client mocking
+- Route rendering
+- Error states
+- API client mocking
 
 Rules:
 
-* No shared DB between test layers
-* Deterministic fixtures
-* DB reset per test suite
+- No shared DB between test layers
+- Deterministic fixtures
+- DB reset per test suite
 
 ---
 
@@ -380,16 +378,15 @@ test
 
 ## 11. Observability & logging
 
-* Pino:
+- Pino:
+  - request id
+  - response time
+  - errors
 
-  * request id
-  * response time
-  * errors
-* Sentry:
-
-  * Fastify plugin
-  * request context
-  * unhandled errors
+- Sentry:
+  - Fastify plugin
+  - request context
+  - unhandled errors
 
 ---
 
@@ -397,7 +394,57 @@ test
 
 The scaffold is complete when:
 
-* `npm install && npm run dev` runs API + UI
+- `npm install && npm run dev` runs API + UI
+
+---
+
+## 13. TypeScript & ESM Conventions
+
+This repo uses modern ESM with TypeScript. These conventions ensure imports resolve correctly at runtime and keep types predictable across apps and packages.
+
+### Runtime & Emit
+
+- API app is ESM: see `"type": "module"` in [apps/api/package.json](apps/api/package.json).
+- TS emits ES modules: see `module: "ES2022"` in [tsconfig.base.json](tsconfig.base.json).
+- Resolution is `moduleResolution: "bundler"` in [tsconfig.base.json](tsconfig.base.json) to align with modern tooling.
+
+### Import Specifiers
+
+- Relative imports must include `.js` extensions in source TypeScript for Node ESM to run compiled code without a bundler.
+  - Example: [apps/api/src/parsers/nvl/settlement-detail.parser.ts](apps/api/src/parsers/nvl/settlement-detail.parser.ts) uses `../../utils/ocr-normalizer.js`.
+- Path aliases and package imports do not need extensions (e.g., `@settleflow/shared-types`).
+
+### TS Compiler Options (base)
+
+- Enabled for safety and consistency:
+  - `isolatedModules`: catches per-file emit issues; compatible with `tsx`.
+  - `moduleDetection: "force"`: treats files as modules consistently.
+  - `useUnknownInCatchVariables`: avoids implicit `any` in `catch`.
+  - `noImplicitOverride`: ensures method overrides are explicit.
+- Intentionally not enabled (would require broad refactors right now):
+  - `exactOptionalPropertyTypes`
+  - `noUncheckedIndexedAccess`
+  - `verbatimModuleSyntax`
+
+### Node Types
+
+- App-level configs include `types: ["node"]` in [apps/api/tsconfig.json](apps/api/tsconfig.json) and [apps/admin-ui/tsconfig.json](apps/admin-ui/tsconfig.json) to make Node globals/types explicit.
+
+### Build & Run
+
+- Build: `npm run build` emits to `dist` per app.
+- Dev: `npm run dev` uses `tsx` to run TS directly.
+- Prod: `npm run start` runs Node on built ESM (`dist`).
+
+### Admin UI
+
+- Decide ESM vs CommonJS for [apps/admin-ui/package.json](apps/admin-ui/package.json). If ESM, add `"type": "module"` for consistency with API.
+
+### Rationale
+
+- Explicit `.js` relative imports avoid Node ESM resolution errors after compile.
+- Base strictness improves safety without forcing repo-wide changes today; we can gradually tighten over time.
+
 * Prisma migrations run (SQLite)
 * Swagger UI loads
 * Admin pages render real data
@@ -414,17 +461,14 @@ Claude must output:
 
 1. Full monorepo file tree
 2. Full contents of:
+   - Root `package.json`
+   - `apps/api/package.json`
+   - `apps/admin-ui/package.json`
+   - `prisma/schema.prisma`
+   - One API route
+   - One service
+   - One parser
+   - One test per test layer
 
-   * Root `package.json`
-   * `apps/api/package.json`
-   * `apps/admin-ui/package.json`
-   * `prisma/schema.prisma`
-   * One API route
-   * One service
-   * One parser
-   * One test per test layer
 3. Abbreviated but valid contents for remaining files
 4. A working README with setup instructions
-
-
-

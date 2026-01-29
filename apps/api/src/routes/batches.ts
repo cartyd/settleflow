@@ -1,20 +1,22 @@
-import { FastifyPluginAsync } from 'fastify';
-import * as batchService from '../services/batch.service.js';
-import * as batchDetailService from '../services/batch-detail.service.js';
-import * as importService from '../services/import.service.js';
-import * as importLineService from '../services/import-line.service.js';
-import * as driverMatcherService from '../services/driver-matcher.service.js';
-import * as driverResolutionService from '../services/driver-resolution.service.js';
-import * as autoBatchImportService from '../services/auto-batch-import.service.js';
-import { loadConfig } from '@settleflow/shared-config';
-import path from 'path';
-import fs from 'fs';
 import { spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+
+import { loadConfig } from '@settleflow/shared-config';
 import {
   CreateBatchSchema,
   GetBatchesQuerySchema,
   BatchIdParamSchema,
 } from '@settleflow/shared-validation';
+import { FastifyPluginAsync } from 'fastify';
+
+import * as autoBatchImportService from '../services/auto-batch-import.service.js';
+import * as batchDetailService from '../services/batch-detail.service.js';
+import * as batchService from '../services/batch.service.js';
+import * as driverMatcherService from '../services/driver-matcher.service.js';
+import * as importLineService from '../services/import-line.service.js';
+import * as importService from '../services/import.service.js';
+import { captureCustomError } from '../utils/sentry.js';
 
 // Helper function to extract and serve a specific PDF page
 async function extractAndServePdfPage(
@@ -25,7 +27,7 @@ async function extractAndServePdfPage(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const outputPath = path.join('/tmp', `page-${Date.now()}-${pageNum}.pdf`);
-    
+
     // Use pdftk or qpdf to extract the page
     // Format: qpdf input.pdf --pages input.pdf pageNum -- output.pdf
     const args = [pdfPath, '--pages', pdfPath, String(pageNum), '--', outputPath];
@@ -49,7 +51,7 @@ async function extractAndServePdfPage(
       const stream = fs.createReadStream(outputPath);
       reply.type('application/pdf');
       reply.header('Content-Disposition', `inline; filename="page-${pageNum}.pdf"`);
-      
+
       stream.on('end', () => {
         // Cleanup temp file after sending
         fs.unlink(outputPath, (err) => {
@@ -126,9 +128,20 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send(details);
       } catch (error) {
         fastify.log.error(error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        // Check if this is a parsing failure error
+        if (errorMessage.includes('failed to parse and cannot be viewed')) {
+          return reply.status(422).send({
+            error: 'Batch parsing failed',
+            message: errorMessage,
+            statusCode: 422,
+          });
+        }
+
         return reply.status(500).send({
           error: 'Failed to get batch details',
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage,
         });
       }
     },
@@ -143,7 +156,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = BatchIdParamSchema.parse(request.params);
       const query = request.query as { page?: string };
       const pageNum = query.page ? parseInt(query.page) : null;
-      
+
       try {
         // Get the batch to find the import file
         const batch = await fastify.prisma.settlementBatch.findUnique({
@@ -156,9 +169,9 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
           },
         });
 
-        if (!batch || !batch.importFiles[0]) {
-          return reply.status(404).send({ 
-            error: 'Batch or PDF file not found'
+        if (!batch?.importFiles[0]) {
+          return reply.status(404).send({
+            error: 'Batch or PDF file not found',
           });
         }
 
@@ -168,8 +181,8 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Check if file exists
         if (!fs.existsSync(filePath)) {
-          return reply.status(404).send({ 
-            error: 'PDF file not found on disk'
+          return reply.status(404).send({
+            error: 'PDF file not found on disk',
           });
         }
 
@@ -223,6 +236,39 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
     },
   });
 
+  fastify.delete('/:id', {
+    schema: {
+      description: 'Delete a batch and all related data',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { id } = BatchIdParamSchema.parse(request.params);
+      try {
+        await batchService.deleteBatch(fastify.prisma, id, 'system');
+        reply.send({
+          success: true,
+          message: 'Batch deleted successfully',
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        captureCustomError(error as Error, {
+          level: 'error',
+          tags: {
+            operation: 'delete_batch',
+            batchId: id,
+          },
+          extra: {
+            batchId: id,
+          },
+        });
+        return reply.status(500).send({
+          error: 'Failed to delete batch',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
   // New auto-upload endpoint - creates batch automatically from PDF
   fastify.post('/upload', {
     schema: {
@@ -259,14 +305,25 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Upload PDF and auto-create batch
       try {
+        // Build OCR config based on provider
+        const ocrConfig =
+          config.ocr.provider === 'gemini'
+            ? {
+                apiKey: config.ocr.geminiApiKey!,
+                model: config.ocr.geminiModel,
+                timeoutMs: config.ocr.timeoutMs,
+              }
+            : {
+                model: config.ocr.model,
+                serverUrl: config.ocr.serverUrl,
+                timeoutMs: config.ocr.timeoutMs,
+              };
+
         const result = await autoBatchImportService.uploadPdfAndCreateBatch(
           fastify.prisma,
           data.filename,
           buffer,
-          {
-            model: config.ocr.model,
-            serverUrl: config.ocr.serverUrl,
-          },
+          ocrConfig,
           'system' // TODO: Get actual user ID from auth
         );
 
@@ -318,15 +375,26 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Process PDF with OCR
       try {
+        // Build OCR config based on provider
+        const ocrConfig =
+          config.ocr.provider === 'gemini'
+            ? {
+                apiKey: config.ocr.geminiApiKey!,
+                model: config.ocr.geminiModel,
+                timeoutMs: config.ocr.timeoutMs,
+              }
+            : {
+                model: config.ocr.model,
+                serverUrl: config.ocr.serverUrl,
+                timeoutMs: config.ocr.timeoutMs,
+              };
+
         const result = await importService.processUploadedPdf(
           fastify.prisma,
           id,
           data.filename,
           buffer,
-          {
-            model: config.ocr.model,
-            serverUrl: config.ocr.serverUrl,
-          }
+          ocrConfig
         );
 
         reply.status(201).send(result);
@@ -391,33 +459,15 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
       const { importFileId } = request.params as { importFileId: string };
 
       try {
-        const result = await driverMatcherService.matchDriversForImportFile(fastify.prisma, importFileId);
+        const result = await driverMatcherService.matchDriversForImportFile(
+          fastify.prisma,
+          importFileId
+        );
         return reply.send(result);
       } catch (error) {
         fastify.log.error(error);
         return reply.status(500).send({
           error: 'Failed to match drivers',
-          message: error instanceof Error ? error.message : String(error),
-        });
-      }
-    },
-  });
-
-  fastify.post('/import-files/:importFileId/resolve-drivers', {
-    schema: {
-      description: 'Resolve and validate driver information across documents',
-      tags: ['batches'],
-    },
-    handler: async (request, reply) => {
-      const { importFileId } = request.params as { importFileId: string };
-
-      try {
-        const result = await driverResolutionService.resolveDriversForImportFile(fastify.prisma, importFileId);
-        return reply.send(result);
-      } catch (error) {
-        fastify.log.error(error);
-        return reply.status(500).send({
-          error: 'Failed to resolve drivers',
           message: error instanceof Error ? error.message : String(error),
         });
       }
@@ -462,6 +512,41 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
     },
   });
 
+  fastify.get('/import-files/:importFileId/documents', {
+    schema: {
+      description: 'Get all import documents with raw OCR text',
+      tags: ['batches'],
+    },
+    handler: async (request, reply) => {
+      const { importFileId } = request.params as { importFileId: string };
+
+      try {
+        const documents = await fastify.prisma.importDocument.findMany({
+          where: { importFileId },
+          orderBy: { pageNumber: 'asc' },
+          select: {
+            id: true,
+            pageNumber: true,
+            documentType: true,
+            rawText: true,
+            parsedAt: true,
+          },
+        });
+
+        return reply.send({
+          success: true,
+          documents,
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Failed to get import documents',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  });
+
   fastify.get('/import-files/:importFileId/lines', {
     schema: {
       description: 'Get all parsed import lines for an import file',
@@ -485,10 +570,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
               },
             },
           },
-          orderBy: [
-            { importDocument: { pageNumber: 'asc' } },
-            { createdAt: 'asc' },
-          ],
+          orderBy: [{ importDocument: { pageNumber: 'asc' } }, { createdAt: 'asc' }],
         });
 
         // Manually fetch driver info for lines that have driverId
@@ -511,7 +593,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
 
         return reply.send({
           success: true,
-          lines: linesWithDrivers.map(line => ({
+          lines: linesWithDrivers.map((line) => ({
             id: line.id,
             pageNumber: line.importDocument?.pageNumber,
             documentType: line.importDocument?.documentType,
@@ -520,10 +602,12 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
             date: line.date,
             description: line.description,
             amount: line.amount,
-            driver: line.driver ? {
-              id: line.driver.id,
-              name: `${line.driver.firstName} ${line.driver.lastName}`,
-            } : null,
+            driver: line.driver
+              ? {
+                  id: line.driver.id,
+                  name: `${line.driver.firstName} ${line.driver.lastName}`,
+                }
+              : null,
             reference: line.reference,
             accountNumber: line.accountNumber,
             tripNumber: line.tripNumber,

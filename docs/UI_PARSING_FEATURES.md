@@ -7,15 +7,18 @@ The Admin UI now includes functionality to parse imported settlement documents a
 ## Features Added
 
 ### 1. Parse Transactions Button
+
 Located on each import file card in the batch detail page.
 
 **What it does:**
+
 - Triggers parsing of all documents in the import file
 - Extracts transaction lines (revenue, advances, deductions)
 - Creates ImportLine records in database
 - Shows parse progress and results
 
 **Workflow:**
+
 1. Navigate to batch detail page
 2. Find the import file card
 3. Click "Parse Transactions"
@@ -26,15 +29,18 @@ Located on each import file card in the batch detail page.
    - Any errors encountered
 
 ### 2. View Summary Button
+
 Shows aggregated statistics about parsed transactions.
 
 **What it displays:**
+
 - Total number of parsed lines
 - Revenue total and line count
 - Advances total and line count
 - Deductions total and line count
 
 **Workflow:**
+
 1. Click "View Summary" on any import file
 2. Toggle button to show/hide summary
 3. If no lines parsed yet, shows helpful message
@@ -42,6 +48,7 @@ Shows aggregated statistics about parsed transactions.
 ## UI Components
 
 ### Import File Card Layout
+
 ```
 ┌─────────────────────────────────────┐
 │ filename.pdf              [Approved]│
@@ -74,6 +81,7 @@ Shows aggregated statistics about parsed transactions.
 ### Parse Results Display
 
 **Success State:**
+
 ```
 ✓ Parse Complete
 Documents Processed: 13
@@ -81,6 +89,7 @@ Lines Created: 87
 ```
 
 **With Errors:**
+
 ```
 ✓ Parse Complete
 Documents Processed: 13
@@ -92,6 +101,7 @@ Errors:
 ```
 
 **Error State:**
+
 ```
 Error: Parse request failed
 ```
@@ -99,28 +109,30 @@ Error: Parse request failed
 ## API Integration
 
 ### Admin UI Routes
+
 - `POST /admin/batches/import-files/:importFileId/parse`
 - `GET /admin/batches/import-files/:importFileId/summary`
 
 These proxy to the API endpoints:
+
 - `POST /batches/import-files/:importFileId/parse`
 - `GET /batches/import-files/:importFileId/summary`
 
 ### Response Formats
 
 **Parse Response:**
+
 ```json
 {
   "importFileId": "uuid",
   "documentsProcessed": 13,
   "totalLinesCreated": 87,
-  "errors": [
-    "Parser for REVENUE_DISTRIBUTION not yet implemented"
-  ]
+  "errors": ["Parser for REVENUE_DISTRIBUTION not yet implemented"]
 }
 ```
 
 **Summary Response:**
+
 ```json
 {
   "totalLines": 87,
@@ -130,7 +142,7 @@ These proxy to the API endpoints:
     "DEDUCTION": 7
   },
   "totalRevenue": 4205.46,
-  "totalAdvances": 675.50,
+  "totalAdvances": 675.5,
   "totalDeductions": 189.43
 }
 ```
@@ -157,9 +169,9 @@ These proxy to the API endpoints:
 
 4. **Verify in Database** (optional)
    ```sql
-   SELECT * FROM import_lines 
+   SELECT * FROM import_lines
    WHERE importDocumentId IN (
-     SELECT id FROM import_documents 
+     SELECT id FROM import_documents
      WHERE importFileId = 'uuid'
    );
    ```
@@ -167,12 +179,14 @@ These proxy to the API endpoints:
 ## Styling
 
 ### Colors
+
 - **Success**: Green (#388e3c)
 - **Warning**: Orange (#f57c00)
 - **Error**: Deep Orange (#e65100)
 - **Info**: Blue (#0066cc)
 
 ### Status Indicators
+
 - ✓ Parse Complete (green)
 - ⚠ Errors (orange/yellow background)
 - Loading... (gray, italic)
@@ -180,7 +194,9 @@ These proxy to the API endpoints:
 ## Current Limitations
 
 ### Document Type Support
+
 Only **SETTLEMENT_DETAIL** documents are parsed in Phase 1:
+
 - ✅ SETTLEMENT_DETAIL - Fully supported
 - ❌ REVENUE_DISTRIBUTION - Phase 2
 - ❌ CREDIT_DEBIT - Phase 2
@@ -190,12 +206,15 @@ Only **SETTLEMENT_DETAIL** documents are parsed in Phase 1:
 When unsupported document types are encountered, they're skipped and reported in errors array.
 
 ### No Real-Time Updates
+
 - Parse button doesn't auto-refresh summary
 - Must click "View Summary" again to see updated data
 - No WebSocket/polling for progress updates
 
 ### No Detailed Line View
+
 Currently shows only summary statistics. Future enhancement:
+
 - Table of all parsed lines
 - Filtering by line type
 - Export to CSV
@@ -204,11 +223,13 @@ Currently shows only summary statistics. Future enhancement:
 ## Testing
 
 1. Start both servers:
+
    ```bash
    npm run dev
    ```
 
 2. Navigate to batch detail:
+
    ```
    http://localhost:3001/admin/batches/{batchId}
    ```
@@ -222,16 +243,19 @@ Currently shows only summary statistics. Future enhancement:
 ## Troubleshooting
 
 ### "Parse request failed"
+
 - Check API server is running on port 3000
 - Check browser console for network errors
 - Verify importFileId is valid
 
 ### No lines created
+
 - Document type may not be SETTLEMENT_DETAIL
 - OCR text quality may be poor
 - Check parse errors in results display
 
 ### Summary shows zero
+
 - Need to click "Parse Transactions" first
 - ImportLines may not have been created
 - Check database: `SELECT COUNT(*) FROM import_lines`
@@ -239,6 +263,7 @@ Currently shows only summary statistics. Future enhancement:
 ## Files Modified
 
 ### Admin UI
+
 - `apps/admin-ui/src/services/api-client.ts` - Added parse/summary API calls
 - `apps/admin-ui/src/routes/batches.ts` - Added proxy routes
 - `apps/admin-ui/views/batches/detail.njk` - Added UI components and JavaScript
@@ -247,6 +272,7 @@ Currently shows only summary statistics. Future enhancement:
 ## Next Steps
 
 Future enhancements:
+
 1. Add detailed line view with table
 2. Auto-refresh after parsing
 3. Export parsed lines to CSV

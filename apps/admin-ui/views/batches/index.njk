@@ -36,6 +36,83 @@
 {% include "batches/table.njk" %}
 
 <script>
+// Determine API base URL from current location
+const API_BASE_URL = window.location.protocol + '//' + window.location.hostname + ':3000';
+
+// Reset and re-parse import file
+window.resetAndReparseAction = function(importFileId, event) {
+    if (!importFileId) {
+        alert('Import file ID not found');
+        return;
+    }
+    
+    if (!confirm('This will clear all parsed data and re-parse the document. Continue?')) {
+        return;
+    }
+    
+    const resetBtn = event.target;
+    resetBtn.disabled = true;
+    const originalText = resetBtn.textContent;
+    resetBtn.textContent = 'Resetting...';
+    
+    // Step 1: Reset the import file
+    fetch(`${API_BASE_URL}/batches/import-files/${importFileId}/reset`, {
+        method: 'POST'
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Reset failed');
+        return response.json();
+    })
+    .then(() => {
+        resetBtn.textContent = 'Reparsing...';
+        // Step 2: Re-parse the import file
+        return fetch(`${API_BASE_URL}/batches/import-files/${importFileId}/parse`, {
+            method: 'POST'
+        });
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Re-parse failed');
+        return response.json();
+    })
+    .then(() => {
+        alert('Re-parsing complete! Reloading page...');
+        window.location.reload();
+    })
+    .catch(error => {
+        resetBtn.disabled = false;
+        resetBtn.textContent = originalText;
+        alert('Error: ' + error.message);
+        console.error('Reset/re-parse error:', error);
+    });
+};
+
+// Delete batch function
+window.deleteBatchAction = function(batchId, batchRef) {
+    if (!confirm(`Are you sure you want to delete batch ${batchRef}? This will remove all associated data and cannot be undone.`)) {
+        return;
+    }
+    
+    fetch(`${API_BASE_URL}/batches/${batchId}`, {
+        method: 'DELETE'
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(error => {
+                throw new Error(error.message || 'Failed to delete batch');
+            });
+        }
+        return response.json();
+    })
+    .then(() => {
+        alert('Batch deleted successfully');
+        window.location.reload();
+    })
+    .catch(error => {
+        alert('Error deleting batch: ' + error.message);
+        console.error('Delete error:', error);
+    });
+};
+
 (function() {
     const form = document.getElementById('pdf-upload-form');
     const progressDiv = document.getElementById('upload-progress');
@@ -75,7 +152,7 @@
                 progressFill.style.width = progress + '%';
             }, 1000);
 
-            const response = await fetch('http://localhost:3000/batches/upload', {
+            const response = await fetch(`${API_BASE_URL}/batches/upload`, {
                 method: 'POST',
                 body: formData
             });

@@ -1,6 +1,7 @@
-import { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
-import { formatErrorContext, generateErrorId } from '../utils/errorHandler';
+import type { FastifyError, FastifyReply, FastifyRequest, FastifyInstance } from 'fastify';
+
 import { errorPageConfig } from '../config/viewConfig';
+import { formatErrorContext, generateErrorId } from '../utils/errorHandler';
 
 export interface ErrorResponse {
   statusCode: number;
@@ -56,10 +57,10 @@ export async function errorHandler(
   return reply.status(statusCode).view('error.njk', errorResponse);
 }
 
-export function createErrorRoute(fastify: any) {
+export function createErrorRoute(fastify: FastifyInstance) {
   fastify.setErrorHandler(errorHandler);
 
-  fastify.setNotFoundHandler(async (request, reply) => {
+  fastify.setNotFoundHandler(async (_request: FastifyRequest, reply: FastifyReply) => {
     const errorId = generateErrorId();
     const timestamp = new Date();
 

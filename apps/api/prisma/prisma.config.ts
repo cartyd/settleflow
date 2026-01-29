@@ -1,7 +1,8 @@
-import { defineConfig } from '@prisma/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+import { PrismaLibSql } from '@prisma/adapter-libsql';
+import { defineConfig } from '@prisma/client';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

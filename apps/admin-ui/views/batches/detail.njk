@@ -63,6 +63,47 @@
     {% endif %}
 </div>
 
+{# Remittance Details Card #}
+{% if batch.lineItems.remittance and batch.lineItems.remittance.length > 0 %}
+    {% set remittance = batch.lineItems.remittance[0] %}
+    {% set remittanceData = remittance.rawData | json_parse if remittance.rawData else {} %}
+    <div class="remittance-details-card">
+        <h3>Remittance Details</h3>
+        <div class="remittance-grid">
+            <div class="remittance-item">
+                <span class="remittance-label">Check Number:</span>
+                <span class="remittance-value">{{ remittanceData.checkNumber or '-' }}</span>
+            </div>
+            <div class="remittance-item">
+                <span class="remittance-label">Check Date:</span>
+                <span class="remittance-value">{{ remittanceData.checkDate | date('MMM D, YYYY') if remittanceData.checkDate else '-' }}</span>
+            </div>
+            <div class="remittance-item">
+                <span class="remittance-label">Check Amount:</span>
+                <span class="remittance-value remittance-amount">${{ remittanceData.checkAmount | number(2) if remittanceData.checkAmount else '0.00' }}</span>
+            </div>
+            <div class="remittance-item">
+                <span class="remittance-label">Payee:</span>
+                <span class="remittance-value">{{ remittanceData.payeeName or '-' }}</span>
+            </div>
+            <div class="remittance-item">
+                <span class="remittance-label">Account Number:</span>
+                <span class="remittance-value">{{ remittanceData.accountNumber or '-' }}</span>
+            </div>
+            <div class="remittance-item">
+                <span class="remittance-label">Payment Method:</span>
+                <span class="remittance-value">{{ remittanceData.paymentMethod or '-' }}</span>
+            </div>
+            {% if remittanceData.bankAccount %}
+            <div class="remittance-item">
+                <span class="remittance-label">Bank Account:</span>
+                <span class="remittance-value">{{ remittanceData.bankAccount }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+{% endif %}
+
 {# Financial Summary - Enhanced with 4 metrics #}
 <div class="financial-summary">
     <h2>Financial Summary</h2>
@@ -106,10 +147,11 @@
                             <th>Description</th>
                             <th>Driver</th>
                             <th>RDD</th>
-                            <th>Amount</th>
+                            <th class="amount-header">Amount</th>
                         </tr>
                     </thead>
                     <tbody>
+                        {% set revenueTotal = 0 %}
                         {% for line in batch.lineItems.revenueDistribution %}
                             {% set shipper = line.shipperName or 'Unknown' %}
                             {% set origin = line.origin or 'Unknown' %}
@@ -117,16 +159,23 @@
                             {% set driverLast = line.driverLastName or line.driverName or '-' %}
                             {% set driverFirst = line.driverFirstName or '' %}
                             {% set deliveryDate = line.deliveryDate or '-' %}
+                            {% set revenueTotal = revenueTotal + (line.amount | abs) %}
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
                                 <td>{{ line.tripNumber or '-' }}</td>
                                 <td>{{ shipper }}: {{ origin }} → {{ destination }}</td>
                                 <td>{{ driverLast }}{{ (', ' + driverFirst) if driverFirst else '' }}</td>
                                 <td>{{ deliveryDate | date('MM/DD/YYYY') if deliveryDate != '-' else '-' }}</td>
-                                <td class="amount-cell negative">${{ line.amount | abs | number(2) }}</td>
+                                <td class="amount-cell positive">${{ line.amount | abs | number(2) }}</td>
                             </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot>
+                        <tr class="subtotal-row">
+                            <td colspan="5" class="subtotal-label">Subtotal</td>
+                            <td class="amount-cell positive subtotal-amount">${{ revenueTotal | number(2) }}</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </details>
@@ -147,20 +196,28 @@
                             <th>Description</th>
                             <th>Date</th>
                             <th>Reference</th>
-                            <th>Amount</th>
+                            <th class="amount-header">Amount</th>
                         </tr>
                     </thead>
                     <tbody>
+                        {% set advancesTotal = 0 %}
                         {% for line in batch.lineItems.advances %}
+                            {% set advancesTotal = advancesTotal + (line.amount | abs) %}
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
                                 <td>{{ line.description }}</td>
                                 <td>{{ line.date | date('MMM D, YYYY') if line.date else '-' }}</td>
                                 <td>{{ line.reference or '-' }}</td>
-                                <td class="amount-cell positive">${{ line.amount | abs | number(2) }}</td>
+                                <td class="amount-cell negative">${{ line.amount | abs | number(2) }}</td>
                             </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot>
+                        <tr class="subtotal-row">
+                            <td colspan="4" class="subtotal-label">Subtotal</td>
+                            <td class="amount-cell negative subtotal-amount">${{ advancesTotal | number(2) }}</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </details>
@@ -180,19 +237,27 @@
                             <th>Page</th>
                             <th>Description</th>
                             <th>Date</th>
-                            <th>Amount</th>
+                            <th class="amount-header">Amount</th>
                         </tr>
                     </thead>
                     <tbody>
+                        {% set deductionsTotal = 0 %}
                         {% for line in batch.lineItems.creditDebit %}
+                            {% set deductionsTotal = deductionsTotal + (line.amount | abs) %}
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
                                 <td>{{ line.description }}</td>
                                 <td>{{ line.date | date('MMM D, YYYY') if line.date else '-' }}</td>
-                                <td class="amount-cell positive">${{ line.amount | abs | number(2) }}</td>
+                                <td class="amount-cell negative">${{ line.amount | abs | number(2) }}</td>
                             </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot>
+                        <tr class="subtotal-row">
+                            <td colspan="3" class="subtotal-label">Subtotal</td>
+                            <td class="amount-cell negative subtotal-amount">${{ deductionsTotal | number(2) }}</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </details>
@@ -211,18 +276,26 @@
                         <tr>
                             <th>Page</th>
                             <th>Description</th>
-                            <th>Amount</th>
+                            <th class="amount-header">Amount</th>
                         </tr>
                     </thead>
                     <tbody>
+                        {% set postingTicketTotal = 0 %}
                         {% for line in batch.lineItems.postingTicket %}
+                            {% set postingTicketTotal = postingTicketTotal + (line.amount | abs) %}
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
                                 <td>{{ line.description }}</td>
-                                <td class="amount-cell positive">${{ line.amount | abs | number(2) }}</td>
+                                <td class="amount-cell negative">${{ line.amount | abs | number(2) }}</td>
                             </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot>
+                        <tr class="subtotal-row">
+                            <td colspan="2" class="subtotal-label">Subtotal</td>
+                            <td class="amount-cell negative subtotal-amount">${{ postingTicketTotal | number(2) }}</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </details>
@@ -328,7 +401,7 @@
                 
                 <div class="trip-total">
                     <strong>Net Balance:</strong>
-                    <span class="trip-net-balance">${{ trip.netBalance | number(2) }}</span>
+                    <span class="trip-net-balance positive">${{ trip.netBalance | number(2) }}</span>
                 </div>
             </div>
         {% endfor %}
@@ -338,41 +411,109 @@
 
 <section aria-labelledby="import-files-heading">
     <div class="section-header">
-        <h2 id="import-files-heading" class="section-heading">Raw Document Data (Advanced)</h2>
-        <button type="button" class="btn-secondary" onclick="document.getElementById('raw-data-section').style.display = document.getElementById('raw-data-section').style.display === 'none' ? 'block' : 'none'">Toggle Raw Data</button>
+        <h2 id="import-files-heading" class="section-heading">Raw OCR Text (Advanced)</h2>
+        <button type="button" class="btn-secondary" onclick="toggleRawOcrData()">View Raw OCR Text</button>
     </div>
 
     <div id="raw-data-section" style="display: none;">
-        <p class="section-description">This section shows raw parsing data and debugging information.</p>
-        <div class="empty-state">
-            <p>Raw document data is available via API endpoint:</p>
-            <code>GET /api/batches/{{ batch.id }}/details</code>
+        <p class="section-description">This section shows raw OCR text extracted from each page. Useful for debugging parser issues.</p>
+        <div id="raw-ocr-container">
+            <p>Loading OCR data...</p>
         </div>
     </div>
 </section>
 
 <script>
-// PDF Viewer Navigation
+// PDF Viewer Navigation with category-aware page groups
 (function() {
     const batchId = '{{ batch.id }}';
-    const totalPages = {{ batch.pageCount }};
-    let currentPage = 1;
+    let currentPageGroup = [];
+    let currentPageIndex = 0;
     
-    // Update current page display
-    function updatePageDisplay(pageNum) {
-        currentPage = pageNum;
+    // Build page groups from line items
+    const pageGroups = {
+        {% if batch.lineItems and batch.lineItems.revenueDistribution %}
+        revenueDistribution: [{% for line in batch.lineItems.revenueDistribution %}{{ line.pageNumber }}{% if not loop.last %}, {% endif %}{% endfor %}],
+        {% else %}
+        revenueDistribution: [],
+        {% endif %}
+        {% if batch.lineItems and batch.lineItems.advances %}
+        advances: [{% for line in batch.lineItems.advances %}{{ line.pageNumber }}{% if not loop.last %}, {% endif %}{% endfor %}],
+        {% else %}
+        advances: [],
+        {% endif %}
+        {% if batch.lineItems and batch.lineItems.creditDebit %}
+        creditDebit: [{% for line in batch.lineItems.creditDebit %}{{ line.pageNumber }}{% if not loop.last %}, {% endif %}{% endfor %}],
+        {% else %}
+        creditDebit: [],
+        {% endif %}
+        {% if batch.lineItems and batch.lineItems.postingTicket %}
+        postingTicket: [{% for line in batch.lineItems.postingTicket %}{{ line.pageNumber }}{% if not loop.last %}, {% endif %}{% endfor %}],
+        {% else %}
+        postingTicket: [],
+        {% endif %}
+        {% if batch.trips %}
+        trips: [{% for trip in batch.trips %}{{ trip.pageNumber }}{% if not loop.last %}, {% endif %}{% endfor %}]
+        {% else %}
+        trips: []
+        {% endif %}
+    };
+    
+    // Get unique sorted pages from any array
+    function getUniquePages(pages) {
+        return [...new Set(pages)].sort((a, b) => a - b);
+    }
+    
+    // Update page display and navigation buttons
+    function updatePageDisplay() {
         const display = document.getElementById('current-page-display');
-        if (display) {
-            display.textContent = `Page ${pageNum} of ${totalPages}`;
+        const prevBtn = document.querySelector('.pdf-nav-btn[title="Previous Page"]');
+        const nextBtn = document.querySelector('.pdf-nav-btn[title="Next Page"]');
+        const toolbar = document.querySelector('.pdf-toolbar');
+        
+        if (!display) return;
+        
+        const uniquePages = getUniquePages(currentPageGroup);
+        const currentPage = uniquePages[currentPageIndex];
+        const totalInGroup = uniquePages.length;
+        
+        if (totalInGroup > 0) {
+            // Show toolbar and update display
+            if (toolbar) toolbar.style.display = 'flex';
+            display.textContent = `Page ${currentPageIndex + 1} of ${totalInGroup}`;
+            
+            // Show/hide navigation buttons based on group size
+            if (prevBtn && nextBtn) {
+                if (totalInGroup <= 1) {
+                    prevBtn.style.display = 'none';
+                    nextBtn.style.display = 'none';
+                } else {
+                    prevBtn.style.display = 'inline-block';
+                    nextBtn.style.display = 'inline-block';
+                    prevBtn.disabled = currentPageIndex === 0;
+                    nextBtn.disabled = currentPageIndex === totalInGroup - 1;
+                }
+            }
+        } else {
+            // Hide toolbar when no group is active
+            if (toolbar) toolbar.style.display = 'none';
         }
     }
     
     // Navigate to specific PDF page
-    window.showPdfPage = function(pageNumber) {
+    window.showPdfPage = function(pageNumber, pageGroup = []) {
         const viewer = document.getElementById('pdf-viewer');
         const container = document.getElementById('pdf-viewer-container');
         
         if (viewer && container) {
+            // Update current page group if provided
+            if (pageGroup.length > 0) {
+                currentPageGroup = pageGroup;
+                const uniquePages = getUniquePages(currentPageGroup);
+                currentPageIndex = uniquePages.indexOf(pageNumber);
+                if (currentPageIndex === -1) currentPageIndex = 0;
+            }
+            
             // Update iframe src with page query parameter
             viewer.src = `/admin/batches/${batchId}/pdf?page=${pageNumber}`;
             
@@ -380,42 +521,118 @@
             container.scrollIntoView({ behavior: 'smooth', block: 'start' });
             
             // Update page display
-            updatePageDisplay(pageNumber);
+            updatePageDisplay();
         }
     };
     
-    // Navigate prev/next
+    // Navigate prev/next within current page group
     window.navigatePdfPage = function(direction) {
-        let newPage = currentPage;
+        const uniquePages = getUniquePages(currentPageGroup);
         
-        if (direction === 'prev' && currentPage > 1) {
-            newPage = currentPage - 1;
-        } else if (direction === 'next' && currentPage < totalPages) {
-            newPage = currentPage + 1;
+        if (direction === 'prev' && currentPageIndex > 0) {
+            currentPageIndex--;
+        } else if (direction === 'next' && currentPageIndex < uniquePages.length - 1) {
+            currentPageIndex++;
+        } else {
+            return; // No movement
         }
         
-        if (newPage !== currentPage) {
-            showPdfPage(newPage);
-        }
+        const newPage = uniquePages[currentPageIndex];
+        showPdfPage(newPage, currentPageGroup);
     };
+    
+    // Determine which group a page belongs to
+    function findPageGroup(pageNumber) {
+        for (const [groupName, pages] of Object.entries(pageGroups)) {
+            if (pages.includes(pageNumber)) {
+                return pages;
+            }
+        }
+        return [pageNumber]; // Fallback to single page
+    }
     
     // Handle page link clicks
     document.querySelectorAll('.page-link').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
             const pageNumber = parseInt(link.getAttribute('href').replace('#page-', ''));
-            showPdfPage(pageNumber);
+            
+            // Find which category this page belongs to
+            const pageGroup = findPageGroup(pageNumber);
+            
+            // Navigate to this page with its group context
+            showPdfPage(pageNumber, pageGroup);
         });
     });
     
-    // Try to extract page number from PDF viewer on load (doesn't always work due to cross-origin)
-    const viewer = document.getElementById('pdf-viewer');
-    if (viewer) {
-        viewer.addEventListener('load', function() {
-            // Update display to page 1 initially
-            updatePageDisplay(1);
-        });
-    }
+    // Initialize - hide toolbar until user clicks a page link
+    currentPageGroup = [];
+    const toolbar = document.querySelector('.pdf-toolbar');
+    if (toolbar) toolbar.style.display = 'none';
 })();
+
+// Raw OCR Data Viewer
+let ocrDataLoaded = false;
+window.toggleRawOcrData = async function() {
+    const section = document.getElementById('raw-data-section');
+    const container = document.getElementById('raw-ocr-container');
+    
+    if (section.style.display === 'none') {
+        section.style.display = 'block';
+        
+        // Load data if not already loaded
+        if (!ocrDataLoaded) {
+            try {
+                const importFileId = '{{ batch.importFileId }}';
+                console.log('Fetching OCR data for importFileId:', importFileId);
+                const apiBaseUrl = window.location.protocol + '//' + window.location.hostname + ':3000';
+                const response = await fetch(`${apiBaseUrl}/batches/import-files/${importFileId}/documents`);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API returned ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('OCR data received:', data);
+                
+                if (data.success && data.documents) {
+                    let html = '';
+                    data.documents.forEach(doc => {
+                        const textLength = doc.rawText ? doc.rawText.length : 0;
+                        const isEmpty = textLength === 0;
+                        html += `
+                            <div class="ocr-document" style="margin-bottom: 20px; border: 1px solid #ddd; padding: 15px; border-radius: 4px;">
+                                <h4 style="margin-top: 0;">Page ${doc.pageNumber} - ${doc.documentType}
+                                    ${isEmpty ? '<span style="color: #d32f2f; font-weight: bold;"> ⚠️ EMPTY (OCR Failed)</span>' : ''}
+                                </h4>
+                                <div style="margin-bottom: 10px; color: #666; font-size: 0.9em;">
+                                    Text length: ${textLength} characters | 
+                                    Parsed: ${doc.parsedAt ? 'Yes' : 'No'}
+                                </div>
+                                <pre style="background: #f5f5f5; padding: 10px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto;">${isEmpty ? '(No text extracted by OCR)' : escapeHtml(doc.rawText)}</pre>
+                            </div>
+                        `;
+                    });
+                    container.innerHTML = html;
+                    ocrDataLoaded = true;
+                } else {
+                    container.innerHTML = '<p style="color: #d32f2f;">Failed to load OCR data</p>';
+                }
+            } catch (error) {
+                console.error('Failed to fetch OCR data:', error);
+                container.innerHTML = `<p style="color: #d32f2f;">Error loading OCR data: ${error.message}</p>`;
+            }
+        }
+    } else {
+        section.style.display = 'none';
+    }
+};
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 </script>
 {% endblock %}

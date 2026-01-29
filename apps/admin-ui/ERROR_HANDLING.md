@@ -5,6 +5,7 @@ This document describes the error handling system implemented for the SettleFlow
 ## Overview
 
 The error handling system provides a unified, user-friendly way to display errors with:
+
 - HTTP status code-specific messaging
 - Severity-based visual indicators
 - Error tracking with unique IDs
@@ -17,6 +18,7 @@ The error handling system provides a unified, user-friendly way to display error
 ### Configuration (`src/config/viewConfig.ts`)
 
 The `errorPageConfig` object defines:
+
 - Status code specific messages (400, 403, 404, 500, 503)
 - Default error message
 - Severity levels (error, warning, info)
@@ -26,6 +28,7 @@ The `errorPageConfig` object defines:
 ### Utilities (`src/utils/errorHandler.ts`)
 
 Provides error handling functions:
+
 - `getErrorConfig(statusCode)` - Returns config for a given HTTP status
 - `generateErrorId()` - Creates unique error identifiers
 - `formatErrorContext(context)` - Safely formats error data
@@ -33,6 +36,7 @@ Provides error handling functions:
 ### Middleware (`src/middleware/errorHandler.ts`)
 
 The error handler middleware:
+
 - Catches all application errors
 - Logs errors with correlation ID
 - Hides sensitive information in production
@@ -85,21 +89,25 @@ The system handles these HTTP status codes with specific messaging:
 ## Error Page Features
 
 ### Visual Hierarchy
+
 - Large status code display
 - Color-coded severity (red/orange/blue)
 - Clear error title and user message
 
 ### Error Details
+
 - Error ID for support reference
 - Timestamp in user's timezone
 - Hidden in mobile view to save space
 
 ### Recovery Options
+
 - Primary action: Return to Batches
 - Secondary action: Go to Dashboard
 - Tertiary action: Contact Support (for 5xx errors)
 
 ### Accessibility
+
 - ARIA role="alert" on error message
 - Semantic HTML structure
 - Keyboard accessible buttons
@@ -108,17 +116,21 @@ The system handles these HTTP status codes with specific messaging:
 ## Security Considerations
 
 ### Information Disclosure Prevention
+
 - Raw error messages never exposed to users
 - Technical error details hidden in production
 - Only generic messages shown
 
 ### Error Tracking
+
 - Every error gets a unique ID
 - Error ID logged server-side for correlation
 - User can provide ID to support team
 
 ### Logging
+
 Errors are logged with:
+
 - Error ID
 - HTTP status code
 - Error message
@@ -128,6 +140,7 @@ Errors are logged with:
 ## Styling
 
 Error page styles include:
+
 - Responsive grid layout
 - Mobile-friendly action buttons
 - Severity-based color schemes

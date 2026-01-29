@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { parseRemittance } from '../../src/parsers/nvl/remittance.parser.js';
 
 describe('Remittance Parser', () => {

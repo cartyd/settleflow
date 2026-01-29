@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 
+import { captureCustomError } from '../utils/sentry.js';
+
 export interface TripDetail {
   tripNumber: string;
   billOfLading: string;
@@ -37,6 +39,7 @@ export interface BatchLineItem {
   billOfLading?: string | null;
   pageNumber: number;
   documentType: string;
+  rawData?: string | null;
   // Parsed trip data for revenue distribution lines
   shipperName?: string;
   origin?: string;
@@ -67,6 +70,12 @@ export interface BatchDetailData {
   uploadedAt: string;
   lastParsedAt: string | null;
   parseErrors: string[];
+  importFileId: string; // For reset/re-parse functionality
+
+  // Parsing status
+  parsingStatus: 'COMPLETED' | 'PARTIAL' | 'FAILED';
+  parsingCompletedAt: string | null;
+  parsingErrors: string[];
 
   // Financial Summary
   totalRevenue: number;
@@ -144,6 +153,15 @@ export async function getBatchDetailData(
     throw new Error(`No import file found for batch ${batchId}`);
   }
 
+  // Validate parsing status - don't allow viewing FAILED batches
+  if (importFile.parsingStatus === 'FAILED') {
+    const errors = importFile.parsingErrors ? JSON.parse(importFile.parsingErrors) : [];
+    throw new Error(
+      `This batch failed to parse and cannot be viewed. ` +
+        `Errors: ${errors.join('; ') || 'Unknown parsing error'}`
+    );
+  }
+
   const documents = importFile.importDocuments;
   const pageCount = documents.length;
   const lastParsedAt =
@@ -157,6 +175,9 @@ export async function getBatchDetailData(
   const parseErrors = documents
     .filter((d) => !d.parsedAt && d.documentType !== 'UNKNOWN')
     .map((d) => `Page ${d.pageNumber} (${d.documentType}) not parsed`);
+
+  // Parse parsingErrors from JSON
+  const parsingErrors = importFile.parsingErrors ? JSON.parse(importFile.parsingErrors) : [];
 
   // Flatten all import lines with document context
   const allLines = documents.flatMap((doc) =>
@@ -180,19 +201,11 @@ export async function getBatchDetailData(
 
   // Group lines by category
   const lineItems = {
-    revenueDistribution: allLines
-      .filter((l) => l.category === 'REV DIST')
-      .map(formatLineItem),
-    remittance: allLines
-      .filter((l) => l.documentType === 'REMITTANCE')
-      .map(formatLineItem),
+    revenueDistribution: allLines.filter((l) => l.category === 'REV DIST').map(formatLineItem),
+    remittance: allLines.filter((l) => l.documentType === 'REMITTANCE').map(formatLineItem),
     advances: advanceLines.map(formatLineItem),
-    creditDebit: allLines
-      .filter((l) => l.documentType === 'CREDIT_DEBIT')
-      .map(formatLineItem),
-    postingTicket: allLines
-      .filter((l) => l.documentType === 'POSTING_TICKET')
-      .map(formatLineItem),
+    creditDebit: allLines.filter((l) => l.documentType === 'CREDIT_DEBIT').map(formatLineItem),
+    postingTicket: allLines.filter((l) => l.documentType === 'POSTING_TICKET').map(formatLineItem),
   };
 
   // Extract trip details from Revenue Distribution lines
@@ -218,6 +231,12 @@ export async function getBatchDetailData(
     uploadedAt: importFile.uploadedAt.toISOString(),
     lastParsedAt: lastParsedAt?.toISOString() || null,
     parseErrors,
+    importFileId: importFile.id,
+
+    // Parsing status
+    parsingStatus: importFile.parsingStatus as 'COMPLETED' | 'PARTIAL' | 'FAILED',
+    parsingCompletedAt: importFile.parsingCompletedAt?.toISOString() || null,
+    parsingErrors,
 
     totalRevenue,
     totalAdvances,
@@ -241,6 +260,7 @@ function formatLineItem(line: any): BatchLineItem {
     billOfLading: line.billOfLading || null,
     pageNumber: line.pageNumber,
     documentType: line.documentType,
+    rawData: line.rawData || null,
   };
 
   // Parse rawData for revenue distribution lines to include trip details
@@ -268,7 +288,7 @@ function extractTripDetails(revenueLines: any[]): TripDetail[] {
   for (const line of revenueLines) {
     try {
       const rawData = JSON.parse(line.rawData);
-      
+
       // Only include lines that have trip details (Revenue Distribution)
       if (!rawData.tripNumber) {
         continue;
@@ -293,6 +313,17 @@ function extractTripDetails(revenueLines: any[]): TripDetail[] {
       });
     } catch (e) {
       console.error(`Failed to parse rawData for line ${line.id}:`, e);
+      captureCustomError(e as Error, {
+        level: 'warning',
+        tags: {
+          module: 'batch-detail',
+          operation: 'extract_trip_details',
+        },
+        extra: {
+          lineId: line.id,
+          rawData: line.rawData,
+        },
+      });
     }
   }
 

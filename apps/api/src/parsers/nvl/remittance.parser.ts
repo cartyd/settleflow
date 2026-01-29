@@ -1,8 +1,8 @@
 /**
  * Regex-based parser for REMITTANCE document type
- * 
+ *
  * This is the cover page with check/payment information
- * 
+ *
  * Example structure (Page 1):
  * - Check number: 590668
  * - Check date: 12/18/25
@@ -13,6 +13,30 @@
  * - Payment method: Electronic transfer or Check
  */
 
+import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
+import {
+  CHECK_SCAN_TOP_LINES,
+  ACCOUNT_SCAN_TOP_LINES,
+  WEEK_END_OFFSET_DAYS,
+  WEEK_DURATION_DAYS,
+} from '../constants.js';
+import { parseSlashDate } from '../utils/date-parser.js';
+import { removeLeadingZeros } from '../utils/string-utils.js';
+
+// Type for payment method to ensure consistency
+type PaymentMethod = 'Electronic Transfer' | 'Check';
+
+// Character class for company names: supports ASCII, diacritics, apostrophes (straight & curly), ampersands, hyphens
+const COMPANY_NAME_CHARS = `[A-ZÀ-ÿ''&,.\\-\\s]+`;
+// UTC-safe date arithmetic to avoid timezone/DST drift
+function addDaysUtc(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  if (!y || !m || !d) return isoDate;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
 export interface RemittanceLine {
   checkNumber?: string;
   checkDate?: string;
@@ -20,7 +44,7 @@ export interface RemittanceLine {
   payeeName?: string;
   payeeAddress?: string;
   bankAccount?: string;
-  paymentMethod?: string;
+  paymentMethod?: PaymentMethod;
   accountNumber?: string;
   reference?: string;
   rawText: string;
@@ -42,20 +66,6 @@ export interface BatchMetadata {
 }
 
 /**
- * Parse date string in MM/DD/YY format to ISO date string
- * Example: 12/18/25 -> 2025-12-18
- */
-function parseDate(dateStr: string): string {
-  const parts = dateStr.split('/');
-  if (parts.length !== 3) {
-    return dateStr;
-  }
-  const [month, day, year] = parts;
-  const fullYear = `20${year}`;
-  return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-}
-
-/**
  * Extract check number from the document
  * Pattern: 6-digit number appearing early in document or after "CHECK" keyword
  */
@@ -74,7 +84,7 @@ function extractCheckNumber(text: string): string | undefined {
 
   // Look for 6-digit number near the top (usually standalone line)
   const lines = text.split('\n');
-  for (let i = 0; i < Math.min(10, lines.length); i++) {
+  for (let i = 0; i < Math.min(CHECK_SCAN_TOP_LINES, lines.length); i++) {
     const line = lines[i].trim();
     if (/^\d{6}$/.test(line)) {
       return line;
@@ -92,13 +102,13 @@ function extractCheckDate(text: string): string | undefined {
   // Try "DATE MM/DD/YY" pattern
   const dateMatch = text.match(/DATE\s+(\d{1,2}\/\d{1,2}\/\d{2})/i);
   if (dateMatch) {
-    return parseDate(dateMatch[1]);
+    return parseSlashDate(dateMatch[1]);
   }
 
   // Try date in "PAY TO THE ORDER OF" line
   const payMatch = text.match(/PAY TO THE ORDER OF.*?DATE\s+(\d{1,2}\/\d{1,2}\/\d{2})/i);
   if (payMatch) {
-    return parseDate(payMatch[1]);
+    return parseSlashDate(payMatch[1]);
   }
 
   return undefined;
@@ -110,7 +120,7 @@ function extractCheckDate(text: string): string | undefined {
  */
 function extractCheckAmount(text: string): number | undefined {
   // Try "AMOUNT $X,XXX.XX" pattern
-  const amountMatch = text.match(/AMOUNT\s+\$[\*]*([0-9,]+\.\d{2})/i);
+  const amountMatch = text.match(/AMOUNT\s+\$[*]*([0-9,]+\.\d{2})/i);
   if (amountMatch) {
     const cleanAmount = amountMatch[1].replace(/,/g, '');
     return parseFloat(cleanAmount);
@@ -128,13 +138,38 @@ function extractCheckAmount(text: string): number | undefined {
 
 /**
  * Extract payee name from the document
- * Pattern: Name line after "PAY TO THE ORDER OF"
+ * Pattern: Name line after "PAY TO THE ORDER OF" or "TO THE ORDER OF"
  */
 function extractPayeeName(text: string): string | undefined {
-  // Look for payee name after "PAY TO THE ORDER OF"
+  // Try standard format first
   const payMatch = text.match(/PAY TO THE ORDER OF[^\n]*\n\s*([^\n]+)/i);
   if (payMatch) {
     return payMatch[1].trim();
+  }
+
+  // Try Gemini format with line breaks: TO THE\nORDER\nOF\nDATE...\nNAME
+  // Look for name between AMOUNT and next section
+  const companyPattern = new RegExp(
+    `AMOUNT\\s+\\$[^\\n]*\\n\\s*([A-Z]${COMPANY_NAME_CHARS}(?:LLC|INC|CORP|LTD))(?=\\s|\\n)`,
+    'i'
+  );
+  const geminiMatch = text.match(companyPattern);
+  if (geminiMatch) {
+    return geminiMatch[1].trim();
+  }
+
+  // Alternative: Name appears after amount/date section
+  const altPattern = new RegExp(
+    `TO THE[\\s\\n]+ORDER[\\s\\n]+OF[\\s\\n]+(?:DATE[^\\n]*\\n)?(?:AMOUNT[^\\n]*\\n)?\\s*([A-Z]${COMPANY_NAME_CHARS}?)(?:\\n|$)`,
+    'i'
+  );
+  const altMatch = text.match(altPattern);
+  if (altMatch) {
+    const name = altMatch[1].trim();
+    // Make sure it's not a header/keyword
+    if (!name.match(/^(NON-NEGOTIABLE|REMITTANCE|DETAIL|PAYMENT|BANK)$/i)) {
+      return name;
+    }
   }
 
   return undefined;
@@ -171,7 +206,7 @@ function extractBankAccount(text: string): string | undefined {
  * Extract payment method from the document
  * Pattern: Check for "ELECTRONICALLY TRANSFERRED" or default to "CHECK"
  */
-function extractPaymentMethod(text: string): string | undefined {
+function extractPaymentMethod(text: string): PaymentMethod | undefined {
   if (text.match(/ELECTRONICALLY\s+TRANSFERRED/i)) {
     return 'Electronic Transfer';
   }
@@ -184,45 +219,86 @@ function extractPaymentMethod(text: string): string | undefined {
 }
 
 /**
+ * Try extracting account from "GENERAL LEDGER AGENT" pattern
+ */
+function tryGeneralLedgerPattern(text: string): string | undefined {
+  const match = text.match(/GENERAL\s+LEDGER\s+AGENT[\s\n]+(\d{3,5})/i);
+  return match?.[1];
+}
+
+/**
+ * Try extracting account from account table format
+ */
+function tryTablePattern(text: string): string | undefined {
+  const match = text.match(/ACCOUNT\s+NUMBER.*?\n.*?(\d+)\s+[0-9,]+\.\d{2}/is);
+  return match?.[1];
+}
+
+/**
+ * Try extracting account from top of document (Gemini format)
+ */
+function tryTopOfDocumentPattern(text: string): string | undefined {
+  const lines = text.split('\n');
+  for (let i = 0; i < Math.min(ACCOUNT_SCAN_TOP_LINES, lines.length); i++) {
+    const match = lines[i].match(/^ACCOUNT\s+(0?\d{3,5})$/i);
+    if (match) {
+      return removeLeadingZeros(match[1]);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Try extracting account from simple "ACCOUNT XXXX" pattern
+ */
+function trySimpleAccountPattern(text: string): string | undefined {
+  const match = text.match(/ACCOUNT\s+(0?\d{3,5})/i);
+  if (match) {
+    return removeLeadingZeros(match[1]);
+  }
+  return undefined;
+}
+
+/**
+ * Try extracting account from "AGENCY ACCOUNT" at document bottom
+ */
+function tryAgencyAccountPattern(text: string): string | undefined {
+  const match = text.match(/AGENCY ACCOUNT[\s\S]*?GENERAL LEDGER\s+(\d+)/i);
+  return match?.[1];
+}
+
+/**
  * Extract account number from the document
  * Pattern: Account number in the account table or "ACCOUNT XXXX"
  */
 function extractAccountNumber(text: string): string | undefined {
-  // Try account table format
-  const tableMatch = text.match(/ACCOUNT\s+NUMBER.*?\n.*?(\d+)\s+[0-9,]+\.\d{2}/is);
-  if (tableMatch) {
-    return tableMatch[1];
-  }
-
-  // Try simple "ACCOUNT XXXX" pattern
-  const accountMatch = text.match(/ACCOUNT\s+(\d+)/i);
-  if (accountMatch) {
-    return accountMatch[1];
-  }
-
-  return undefined;
+  // Try patterns in order of reliability
+  return (
+    tryGeneralLedgerPattern(text) ||
+    tryTablePattern(text) ||
+    tryTopOfDocumentPattern(text) ||
+    trySimpleAccountPattern(text) ||
+    tryAgencyAccountPattern(text)
+  );
 }
 
 /**
  * Calculate week start and end dates from check date
  * Assumes settlement is for the week ending ~1 week before check date
  */
-function calculateWeekDates(checkDate: string): { weekStartDate: string; weekEndDate: string } | undefined {
+function calculateWeekDates(
+  checkDate: string
+): { weekStartDate: string; weekEndDate: string } | undefined {
+  // Validate ISO date format (YYYY-MM-DD)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(checkDate)) {
+    return undefined;
+  }
+
   try {
-    const check = new Date(checkDate);
-    // Settlement is typically for week ending 7-14 days before check
-    // We'll use 7 days before check as the week end
-    const weekEnd = new Date(check);
-    weekEnd.setDate(weekEnd.getDate() - 7);
-    
-    // Week starts 6 days before week end (Sunday to Saturday)
-    const weekStart = new Date(weekEnd);
-    weekStart.setDate(weekStart.getDate() - 6);
-    
-    return {
-      weekStartDate: weekStart.toISOString().split('T')[0],
-      weekEndDate: weekEnd.toISOString().split('T')[0],
-    };
+    // Use UTC math on ISO date strings to avoid TZ/DST drift
+    const weekEndDate = addDaysUtc(checkDate, WEEK_END_OFFSET_DAYS);
+    const weekStartDate = addDaysUtc(weekEndDate, WEEK_DURATION_DAYS);
+    return { weekStartDate, weekEndDate };
   } catch {
     return undefined;
   }
@@ -237,18 +313,23 @@ export function parseRemittance(ocrText: string): RemittanceParseResult {
   let metadata: BatchMetadata | undefined;
 
   try {
-    const checkNumber = extractCheckNumber(ocrText);
-    const checkDate = extractCheckDate(ocrText);
-    const checkAmount = extractCheckAmount(ocrText);
-    const payeeName = extractPayeeName(ocrText);
-    const payeeAddress = extractPayeeAddress(ocrText);
-    const bankAccount = extractBankAccount(ocrText);
-    const paymentMethod = extractPaymentMethod(ocrText);
-    const accountNumber = extractAccountNumber(ocrText);
+    // Normalize OCR text based on detected provider (Ollama, Gemini, etc.)
+    const provider = detectOcrProvider(ocrText);
+    const normalizedText = normalizeOcrText(ocrText, provider);
+
+    const checkNumber = extractCheckNumber(normalizedText);
+    const checkDate = extractCheckDate(normalizedText);
+    const checkAmount = extractCheckAmount(normalizedText);
+    const payeeName = extractPayeeName(normalizedText);
+    const payeeAddress = extractPayeeAddress(normalizedText);
+    const bankAccount = extractBankAccount(normalizedText);
+    const paymentMethod = extractPaymentMethod(normalizedText);
+    const accountNumber = extractAccountNumber(normalizedText);
 
     // Validate that we extracted at least the essential fields
     if (!checkNumber && !checkAmount) {
       errors.push('Could not extract check number or amount from remittance document');
+      // Still create a line with available data rather than skipping completely
     }
 
     const line: RemittanceLine = {
@@ -267,9 +348,10 @@ export function parseRemittance(ocrText: string): RemittanceParseResult {
     lines.push(line);
 
     // Extract batch metadata if we have the essential fields
+
     if (checkNumber && accountNumber && checkDate) {
       const weekDates = calculateWeekDates(checkDate);
-      
+
       metadata = {
         nvlPaymentRef: checkNumber,
         agencyCode: accountNumber,
@@ -278,6 +360,12 @@ export function parseRemittance(ocrText: string): RemittanceParseResult {
         weekStartDate: weekDates?.weekStartDate,
         weekEndDate: weekDates?.weekEndDate,
       };
+    } else {
+      const missing = [];
+      if (!checkNumber) missing.push('checkNumber');
+      if (!accountNumber) missing.push('accountNumber');
+      if (!checkDate) missing.push('checkDate');
+      errors.push(`Missing required fields: ${missing.join(', ')}`);
     }
   } catch (error) {
     errors.push(`Parsing failed: ${error instanceof Error ? error.message : String(error)}`);

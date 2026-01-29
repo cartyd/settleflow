@@ -7,16 +7,16 @@ export interface StatusConfig {
 
 export const batchStatusConfig: StatusConfig = {
   CREATED: {
-    label: "Created",
-    cssClass: "status-created",
+    label: 'Created',
+    cssClass: 'status-created',
   },
   LOCKED: {
-    label: "Locked",
-    cssClass: "status-locked",
+    label: 'Locked',
+    cssClass: 'status-locked',
   },
   PAID: {
-    label: "Paid",
-    cssClass: "status-paid",
+    label: 'Paid',
+    cssClass: 'status-paid',
   },
 };
 
@@ -27,7 +27,7 @@ export function getStatusConfig(status: string): {
   return (
     batchStatusConfig[status] || {
       label: status,
-      cssClass: "status-created",
+      cssClass: 'status-created',
     }
   );
 }

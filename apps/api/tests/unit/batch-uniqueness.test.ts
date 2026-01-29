@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createBatch } from '../../src/services/batch.service';
 import { SettlementStatus } from '@settleflow/shared-types';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+import { createBatch } from '../../src/services/batch.service';
 
 describe('Batch Uniqueness Constraint', () => {
   const mockPrisma = {

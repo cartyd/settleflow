@@ -11,7 +11,10 @@ export interface ErrorContext {
 export function getErrorConfig(
   statusCode?: number
 ): (typeof errorPageConfig.errorTypes)[keyof typeof errorPageConfig.errorTypes] {
-  if (!statusCode || !errorPageConfig.errorTypes[statusCode as keyof typeof errorPageConfig.errorTypes]) {
+  if (
+    !statusCode ||
+    !errorPageConfig.errorTypes[statusCode as keyof typeof errorPageConfig.errorTypes]
+  ) {
     return errorPageConfig.defaultError;
   }
   return errorPageConfig.errorTypes[statusCode as keyof typeof errorPageConfig.errorTypes];

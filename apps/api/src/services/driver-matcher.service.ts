@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 
+import { captureCustomError } from '../utils/sentry.js';
+
 export interface DriverMatchResult {
   importLineId: string;
   matchedDriverId?: string;
@@ -23,20 +25,20 @@ function calculateSimilarity(str1: string, str2: string): number {
 
   const len1 = s1.length;
   const len2 = s2.length;
-  
+
   if (len1 === 0 || len2 === 0) return 0;
 
   // Levenshtein distance
   const matrix: number[][] = [];
-  
+
   for (let i = 0; i <= len1; i++) {
     matrix[i] = [i];
   }
-  
+
   for (let j = 0; j <= len2; j++) {
     matrix[0][j] = j;
   }
-  
+
   for (let i = 1; i <= len1; i++) {
     for (let j = 1; j <= len2; j++) {
       const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
@@ -47,10 +49,10 @@ function calculateSimilarity(str1: string, str2: string): number {
       );
     }
   }
-  
+
   const distance = matrix[len1][len2];
   const maxLength = Math.max(len1, len2);
-  
+
   return 1 - distance / maxLength;
 }
 
@@ -109,7 +111,8 @@ export async function matchDriverByName(
 
     if (matches > 0) {
       const avgScore = score / matches;
-      if (avgScore > 0.5) { // Only consider matches with >50% similarity
+      if (avgScore > 0.5) {
+        // Only consider matches with >50% similarity
         candidates.push({
           driverId: driver.id,
           driverName: `${driver.firstName} ${driver.lastName}`,
@@ -197,14 +200,14 @@ export async function matchDriversForImportFile(
         line.importDocument.importFile.batchId
       );
 
-      if (match && match.matchedDriverId && match.confidence === 'exact') {
+      if (match?.matchedDriverId && match.confidence === 'exact') {
         // Auto-match exact matches
         await prisma.importLine.update({
           where: { id: line.id },
           data: { driverId: match.matchedDriverId },
         });
         matched++;
-        
+
         match.importLineId = line.id;
         results.push(match);
       } else if (match) {
@@ -217,6 +220,17 @@ export async function matchDriversForImportFile(
       }
     } catch (error) {
       console.error(`Failed to match driver for line ${line.id}:`, error);
+      captureCustomError(error as Error, {
+        level: 'warning',
+        tags: {
+          module: 'driver-matcher',
+          operation: 'match_driver',
+        },
+        extra: {
+          lineId: line.id,
+          importFileId,
+        },
+      });
       unmatched++;
     }
   }
