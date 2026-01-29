@@ -13,7 +13,7 @@
  */
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
-import { NET_BALANCE_SECTION_SPAN } from '../constants.js';
+import { NET_BALANCE_SECTION_SPAN, MIN_DESCRIPTION_LENGTH } from '../constants.js';
 import { parseDate } from '../utils/date-parser.js';
 import { removeLeadingZeros, parseCurrency, parseSignedCurrency, CURRENCY_AMOUNT_PATTERN } from '../utils/string-utils.js';
 
@@ -34,8 +34,9 @@ export interface CreditDebitParseResult {
   errors: string[];
 }
 
-// Minimum length for a valid description
-const MIN_DESCRIPTION_LENGTH = 3;
+// Note: MIN_DESCRIPTION_LENGTH is now imported from constants.ts
+
+// ===== PRECOMPILED REGEX PATTERNS (Performance Optimization) =====
 
 // Keywords to exclude from descriptions (headers, common words, etc.)
 const EXCLUDED_DESCRIPTION_KEYWORDS = /^(NVL|ENTRY|DATE|PROCESS|ACCOUNT|NUMBER|UNIT|AGENT|DRIVER|NAME|FOR|ANY|DISCREPANCIES|FOLLOWING|DEPARTMENTS|LEASE|CONVENTION|WATTS|PAYMENTS|PLEASE|CONTACT|THE|ACCOUNTING|DEPARTMENT|YELLOW|PAGES|AGENCY|BOND|TRAILER|EMERGENCY|FUNDING|SETTLEMENT|INQUIRIES|SAFETY|NET|BALANCE|DUE|DEBITS|CREDITS|N\.V\.L\.|#)$/i;
@@ -43,13 +44,44 @@ const EXCLUDED_DESCRIPTION_KEYWORDS = /^(NVL|ENTRY|DATE|PROCESS|ACCOUNT|NUMBER|U
 // Pattern for valid description text (all caps with spaces)
 const VALID_DESCRIPTION_PATTERN = /^[A-Z][A-Z\s]+$/;
 
+// Common validation patterns
+const NUMERIC_ONLY_RE = /^\d+$/;
+const SENTENCE_FRAGMENT_RE = /(contact|please|or|and|for|the|to|of)$/i;
+
+// Extraction patterns
+const TRANSACTION_TYPE_RE = /TRANSACTION\s+TYPE[\s\t]*\n\s*([^\n\t]+)/i;
+const DESCRIPTION_SECTION_RE = /DESCRIPTION[\s\t]*\n([\s\S]*?)(?:AGENT\/DRIVER\s+NAME|NVL\s+ENTRY|FOR\s+ANY\s+DISCREPANCIES)/i;
+const TAB_SEPARATED_DESC_RE = /DESCRIPTION[\s\t]+DEBITS[\s\t]+CREDITS[\s\t]*\n([^\t\n]+)[\s\t]+\d+\.\d{2}/i;
+const MINIMAL_DESC_RE = /DESCRIPTION[\s\t]*\n\s*([^\n]+)\s*\n\s*(?:DEBITS|CREDITS)/i;
+
+// Date extraction patterns
+const ENTRY_DATE_RE = /N\.?V\.?L\.?\s+ENTRY[\s\t]*\n?[\s\t]*(\d{6})/i;
+const PROCESS_DATE_COMPACT_RE = /PROCESS\s+DATE[\s\t]*\n?[\s\t]*(\d{6})/i;
+const PROCESS_STANDALONE_RE = /PROCESS[\s\t]*\n?[\s\t]*(\d{6})/i;
+const PROCESS_DATE_SLASH_RE = /PROCESS\s+DATE[\s\t]*\n?[\s\t]*(\d{1,2}\/\d{1,2}\/\d{2})/i;
+
+// Amount extraction patterns
+const DEBIT_SECTION_RE = /DEBITS[\s\t]+CREDITS[\s\t]*\n([\s\S]*?)(?:NET\s+BALANCE|DUE|FOR\s+ANY|$)/i;
+const NEWLINE_FORMAT_RE = new RegExp(`DESCRIPTION[\\s\\t]*\\n[\\s\\t]*DEBITS[\\s\\t]*\\n[\\s\\t]*CREDITS[\\s\\t]*\\n[^\\n]+\\n(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i');
+const DEBIT_COLUMN_RE = new RegExp(`DEBITS[\\s\\t]+CREDITS[\\s\\t]*\\n[^\\n]*[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i');
+const DEBIT_TAB_RE = new RegExp(`DEBITS[\\s\\t]*\\n[^\\n\\t]+[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i');
+const DEBIT_SINGLE_RE = new RegExp(`DEBITS[\\s\\t]*\\n(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i');
+const CREDIT_FORMAT_RE = new RegExp(`CREDITS[\\s\\t]*\\n[^\\n]*[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i');
+const BALANCE_MULTI_RE = /NET\s+BALANCE\s*\n\s*DUE\s+[^\n]+\n\s*DUE\s+[^\n]+\n(-?\d+(?:,\d+)*\.\d{2}-?)/i;
+const BALANCE_SIMPLE_RE = /NET\s+BALANCE[\s\t]*\n?[\s\t]*(-?\d+(?:,\d+)*\.\d{2}-?)/i;
+
+// Reference extraction patterns
+const UNIT_NUMBER_RE = /UNIT\s*#[\s\t]*\n?[\s\t]*(\d+)/i;
+const PAYMENT_REF_RE = /PAYMENT[\s\t]+(\d+)[\s\t]+OF[\s\t]+(\d+)/i;
+const LONG_REF_RE = /(\d{10,})/;
+
 
 /**
  * Extract transaction type from the document
  * Pattern: Line after "TRANSACTION TYPE" header
  */
 function extractTransactionType(text: string): string | undefined {
-  const match = text.match(/TRANSACTION\s+TYPE[\s\t]*\n\s*([^\n\t]+)/i);
+  const match = text.match(TRANSACTION_TYPE_RE);
   if (match) {
     return match[1].trim();
   }
@@ -66,13 +98,13 @@ function isValidDescription(line: string): boolean {
   if (!trimmed) return false;
   
   // Skip if it's just numbers or dates
-  if (trimmed.match(/^\d+$/)) return false;
+  if (NUMERIC_ONLY_RE.test(trimmed)) return false;
   
   // Skip common header words and fragments
-  if (trimmed.match(EXCLUDED_DESCRIPTION_KEYWORDS)) return false;
+  if (EXCLUDED_DESCRIPTION_KEYWORDS.test(trimmed)) return false;
   
   // Skip sentence fragments (lines that end with common prepositions or conjunctions)
-  if (trimmed.match(/(contact|please|or|and|for|the|to|of)$/i)) return false;
+  if (SENTENCE_FRAGMENT_RE.test(trimmed)) return false;
   
   // Only include lines that look like actual item descriptions
   return trimmed.length >= MIN_DESCRIPTION_LENGTH && VALID_DESCRIPTION_PATTERN.test(trimmed);
@@ -83,7 +115,7 @@ function isValidDescription(line: string): boolean {
  */
 function tryDescriptionSection(text: string): string[] {
   const descriptions: string[] = [];
-  const sectionMatch = text.match(/DESCRIPTION[\s\t]*\n([\s\S]*?)(?:AGENT\/DRIVER\s+NAME|NVL\s+ENTRY|FOR\s+ANY\s+DISCREPANCIES)/i);
+  const sectionMatch = text.match(DESCRIPTION_SECTION_RE);
   
   if (sectionMatch) {
     const sectionText = sectionMatch[1].trim();
@@ -103,7 +135,7 @@ function tryDescriptionSection(text: string): string[] {
  * Try extracting description from tab-separated format
  */
 function tryTabSeparatedDescription(text: string): string | undefined {
-  const match = text.match(/DESCRIPTION[\s\t]+DEBITS[\s\t]+CREDITS[\s\t]*\n([^\t\n]+)[\s\t]+\d+\.\d{2}/i);
+  const match = text.match(TAB_SEPARATED_DESC_RE);
   return match?.[1]?.trim();
 }
 
@@ -111,7 +143,7 @@ function tryTabSeparatedDescription(text: string): string | undefined {
  * Try extracting description from minimal format: DESCRIPTION then single line before DEBITS/CREDITS
  */
 function tryMinimalDescription(text: string): string | undefined {
-  const match = text.match(/DESCRIPTION[\s\t]*\n\s*([^\n]+)\s*\n\s*(?:DEBITS|CREDITS)/i);
+  const match = text.match(MINIMAL_DESC_RE);
   return match?.[1]?.trim();
 }
 
@@ -146,7 +178,7 @@ function extractDescriptions(text: string): string[] {
  * Pattern: Date after "N.V.L ENTRY" or "NVL ENTRY" label (MMDDYY format)
  */
 function extractEntryDate(text: string): string | undefined {
-  const match = text.match(/N\.?V\.?L\.?\s+ENTRY[\s\t]*\n?[\s\t]*(\d{6})/i);
+  const match = text.match(ENTRY_DATE_RE);
   if (match) {
     return parseDate(match[1]);
   }
@@ -159,19 +191,19 @@ function extractEntryDate(text: string): string | undefined {
  */
 function extractProcessDate(text: string): string | undefined {
   // Try "PROCESS DATE" pattern
-  let match = text.match(/PROCESS\s+DATE[\s\t]*\n?[\s\t]*(\d{6})/i);
+  let match = text.match(PROCESS_DATE_COMPACT_RE);
   if (match) {
     return parseDate(match[1]);
   }
 
   // Try standalone "PROCESS" label followed by date
-  match = text.match(/PROCESS[\s\t]*\n?[\s\t]*(\d{6})/i);
+  match = text.match(PROCESS_STANDALONE_RE);
   if (match) {
     return parseDate(match[1]);
   }
 
   // Try PROCESS DATE with slash format MM/DD/YY
-  match = text.match(/PROCESS\s+DATE[\s\t]*\n?[\s\t]*(\d{1,2}\/\d{1,2}\/\d{2})/i);
+  match = text.match(PROCESS_DATE_SLASH_RE);
   if (match) {
     return parseDate(match[1]);
   }

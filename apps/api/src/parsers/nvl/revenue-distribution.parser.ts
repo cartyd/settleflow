@@ -15,9 +15,10 @@
  */
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
-import { STATE_CODE_CAPTURE, STATE_CODE_LINE_RE, CITY_LINE_RE, ORIGIN_LOOKAHEAD_LINES, DEST_LOOKAHEAD_LINES, DEST_STATE_LOOKAHEAD_AFTER_CITY, BOL_SECTION_SPAN, NET_BALANCE_SECTION_SPAN, ORIGIN_SECTION_SCAN_CHARS, DESTINATION_FALLBACK_LOOKAHEAD } from '../constants.js';
+import { STATE_CODE_CAPTURE, STATE_CODE_LINE_RE, CITY_LINE_RE, ORIGIN_LOOKAHEAD_LINES, DEST_LOOKAHEAD_LINES, DEST_STATE_LOOKAHEAD_AFTER_CITY, BOL_SECTION_SPAN, NET_BALANCE_SECTION_SPAN, ORIGIN_SECTION_SCAN_CHARS, DESTINATION_FALLBACK_LOOKAHEAD, DEFAULT_DECADE_BASE, CENTURY_BASE, PREFERRED_YEAR_MIN, PREFERRED_YEAR_MAX } from '../constants.js';
 import { isValidDate as validateDate, parseCompactDate, parseSlashDate } from '../utils/date-parser.js';
 import { parseCurrency } from '../utils/string-utils.js';
+import { parseDriverName as parseDriverNameUtil } from '../utils/name-parser.js';
 
 export interface RevenueDistributionLine {
   driverName?: string;
@@ -51,16 +52,6 @@ export interface RevenueDistributionParseResult {
 
 // ===== CONSTANTS =====
 
-// Use a deterministic fallback decade base when no anchor is available
-const DEFAULT_DECADE_BASE = 2020;
-
-// Century base for YY date calculations (e.g., 2000 for 2000-2099)
-const CENTURY_BASE = 2000;
-
-// Year range preferences for decade detection (prefer 2000-2029 over 2030+)
-const PREFERRED_YEAR_MIN = 0;
-const PREFERRED_YEAR_MAX = 29;
-
 // Precompiled regex patterns for location parsing (supports diacritics and punctuation)
 const CITY_STATE_RE = new RegExp(`^([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${STATE_CODE_CAPTURE})$`, 'i');
 const CITY_STATE_WITH_DATE_RE = new RegExp(`^([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+\\d`, 'i');
@@ -80,25 +71,11 @@ const NON_SHIPPER_NAME_KEYWORDS_SHORT = /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TR
 
 /**
  * Parse driver name into first and last name
- * Examples: "BIDETTI, DONNY" → {first: "DONNY", last: "BIDETTI"}
+ * Wrapper around shared utility for backwards compatibility
+ * @deprecated Use parseDriverNameUtil from name-parser.ts directly
  */
 function parseDriverName(fullName: string): { firstName?: string; lastName?: string } {
-  const parts = fullName.split(',').map(p => p.trim());
-  if (parts.length === 2) {
-    return {
-      lastName: parts[0],
-      firstName: parts[1],
-    };
-  }
-  // Try space-separated
-  const spaceParts = fullName.split(/\s+/);
-  if (spaceParts.length >= 2) {
-    return {
-      firstName: spaceParts[0],
-      lastName: spaceParts.slice(1).join(' '),
-    };
-  }
-  return { lastName: fullName };
+  return parseDriverNameUtil(fullName);
 }
 
 

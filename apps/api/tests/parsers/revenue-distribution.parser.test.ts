@@ -337,6 +337,12 @@ DUE ACCOUNT`;
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
+    it('should handle whitespace-only text', () => {
+      const result = parseRevenueDistribution('   \n\t\n   ');
+      expect(result.lines).toHaveLength(0);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
     it('should handle malformed text gracefully', () => {
       const text = `RANDOM TEXT
 NO STRUCTURE
@@ -364,6 +370,259 @@ DUE ACCOUNT`;
       const result = parseRevenueDistribution(text);
       expect(result.errors).toHaveLength(0);
       expect(result.lines).toHaveLength(1);
+    });
+  });
+
+  describe('Date edge cases', () => {
+    it('should reject invalid month (13)', () => {
+      const text = `TRIP NUMBER
+111
+
+ORIGIN DESTINATION
+
+CITY ST DEST MD 13 25 5
+
+NET BALANCE 100.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      // Invalid date should not be extracted
+      expect(result.lines[0].deliveryDate).toBeUndefined();
+    });
+
+    it('should reject invalid day (32)', () => {
+      const text = `TRIP NUMBER
+222
+
+ORIGIN DESTINATION
+
+CITY ST DEST MD 12 32 5
+
+NET BALANCE 200.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].deliveryDate).toBeUndefined();
+    });
+
+    it('should reject month 0', () => {
+      const text = `TRIP NUMBER
+333
+
+ORIGIN DESTINATION
+
+CITY ST DEST MD 0 15 5
+
+NET BALANCE 300.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].deliveryDate).toBeUndefined();
+    });
+
+    it('should reject day 0', () => {
+      const text = `TRIP NUMBER
+444
+
+ORIGIN DESTINATION
+
+CITY ST DEST MD 12 0 5
+
+NET BALANCE 400.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].deliveryDate).toBeUndefined();
+    });
+  });
+
+  describe('Currency edge cases', () => {
+    it('should handle negative net balance', () => {
+      const text = `TRIP NUMBER
+555
+
+NET BALANCE -123.45
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].netBalance).toBe(-123.45);
+    });
+
+    it('should handle zero net balance', () => {
+      const text = `TRIP NUMBER
+666
+
+NET BALANCE 0.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].netBalance).toBe(0.00);
+    });
+
+    it('should handle large amounts with thousands separators', () => {
+      const text = `TRIP NUMBER
+777
+
+NET BALANCE 123,456.78
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].netBalance).toBe(123456.78);
+    });
+
+    it('should handle multiple thousands separators', () => {
+      const text = `TRIP NUMBER
+888
+
+NET BALANCE 1,234,567.89
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].netBalance).toBe(1234567.89);
+    });
+  });
+
+  describe('Unicode and special character handling', () => {
+    it('should handle driver names with apostrophes', () => {
+      const text = `FOR SERVICE PERFORMED BY
+
+AGENCY/ O'BRIEN, PATRICK
+
+TRIP NUMBER
+111
+
+NET BALANCE 100.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].driverName).toContain("O'BRIEN");
+      expect(result.lines[0].driverLastName).toContain("O'BRIEN");
+    });
+
+    it('should handle city names with hyphens', () => {
+      const text = `TRIP NUMBER
+222
+
+ORIGIN
+
+WILKES-BARRE PA
+
+NET BALANCE 200.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].origin).toContain('WILKES-BARRE');
+    });
+
+    it('should handle city names with multiple words', () => {
+      const text = `TRIP NUMBER
+333
+
+ORIGIN
+
+SAINT LOUIS MO
+
+NET BALANCE 300.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].origin).toContain('SAINT LOUIS');
+    });
+
+    it('should handle shipper names with ampersands', () => {
+      const text = `TRIP NUMBER
+444
+
+357236/ SMITH & SONS COD
+
+NET BALANCE 400.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      if (result.lines[0].shipperName) {
+        expect(result.lines[0].shipperName).toContain('SMITH');
+      }
+    });
+  });
+
+  describe('Service items edge cases', () => {
+    it('should handle empty service items', () => {
+      const text = `TRIP NUMBER
+555
+
+REVENUE/
+EXPENSE
+
+NET BALANCE 100.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].serviceItems).toEqual([]);
+    });
+
+    it('should handle service items with negative amounts', () => {
+      const text = `TRIP NUMBER
+666
+
+REVENUE/
+EXPENSE
+
+FUEL SURCHARGE -50.00 100 -50.00
+
+NET BALANCE 100.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].serviceItems.length).toBeGreaterThan(0);
+      const fuelItem = result.lines[0].serviceItems.find(i => i.description.includes('FUEL'));
+      if (fuelItem) {
+        expect(fuelItem.amount).toBe(-50.00);
+      }
+    });
+  });
+
+  describe('Weight and miles edge cases', () => {
+    it('should handle zero weight', () => {
+      const text = `TRIP NUMBER
+777
+
+0/ 0 BILLING
+
+NET BALANCE 100.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].weight).toBe(0);
+    });
+
+    it('should handle large weight values', () => {
+      const text = `TRIP NUMBER
+888
+
+50000/ 5000 BILLING
+
+NET BALANCE 100.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].weight).toBe(50000);
+    });
+
+    it('should extract overflow weight when present', () => {
+      const text = `TRIP NUMBER
+999
+
+10000/2500 12345 BILLING
+
+NET BALANCE 100.00
+DUE ACCOUNT`;
+      
+      const result = parseRevenueDistribution(text);
+      // Parser extracts the first number as weight
+      expect(result.lines[0].weight).toBeDefined();
+      expect(result.lines[0].overflowWeight).toBeDefined();
+      // Verify at least one weight value was extracted
+      expect(result.lines[0].weight || result.lines[0].overflowWeight).toBeTruthy();
     });
   });
 });

@@ -10,7 +10,14 @@
 
 /**
  * Get the century prefix for two-digit years (e.g., "20" for 21st century)
- * This ensures date parsing remains valid across decade boundaries
+ * 
+ * This ensures date parsing remains valid across decade boundaries.
+ * As we approach year 2100, this function will automatically return "21".
+ * 
+ * @returns Century prefix as string (e.g., "20" for years 2000-2099)
+ * 
+ * @example
+ * getCenturyPrefix() // "20" (in year 2025)
  */
 export function getCenturyPrefix(): string {
   const currentYear = new Date().getFullYear();
@@ -20,6 +27,18 @@ export function getCenturyPrefix(): string {
 
 /**
  * Validate that a date has valid month (1-12) and day (1-31) values
+ * 
+ * Note: This performs basic range validation only. It does not check
+ * for month-specific day limits (e.g., February 30th) or leap years.
+ * 
+ * @param month - Month value to validate (1-12)
+ * @param day - Day value to validate (1-31)
+ * @returns true if month and day are within valid ranges
+ * 
+ * @example
+ * isValidDate(12, 25) // true
+ * isValidDate(13, 1)  // false (month out of range)
+ * isValidDate(2, 30)  // true (basic validation only, doesn't check month-specific limits)
  */
 export function isValidDate(month: number, day: number): boolean {
   return month >= 1 && month <= 12 && day >= 1 && day <= 31;

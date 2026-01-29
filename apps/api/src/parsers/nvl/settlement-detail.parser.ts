@@ -14,7 +14,7 @@
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider, OcrProvider } from '../../utils/ocr-normalizer.js';
 import { parseSlashDate, addDaysUtc } from '../utils/date-parser.js';
 import { parseSignedCurrency } from '../utils/string-utils.js';
-import { WEEK_END_OFFSET_DAYS, WEEK_DURATION_DAYS } from '../constants.js';
+import { WEEK_END_OFFSET_DAYS, WEEK_DURATION_DAYS, MIN_LINE_LENGTH, MAX_TRIP_NUMBER_LENGTH, AMOUNT_TOLERANCE } from '../constants.js';
 
 export interface ParsedSettlementLine {
   billOfLading?: string;
@@ -48,20 +48,40 @@ export interface SettlementBatchMetadata {
   weekEndDate?: string;
 }
 
-// Minimum line length for valid transaction lines
-const MIN_LINE_LENGTH = 10;
-
-// Maximum length for trip numbers (to distinguish from B/L numbers)
-const MAX_TRIP_NUMBER_LENGTH = 4;
-
-// Floating point tolerance for check total validation
-const AMOUNT_TOLERANCE = 0.01;
+// Note: MIN_LINE_LENGTH, MAX_TRIP_NUMBER_LENGTH, and AMOUNT_TOLERANCE
+// are now imported from constants.ts
 
 // Prefix for generated settlement detail payment references
 const SETTLEMENT_DETAIL_REF_PREFIX = 'SD';
 
 // Default agency name when not found in document
 const DEFAULT_AGENCY_NAME = 'Unknown Agency';
+
+// ===== PRECOMPILED REGEX PATTERNS (Performance Optimization) =====
+// Compile regexes once at module level to avoid recompilation in loops
+
+// Header detection patterns
+const HEADER_BL_RE = /\bB\/L\b/;
+const HEADER_TRIP_RE = /\bTRIP\b/;
+const HEADER_TRANSACTION_RE = /TRANSACTION\/?DESCRIPTION/;
+const HEADER_CHECK_TOTAL_RE = /CHECK\s+TOTAL/;
+const HEADER_PAGE_RE = /\bPAGE\b/;
+
+// Transaction line format patterns
+const FULL_FORMAT_RE = /^(\d+)\s+(\d+)\s+(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/i;
+const ONE_NUMBER_FORMAT_RE = /^(\d+)\s+(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/i;
+const MINIMAL_FORMAT_RE = /^(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/i;
+
+// Header extraction patterns
+const ACCOUNT_NAME_RE = /ACCOUNT\s+\d+[^\n]*\n\s*([^\n]+)/i;
+const CHECK_NUMBER_RE = /CHECK\s+(\d+)/i;
+const CHECK_DATE_RE = /ON\s+(\d{2}\/\d{2}\/\d{2})/i;
+const SETTLEMENT_DATE_RE = /AS\s+OF\s+(\d{2}\/\d{2}\/\d{2})/i;
+const CHECK_TOTAL_RE = /CHECK\s+TOTAL[>\s]*(\d+,?\d*\.?\d+)/i;
+
+// Normalization patterns
+const TRANSACTION_DESC_SPLIT_RE = /TRANSACTION\s*\/\s*\n\s*DESCRIPTION/gi;
+const SLASH_SPACING_RE = /\s*\/\s*/g;
 
 /**
  * Light normalization for settlement detail: preserve line breaks and spacing.
@@ -75,8 +95,8 @@ function normalizeForSettlement(text: string, provider?: OcrProvider): string {
   if (provider === 'gemini') {
     // Minimal fixes for Gemini-specific splits without altering spacing drastically
     t = t
-      .replace(/TRANSACTION\s*\/\s*\n\s*DESCRIPTION/gi, 'TRANSACTION/DESCRIPTION')
-      .replace(/\s*\/\s*/g, '/');
+      .replace(TRANSACTION_DESC_SPLIT_RE, 'TRANSACTION/DESCRIPTION')
+      .replace(SLASH_SPACING_RE, '/');
   }
   return t;
 }
@@ -108,11 +128,11 @@ function getLineType(transactionCode: string): 'REVENUE' | 'ADVANCE' | 'DEDUCTIO
  */
 function isHeaderOrInvalidLine(trimmed: string): boolean {
   return !trimmed ||
-    /\bB\/L\b/.test(trimmed) ||
-    /\bTRIP\b/.test(trimmed) ||
-    /TRANSACTION\/?DESCRIPTION/.test(trimmed) ||
-    /CHECK\s+TOTAL/.test(trimmed) ||
-    /\bPAGE\b/.test(trimmed) ||
+    HEADER_BL_RE.test(trimmed) ||
+    HEADER_TRIP_RE.test(trimmed) ||
+    HEADER_TRANSACTION_RE.test(trimmed) ||
+    HEADER_CHECK_TOTAL_RE.test(trimmed) ||
+    HEADER_PAGE_RE.test(trimmed) ||
     trimmed.length < MIN_LINE_LENGTH;
 }
 
@@ -120,7 +140,7 @@ function isHeaderOrInvalidLine(trimmed: string): boolean {
  * Try parsing full format: B/L Trip Ref# Date Code Description Amount
  */
 function tryFullFormat(trimmed: string): ParsedSettlementLine | null {
-  const m = trimmed.match(new RegExp('^(\\d+)\\s+(\\d+)\\s+(\\d{2}\\/\\d{2}\\/\\d{2})\\s+([A-Z]{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2}-?)$', 'i'));
+  const m = trimmed.match(FULL_FORMAT_RE);
   if (!m) return null;
   
   const [, n1, n2, date, code, description, amountStr] = m;
@@ -142,7 +162,7 @@ function tryFullFormat(trimmed: string): ParsedSettlementLine | null {
  * Try parsing one number format: Trip/Ref# Date Code Description Amount
  */
 function tryOneNumberFormat(trimmed: string): ParsedSettlementLine | null {
-  const m = trimmed.match(new RegExp('^(\\d+)\\s+(\\d{2}\\/\\d{2}\\/\\d{2})\\s+([A-Z]{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2}-?)$', 'i'));
+  const m = trimmed.match(ONE_NUMBER_FORMAT_RE);
   if (!m) return null;
   
   const [, n1, date, code, description, amountStr] = m;
@@ -164,7 +184,7 @@ function tryOneNumberFormat(trimmed: string): ParsedSettlementLine | null {
  * Try parsing minimal format: Date Code Description Amount
  */
 function tryMinimalFormat(trimmed: string): ParsedSettlementLine | null {
-  const m = trimmed.match(new RegExp('^(\\d{2}\\/\\d{2}\\/\\d{2})\\s+([A-Z]{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2}-?)$', 'i'));
+  const m = trimmed.match(MINIMAL_FORMAT_RE);
   if (!m) return null;
   
   const [, date, code, description, amountStr] = m;
@@ -231,31 +251,31 @@ function extractHeaderInfo(text: string): {
 
   // Extract account name (usually appears after account number)
   // Example: "CICEROS' MOVING & STORAGE LLC"
-  const nameMatch = text.match(/ACCOUNT\s+\d+[^\n]*\n\s*([^\n]+)/i);
+  const nameMatch = text.match(ACCOUNT_NAME_RE);
   if (nameMatch) {
     result.accountName = nameMatch[1].trim();
   }
 
   // Extract check number: "CHECK 590668"
-  const checkMatch = text.match(/CHECK\s+(\d+)/i);
+  const checkMatch = text.match(CHECK_NUMBER_RE);
   if (checkMatch) {
     result.checkNumber = checkMatch[1];
   }
 
   // Extract check date: "ON 12/18/25"
-  const dateMatch = text.match(/ON\s+(\d{2}\/\d{2}\/\d{2})/i);
+  const dateMatch = text.match(CHECK_DATE_RE);
   if (dateMatch) {
     result.checkDate = parseSlashDate(dateMatch[1]);
   }
 
   // Extract settlement date: "AS OF 12/03/25"
-  const settlementMatch = text.match(/AS\s+OF\s+(\d{2}\/\d{2}\/\d{2})/i);
+  const settlementMatch = text.match(SETTLEMENT_DATE_RE);
   if (settlementMatch) {
     result.settlementDate = parseSlashDate(settlementMatch[1]);
   }
 
   // Extract check total: "<CHECK TOTAL> 3,330.53"
-  const totalMatch = text.match(/CHECK\s+TOTAL[>\s]*(\d+,?\d*\.?\d+)/i);
+  const totalMatch = text.match(CHECK_TOTAL_RE);
   if (totalMatch) {
     result.checkTotal = parseSignedCurrency(totalMatch[1]);
   }
