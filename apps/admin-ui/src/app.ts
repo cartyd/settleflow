@@ -44,6 +44,8 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
         // Add date filter
         env.addFilter('date', (dateString: string, format: string) => {
           const date = new Date(dateString);
+          if (isNaN(date.getTime())) return dateString;
+
           const months = [
             'Jan',
             'Feb',
@@ -59,10 +61,23 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
             'Dec',
           ];
 
+          const pad2 = (n: number) => String(n).padStart(2, '0');
+          const hours = date.getHours();
+          const minutes = pad2(date.getMinutes());
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          const hours12 = hours % 12 === 0 ? 12 : hours % 12;
+
           if (format === 'MMM D') {
             return `${months[date.getMonth()]} ${date.getDate()}`;
-          } else if (format === 'MMM D, YYYY') {
+          }
+          if (format === 'MMM D, YYYY') {
             return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+          }
+          if (format === 'MMM D, YYYY h:mm A') {
+            return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()} ${hours12}:${minutes} ${ampm}`;
+          }
+          if (format === 'MM/DD/YYYY') {
+            return `${pad2(date.getMonth() + 1)}/${pad2(date.getDate())}/${date.getFullYear()}`;
           }
           return dateString;
         });

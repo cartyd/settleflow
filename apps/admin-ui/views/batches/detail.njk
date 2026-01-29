@@ -44,11 +44,11 @@
         </div>
         <div class="meta-item">
             <span class="meta-label">Uploaded:</span>
-            <span class="meta-value">{{ batch.uploadedAt | date('MMM D, YYYY') }}</span>
+            <span class="meta-value">{{ batch.uploadedAt | date('MMM D, YYYY h:mm A') }}</span>
         </div>
         <div class="meta-item">
             <span class="meta-label">Last Parsed:</span>
-            <span class="meta-value">{{ batch.lastParsedAt | date('MMM D, YYYY') if batch.lastParsedAt else 'Not parsed' }}</span>
+            <span class="meta-value">{{ batch.lastParsedAt | date('MMM D, YYYY h:mm A') if batch.lastParsedAt else 'Not parsed' }}</span>
         </div>
     </div>
     {% if batch.parseErrors and batch.parseErrors.length > 0 %}
