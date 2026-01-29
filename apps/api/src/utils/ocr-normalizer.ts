@@ -143,7 +143,7 @@ export const OCR_PATTERNS = {
   // Common field patterns that work across providers
   ACCOUNT: /ACCOUNT\s*(?:NUMBER)?\s*\n?\s*(\d+)/i,
   TRIP: /TRIP\s*(?:NUMBER)?\s*\n?\s*(\d+)/i,
-  DRIVER: /DRIVER[-\s]*>?\s*([A-Z][A-Z,\s&'.-]*?)(?=\n[A-Z]+\s*[:\-]|\nAPPROVAL|\nCONF|$)/is,
+  DRIVER: /DRIVER[-\s]*>?\s*([A-Z][A-Z,\s&'.-]*?)(?=\n[A-Z]+\s*[:-]|\nAPPROVAL|\nCONF|$)/is,
   AMOUNT: new RegExp(`(${FlexibleRegex.amount()})`),
   DATE_MMDDYY: /(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{2})/,
   DATE_COMPACT: /(\d{6})/,

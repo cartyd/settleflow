@@ -89,7 +89,7 @@ export async function parseAndSaveImportLines(
     return {
       importDocumentId,
       linesCreated: 0,
-      errors: [`Document already parsed at ${document.parsedAt}`],
+      errors: [`Document already parsed at ${document.parsedAt.toISOString()}`],
     };
   }
 
@@ -480,8 +480,9 @@ export async function parseImportFile(
         totalLinesCreated += result.linesCreated;
         allErrors.push(...result.errors);
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
         allErrors.push(
-          `Failed to parse ${document.documentType} document ${document.id} (page ${document.pageNumber}): ${error}`
+          `Failed to parse ${document.documentType} document ${document.id} (page ${document.pageNumber}): ${errorMsg}`
         );
       }
     }
@@ -500,8 +501,9 @@ export async function parseImportFile(
         totalLinesCreated += result.linesCreated;
         allErrors.push(...result.errors);
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
         allErrors.push(
-          `Failed to parse document ${document.id} (page ${document.pageNumber}): ${error}`
+          `Failed to parse document ${document.id} (page ${document.pageNumber}): ${errorMsg}`
         );
       }
     }

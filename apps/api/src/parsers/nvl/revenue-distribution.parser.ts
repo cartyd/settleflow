@@ -717,7 +717,7 @@ function extractNetBalance(text: string): number | undefined {
 
   // Try single-line format with DUE: "NET BALANCE DUE NVL 3890.63"
   match = text.match(
-    /NET\s+BALANCE\s+DUE\s+(?:N[.\/]?V[.\/]?L[.\/]?|ACCOUNT)\s+(-?\d+(?:,\d+)*\.\d{2})/i
+    /NET\s+BALANCE\s+DUE\s+(?:N[./]?V[./]?L[./]?|ACCOUNT)\s+(-?\d+(?:,\d+)*\.\d{2})/i
   );
   if (match) {
     return parseCurrency(match[1]);

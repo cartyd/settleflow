@@ -27,7 +27,7 @@ import { removeLeadingZeros } from '../utils/string-utils.js';
 type PaymentMethod = 'Electronic Transfer' | 'Check';
 
 // Character class for company names: supports ASCII, diacritics, apostrophes (straight & curly), ampersands, hyphens
-const COMPANY_NAME_CHARS = `[A-ZÀ-ÿ''&,.\-\s]+`;
+const COMPANY_NAME_CHARS = `[A-ZÀ-ÿ''&,.\\-\\s]+`;
 // UTC-safe date arithmetic to avoid timezone/DST drift
 function addDaysUtc(isoDate: string, days: number): string {
   const [y, m, d] = isoDate.split('-').map(Number);
@@ -120,7 +120,7 @@ function extractCheckDate(text: string): string | undefined {
  */
 function extractCheckAmount(text: string): number | undefined {
   // Try "AMOUNT $X,XXX.XX" pattern
-  const amountMatch = text.match(/AMOUNT\s+\$[\*]*([0-9,]+\.\d{2})/i);
+  const amountMatch = text.match(/AMOUNT\s+\$[*]*([0-9,]+\.\d{2})/i);
   if (amountMatch) {
     const cleanAmount = amountMatch[1].replace(/,/g, '');
     return parseFloat(cleanAmount);

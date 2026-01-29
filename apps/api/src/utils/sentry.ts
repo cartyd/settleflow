@@ -102,7 +102,7 @@ export function startPerformanceTracking(operation: string, data?: Record<string
   let span: any = null;
 
   // Use startSpanManual to get a handle to the span
-  const { end } = Sentry.startSpanManual(
+  const result = Sentry.startSpanManual(
     {
       op: operation,
       name: operation,
@@ -119,7 +119,7 @@ export function startPerformanceTracking(operation: string, data?: Record<string
       if (additionalData && span) {
         span.setAttributes(additionalData);
       }
-      end();
+      result.end();
     },
     setStatus: (
       statusCode:
