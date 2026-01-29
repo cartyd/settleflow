@@ -429,8 +429,13 @@ a:focus {
 /* Subtotal row styles */
 .subtotal-row {
   font-weight: 700;
-  background-color: #f8f9fa;
-  border-top: 2px solid #dee2e6;
+  background-color: #e9ecef;
+  border-top: 2px solid #adb5bd;
+  border-bottom: 2px solid #adb5bd;
+}
+
+.subtotal-row td {
+  padding: 16px 12px;
 }
 
 .subtotal-label {
