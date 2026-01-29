@@ -15,7 +15,11 @@
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { NET_BALANCE_SECTION_SPAN, MIN_DESCRIPTION_LENGTH } from '../constants.js';
 import { parseDate } from '../utils/date-parser.js';
-import { removeLeadingZeros, CURRENCY_AMOUNT_PATTERN, parseSignedCurrency } from '../utils/string-utils.js';
+import {
+  removeLeadingZeros,
+  CURRENCY_AMOUNT_PATTERN,
+  parseSignedCurrency,
+} from '../utils/string-utils.js';
 
 export interface CreditDebitLine {
   transactionType?: string;
@@ -62,7 +66,6 @@ const ENTRY_DATE_RE = /N\.?V\.?L\.?\s+ENTRY[\s\t]*\n?[\s\t]*(\d{6})/i;
 const PROCESS_DATE_COMPACT_RE = /PROCESS\s+DATE[\s\t]*\n?[\s\t]*(\d{6})/i;
 const PROCESS_STANDALONE_RE = /PROCESS[\s\t]*\n?[\s\t]*(\d{6})/i;
 const PROCESS_DATE_SLASH_RE = /PROCESS\s+DATE[\s\t]*\n?[\s\t]*(\d{1,2}\/\d{1,2}\/\d{2})/i;
-
 
 /**
  * Extract transaction type from the document

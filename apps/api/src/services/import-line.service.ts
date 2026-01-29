@@ -118,7 +118,6 @@ export async function parseAndSaveImportLines(
 
       // Validate that Settlement Detail matches existing import lines
       for (const settlementLine of parseResult.lines) {
-
         // Match RD (Revenue Distribution) lines by B/L
         if (settlementLine.transactionCode === 'RD' && settlementLine.billOfLading) {
           const matchingLine = existingLines.find(
