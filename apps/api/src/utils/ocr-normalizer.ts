@@ -33,6 +33,25 @@ export function normalizeOcrText(text: string, provider?: OcrProvider): string {
 }
 
 /**
+ * Heuristically detect the OCR provider from raw text.
+ * Returns 'gemini' when Gemini-specific artifacts are present; otherwise undefined.
+ */
+export function detectOcrProvider(text: string): OcrProvider | undefined {
+  if (!text) return undefined;
+
+  // Gemini often introduces split headers and Unicode artifacts seen in samples
+  const looksLikeGemini =
+    /יווווד/.test(text) ||
+    /BILL\s+OF\s+\n\s*LADING/i.test(text) ||
+    /NET\s+\n\s*BALANCE/i.test(text) ||
+    /TRANSACTION\s*\/\s*\n\s*DESCRIPTION/i.test(text);
+
+  if (looksLikeGemini) return 'gemini';
+  // Return undefined to apply only common normalizations; callers may override.
+  return undefined;
+}
+
+/**
  * Gemini-specific text normalizations
  */
 function normalizeGeminiText(text: string): string {

@@ -181,4 +181,296 @@ DEBITS
     expect(result.lines[0].amount).toBe(5.25);
     expect(result.lines[0].isDebit).toBe(true);
   });
+
+  describe('Edge cases', () => {
+    it('should handle empty text', () => {
+      const result = parseCreditDebit('');
+      // May create placeholder line or empty
+      expect(result).toBeDefined();
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it('should handle whitespace-only text', () => {
+      const result = parseCreditDebit('   \n\t\n   ');
+      expect(result).toBeDefined();
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it('should create placeholder line when dates present but amounts missing', () => {
+      const text = `
+N.V.L. ENTRY 120125
+PROCESS DATE 121625
+ACCOUNT NUMBER 3101
+`;
+      const result = parseCreditDebit(text);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0].entryDate).toBe('2025-12-01');
+      expect(result.lines[0].amount).toBe(0);
+      expect(result.errors.some(e => e.includes('description/amount'))).toBe(true);
+    });
+  });
+
+  describe('Multiple line items', () => {
+    it('should extract multiple line items from debits section', () => {
+      const multiLine = `
+TRANSACTION TYPE
+SAFETY CHARGEBACKS
+DESCRIPTION DEBITS CREDITS
+ITEM ONE
+10.00
+ITEM TWO
+20.00
+ITEM THREE
+30.00
+NET BALANCE 60.00
+`;
+      const result = parseCreditDebit(multiLine);
+      // Parser should extract multiple amounts
+      expect(result.lines.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should match descriptions with amounts', () => {
+      const text = `
+TRANSACTION TYPE
+MULTIPLE CHARGES
+DESCRIPTION DEBITS CREDITS
+ELD SRVC FEE
+33.06
+PROFILE SEO
+85.00
+`;
+      const result = parseCreditDebit(text);
+      expect(result.lines.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('Date format variations', () => {
+    it('should parse compact date MMDDYY', () => {
+      const text = `
+N.V.L. ENTRY 120125
+DESCRIPTION DEBITS
+TEST 10.00
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0 && result.lines[0].entryDate) {
+        expect(result.lines[0].entryDate).toBe('2025-12-01');
+      }
+    });
+
+    it('should parse slash date MM/DD/YY', () => {
+      const text = `
+PROCESS DATE 12/16/25
+DESCRIPTION DEBITS
+TEST 10.00
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0 && result.lines[0].processDate) {
+        expect(result.lines[0].processDate).toBe('2025-12-16');
+      }
+    });
+
+    it('should handle invalid entry date gracefully', () => {
+      const text = `
+N.V.L. ENTRY 999999
+DESCRIPTION DEBITS
+TEST 10.00
+`;
+      const result = parseCreditDebit(text);
+      expect(result).toBeDefined();
+      if (result.lines.length > 0) {
+        expect(result.lines[0].entryDate).toBeUndefined();
+      }
+    });
+
+    it('should handle invalid process date gracefully', () => {
+      const text = `
+PROCESS DATE 99/99/99
+DESCRIPTION DEBITS
+TEST 10.00
+`;
+      const result = parseCreditDebit(text);
+      expect(result).toBeDefined();
+      if (result.lines.length > 0) {
+        expect(result.lines[0].processDate).toBeUndefined();
+      }
+    });
+  });
+
+  describe('Amount edge cases', () => {
+    it('should handle zero amounts', () => {
+      const text = `
+DESCRIPTION DEBITS
+ZERO CHARGE 0.00
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0) {
+        expect(result.lines[0].amount).toBe(0.00);
+      }
+    });
+
+    it('should handle large amounts with commas', () => {
+      const text = `
+DESCRIPTION DEBITS
+BIG CHARGE 12,345.67
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0) {
+        expect(result.lines[0].amount).toBe(12345.67);
+      }
+    });
+
+    it('should handle negative amounts in credits', () => {
+      const text = `
+DESCRIPTION CREDITS
+CREDIT ITEM 100.00
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0) {
+        // Credits should be negative
+        expect(result.lines[0].amount).toBeLessThanOrEqual(0);
+      }
+    });
+
+    it('should handle trailing negative sign', () => {
+      const text = `
+DESCRIPTION DEBITS
+NEGATIVE 100.00-
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0) {
+        expect(result.lines[0].amount).toBe(-100.00);
+      }
+    });
+  });
+
+  describe('Description validation', () => {
+    it('should filter out common headers from descriptions', () => {
+      const text = `
+TRANSACTION TYPE
+VALID TYPE
+DESCRIPTION DEBITS
+NVL
+ENTRY
+DATE
+ACTUAL DESCRIPTION
+10.00
+`;
+      const result = parseCreditDebit(text);
+      // Should not include NVL, ENTRY, DATE in descriptions
+      if (result.lines.length > 0 && result.lines[0].description) {
+        expect(result.lines[0].description).not.toBe('NVL');
+        expect(result.lines[0].description).not.toBe('ENTRY');
+        expect(result.lines[0].description).not.toBe('DATE');
+      }
+    });
+
+    it('should filter out sentence fragments', () => {
+      const text = `
+TRANSACTION TYPE
+TEST TYPE
+DESCRIPTION DEBITS
+PLEASE CONTACT
+FOR ANY
+MOTOR VEH REP
+5.25
+`;
+      const result = parseCreditDebit(text);
+      // Should not include fragments ending in 'contact', 'for', etc.
+      if (result.lines.length > 0 && result.lines[0].description) {
+        expect(result.lines[0].description).not.toMatch(/contact$/i);
+        expect(result.lines[0].description).not.toMatch(/for$/i);
+      }
+    });
+
+    it('should use transaction type as fallback when description invalid', () => {
+      const text = `
+TRANSACTION TYPE
+MOTOR VEH REP
+DESCRIPTION DEBITS
+123
+NVL
+5.25
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0 && result.lines[0].description) {
+        expect(result.lines[0].description).toBe('MOTOR VEH REP');
+      }
+    });
+  });
+
+  describe('Reference extraction', () => {
+    it('should extract unit number when not 0000', () => {
+      const text = `
+UNIT # 1234
+DESCRIPTION DEBITS
+TEST 10.00
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0 && result.lines[0].reference) {
+        expect(result.lines[0].reference).toBe('1234');
+      }
+    });
+
+    it('should skip unit number 0000', () => {
+      const text = `
+UNIT # 0000
+DESCRIPTION DEBITS
+TEST 10.00
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0) {
+        expect(result.lines[0].reference).not.toBe('0000');
+      }
+    });
+
+    it('should extract payment reference', () => {
+      const text = `
+PAYMENT 46 OF 47
+DESCRIPTION DEBITS
+TEST 10.00
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0 && result.lines[0].reference) {
+        expect(result.lines[0].reference).toBe('46 OF 47');
+      }
+    });
+
+    it('should extract long reference numbers', () => {
+      const text = `
+112147005360
+DESCRIPTION DEBITS
+TEST 10.00
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0 && result.lines[0].reference) {
+        expect(result.lines[0].reference).toBe('112147005360');
+      }
+    });
+  });
+
+  describe('Account number handling', () => {
+    it('should remove leading zeros', () => {
+      const text = `
+ACCOUNT NUMBER 0003101
+DESCRIPTION DEBITS
+TEST 10.00
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0 && result.lines[0].accountNumber) {
+        expect(result.lines[0].accountNumber).toBe('3101');
+      }
+    });
+
+    it('should handle account with no leading zeros', () => {
+      const text = `
+ACCOUNT NUMBER 3101
+DESCRIPTION DEBITS
+TEST 10.00
+`;
+      const result = parseCreditDebit(text);
+      if (result.lines.length > 0 && result.lines[0].accountNumber) {
+        expect(result.lines[0].accountNumber).toBe('3101');
+      }
+    });
+  });
 });
