@@ -1,16 +1,17 @@
-import Fastify, { FastifyInstance } from 'fastify';
-import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
-import rateLimit from '@fastify/rate-limit';
+import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
+import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { AppConfig } from '@settleflow/shared-config';
+import Fastify, { FastifyInstance } from 'fastify';
+
+import { errorHandler } from './plugins/error-handler';
 import { prismaPlugin } from './plugins/prisma';
 import { sentryPlugin } from './plugins/sentry';
-import { errorHandler } from './plugins/error-handler';
-import { batchRoutes } from './routes/batches';
 import { adjustmentRoutes } from './routes/adjustments';
+import { batchRoutes } from './routes/batches';
 import { healthRoute } from './routes/health';
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {

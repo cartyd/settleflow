@@ -1,7 +1,8 @@
 import { FastifyPluginAsync } from 'fastify';
-import * as apiClient from '../services/api-client';
-import { batchesViewConfig, batchDetailConfig } from '../config/viewConfig';
+
 import { batchStatusConfig } from '../config/statusConfig';
+import { batchesViewConfig, batchDetailConfig } from '../config/viewConfig';
+import * as apiClient from '../services/api-client';
 
 // Map status values to CSS classes
 const statusClasses = Object.entries(batchStatusConfig).reduce(

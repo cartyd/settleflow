@@ -6,9 +6,9 @@
  */
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
+import { ADVANCE_TOTAL_CHARGE_SCAN_SPAN } from '../constants.js';
 import { parseCompactDate } from '../utils/date-parser.js';
 import { removeLeadingZeros, CURRENCY_AMOUNT_PATTERN, parseCurrency, CURRENCY_AMOUNT_GLOBAL_RE } from '../utils/string-utils.js';
-import { ADVANCE_TOTAL_CHARGE_SCAN_SPAN } from '../constants.js';
 
 export interface AdvanceLine {
   tripNumber?: string;

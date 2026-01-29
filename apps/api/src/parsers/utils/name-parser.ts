@@ -21,7 +21,7 @@
  * parseDriverName("SMITH") // { lastName: "SMITH" }
  */
 export function parseDriverName(fullName: string): { firstName?: string; lastName?: string } {
-  if (!fullName || !fullName.trim()) {
+  if (!fullName?.trim()) {
     return {};
   }
 

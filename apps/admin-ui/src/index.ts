@@ -1,4 +1,5 @@
 import { loadConfig } from '@settleflow/shared-config';
+
 import { buildApp } from './app';
 
 async function start() {

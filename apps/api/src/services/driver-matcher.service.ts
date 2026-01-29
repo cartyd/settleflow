@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+
 import { captureCustomError } from '../utils/sentry.js';
 
 export interface DriverMatchResult {
@@ -198,7 +199,7 @@ export async function matchDriversForImportFile(
         line.importDocument.importFile.batchId
       );
 
-      if (match && match.matchedDriverId && match.confidence === 'exact') {
+      if (match?.matchedDriverId && match.confidence === 'exact') {
         // Auto-match exact matches
         await prisma.importLine.update({
           where: { id: line.id },

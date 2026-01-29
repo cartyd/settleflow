@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { parseCreditDebit } from '../../src/parsers/nvl/credit-debit.parser.js';
 
 describe('Credit/Debit Parser', () => {

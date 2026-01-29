@@ -1,9 +1,11 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { readFile, readdir, mkdtemp, rm } from 'fs/promises';
-import { basename, join } from 'path';
 import { execFile } from 'child_process';
+import { readFile, readdir, mkdtemp, rm } from 'fs/promises';
 import os from 'os';
+import { basename, join } from 'path';
 import { promisify } from 'util';
+
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
 import { captureMessage, captureCustomError } from '../utils/sentry.js';
 
 const execFilePromise = promisify(execFile);
@@ -289,8 +291,8 @@ function parseGeminiResponse(text: string): PageText[] {
     for (let i = 0; i < boldMatches.length; i++) {
       const match = boldMatches[i];
       const pageNum = parseInt(match[1], 10);
-      const startIdx = match.index! + match[0].length;
-      const endIdx = i < boldMatches.length - 1 ? boldMatches[i + 1].index! : text.length;
+      const startIdx = match.index + match[0].length;
+      const endIdx = i < boldMatches.length - 1 ? boldMatches[i + 1].index : text.length;
       let pageText = text.substring(startIdx, endIdx).trim();
       
       // Remove code block markers if present
@@ -319,8 +321,8 @@ function parseGeminiResponse(text: string): PageText[] {
     for (let i = 0; i < matches.length; i++) {
       const match = matches[i];
       const pageNum = parseInt(match[1], 10);
-      const startIdx = match.index! + match[0].length;
-      const endIdx = i < matches.length - 1 ? matches[i + 1].index! : text.length;
+      const startIdx = match.index + match[0].length;
+      const endIdx = i < matches.length - 1 ? matches[i + 1].index : text.length;
       const pageText = text.substring(startIdx, endIdx).trim();
       
       if (pageText) {

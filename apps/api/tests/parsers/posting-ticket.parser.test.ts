@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { parsePostingTicket } from '../../src/parsers/nvl/posting-ticket.parser.js';
 
 describe('Posting Ticket Parser', () => {

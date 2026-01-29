@@ -1,10 +1,12 @@
 import { PrismaClient } from '@prisma/client';
-import { processPdfBufferWithOcr, OcrConfig } from './ocr.service.js';
-import { processPdfBufferWithGemini, GeminiOcrConfig, PageText } from './gemini-ocr.service.js';
+import { loadConfig } from '@settleflow/shared-config';
+
 import { detectDocumentType } from '../parsers/nvl/detectDocumentType.js';
 import { logger } from '../utils/sentry.js';
-import { loadConfig } from '@settleflow/shared-config';
+
+import { processPdfBufferWithGemini, GeminiOcrConfig, PageText } from './gemini-ocr.service.js';
 import { parseImportFile } from './import-line.service.js';
+import { processPdfBufferWithOcr, OcrConfig } from './ocr.service.js';
 
 export interface ProcessPdfResult {
   importId: string;

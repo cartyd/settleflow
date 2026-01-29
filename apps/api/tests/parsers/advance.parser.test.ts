@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { parseAdvance } from '../../src/parsers/nvl/advance.parser.js';
 
 describe('Advance Parser', () => {

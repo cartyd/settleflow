@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { detectDocumentType } from '../../src/parsers/nvl/detectDocumentType';
 import { DocumentType } from '@settleflow/shared-types';
+import { describe, it, expect } from 'vitest';
+
+import { detectDocumentType } from '../../src/parsers/nvl/detectDocumentType';
 
 describe('Document Type Detection', () => {
   it('should detect remittance document', () => {

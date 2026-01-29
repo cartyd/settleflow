@@ -1,11 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 import { DocumentType } from '@settleflow/shared-types';
-import { parseSettlementDetail } from '../parsers/nvl/settlement-detail.parser.js';
-import { parseRevenueDistribution } from '../parsers/nvl/revenue-distribution.parser.js';
-import { parseCreditDebit } from '../parsers/nvl/credit-debit.parser.js';
-import { parseRemittance } from '../parsers/nvl/remittance.parser.js';
+
 import { parseAdvance } from '../parsers/nvl/advance.parser.js';
+import { parseCreditDebit } from '../parsers/nvl/credit-debit.parser.js';
 import { parsePostingTicket } from '../parsers/nvl/posting-ticket.parser.js';
+import { parseRemittance } from '../parsers/nvl/remittance.parser.js';
+import { parseRevenueDistribution } from '../parsers/nvl/revenue-distribution.parser.js';
+import { parseSettlementDetail } from '../parsers/nvl/settlement-detail.parser.js';
 
 /**
  * Extract plain text from rawText field, handling both plain text and JSON formats.

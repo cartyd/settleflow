@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+
 import { captureCustomError } from '../utils/sentry.js';
 
 export interface TripDetail {

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { parseSettlementDetail } from '../../src/parsers/nvl/settlement-detail.parser.js';
 
 describe('Settlement Detail Parser', () => {

@@ -5,11 +5,11 @@
  * Usage: ts-node ocr-pdf.ts <pdf-file> [--model MODEL] [--output OUTPUT] [--separate-pages]
  */
 
-import { readFile, writeFile, readdir, mkdtemp } from 'fs/promises';
-import { existsSync } from 'fs';
-import { basename, join } from 'path';
 import { execFile } from 'child_process';
+import { existsSync } from 'fs';
+import { readFile, writeFile, readdir, mkdtemp } from 'fs/promises';
 import os from 'os';
+import { basename, join } from 'path';
 import { promisify } from 'util';
 
 const execFilePromise = promisify(execFile);

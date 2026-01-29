@@ -13,9 +13,9 @@
  * - Payment method: Electronic transfer or Check
  */
 
-import { parseSlashDate } from '../utils/date-parser.js';
 import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { CHECK_SCAN_TOP_LINES, ACCOUNT_SCAN_TOP_LINES, WEEK_END_OFFSET_DAYS, WEEK_DURATION_DAYS } from '../constants.js';
+import { parseSlashDate } from '../utils/date-parser.js';
 import { removeLeadingZeros } from '../utils/string-utils.js';
 
 // Type for payment method to ensure consistency

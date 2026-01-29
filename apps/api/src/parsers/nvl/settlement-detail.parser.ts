@@ -12,9 +12,9 @@
  */
 
 import { OCR_PATTERNS, detectOcrProvider, OcrProvider } from '../../utils/ocr-normalizer.js';
+import { WEEK_END_OFFSET_DAYS, WEEK_DURATION_DAYS, MIN_LINE_LENGTH, MAX_TRIP_NUMBER_LENGTH, AMOUNT_TOLERANCE } from '../constants.js';
 import { parseSlashDate, addDaysUtc } from '../utils/date-parser.js';
 import { parseSignedCurrency } from '../utils/string-utils.js';
-import { WEEK_END_OFFSET_DAYS, WEEK_DURATION_DAYS, MIN_LINE_LENGTH, MAX_TRIP_NUMBER_LENGTH, AMOUNT_TOLERANCE } from '../constants.js';
 
 export interface ParsedSettlementLine {
   billOfLading?: string;

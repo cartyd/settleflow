@@ -1,20 +1,23 @@
-import { FastifyPluginAsync } from 'fastify';
-import * as batchService from '../services/batch.service.js';
-import * as batchDetailService from '../services/batch-detail.service.js';
-import * as importService from '../services/import.service.js';
-import * as importLineService from '../services/import-line.service.js';
-import * as driverMatcherService from '../services/driver-matcher.service.js';
-import * as autoBatchImportService from '../services/auto-batch-import.service.js';
-import { captureCustomError } from '../utils/sentry.js';
-import { loadConfig } from '@settleflow/shared-config';
-import path from 'path';
-import fs from 'fs';
 import { spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+
+import { loadConfig } from '@settleflow/shared-config';
 import {
   CreateBatchSchema,
   GetBatchesQuerySchema,
   BatchIdParamSchema,
 } from '@settleflow/shared-validation';
+import { FastifyPluginAsync } from 'fastify';
+
+import * as autoBatchImportService from '../services/auto-batch-import.service.js';
+import * as batchDetailService from '../services/batch-detail.service.js';
+import * as batchService from '../services/batch.service.js';
+import * as driverMatcherService from '../services/driver-matcher.service.js';
+import * as importLineService from '../services/import-line.service.js';
+import * as importService from '../services/import.service.js';
+import { captureCustomError } from '../utils/sentry.js';
+
 
 // Helper function to extract and serve a specific PDF page
 async function extractAndServePdfPage(
@@ -167,7 +170,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
           },
         });
 
-        if (!batch || !batch.importFiles[0]) {
+        if (!batch?.importFiles[0]) {
           return reply.status(404).send({ 
             error: 'Batch or PDF file not found'
           });

@@ -1,6 +1,7 @@
 import { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
-import { formatErrorContext, generateErrorId } from '../utils/errorHandler';
+
 import { errorPageConfig } from '../config/viewConfig';
+import { formatErrorContext, generateErrorId } from '../utils/errorHandler';
 
 export interface ErrorResponse {
   statusCode: number;

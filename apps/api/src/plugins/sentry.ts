@@ -1,6 +1,6 @@
+import * as Sentry from '@sentry/node';
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import fp from 'fastify-plugin';
-import * as Sentry from '@sentry/node';
 
 interface SentryOptions {
   dsn?: string;

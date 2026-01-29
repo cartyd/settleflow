@@ -1,8 +1,9 @@
-import { readFile, writeFile, readdir, mkdtemp, rm } from 'fs/promises';
-import { basename, join } from 'path';
 import { execFile } from 'child_process';
+import { readFile, writeFile, readdir, mkdtemp, rm } from 'fs/promises';
 import os from 'os';
+import { basename, join } from 'path';
 import { promisify } from 'util';
+
 import { captureMessage, captureCustomError } from '../utils/sentry.js';
 
 const execFilePromise = promisify(execFile);
@@ -130,7 +131,7 @@ async function convertPdfToImages(pdfPath: string): Promise<PdfConversionResult>
     // Extract page numbers and validate all files match the expected pattern
     const filesWithPageNumbers = pngFiles.map((filename) => {
       const match = filename.match(/-?(\d+)\.png$/);
-      if (!match || !match[1]) {
+      if (!match?.[1]) {
         throw new Error(
           `Unexpected filename format from pdftocairo: ${filename}. Expected format: ${prefix}-N.png`
         );

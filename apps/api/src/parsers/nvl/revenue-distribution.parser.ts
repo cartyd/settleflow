@@ -17,8 +17,8 @@
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { STATE_CODE_CAPTURE, STATE_CODE_LINE_RE, CITY_LINE_RE, ORIGIN_LOOKAHEAD_LINES, DEST_LOOKAHEAD_LINES, DEST_STATE_LOOKAHEAD_AFTER_CITY, BOL_SECTION_SPAN, NET_BALANCE_SECTION_SPAN, ORIGIN_SECTION_SCAN_CHARS, DESTINATION_FALLBACK_LOOKAHEAD, DEFAULT_DECADE_BASE, CENTURY_BASE, PREFERRED_YEAR_MIN, PREFERRED_YEAR_MAX } from '../constants.js';
 import { isValidDate as validateDate, parseCompactDate, parseSlashDate } from '../utils/date-parser.js';
-import { parseCurrency } from '../utils/string-utils.js';
 import { parseDriverName as parseDriverNameUtil } from '../utils/name-parser.js';
+import { parseCurrency } from '../utils/string-utils.js';
 
 export interface RevenueDistributionLine {
   driverName?: string;

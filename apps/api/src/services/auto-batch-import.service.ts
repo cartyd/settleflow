@@ -1,15 +1,18 @@
+import { writeFile, mkdir } from 'fs/promises';
+import path from 'path';
+
 import { PrismaClient } from '@prisma/client';
-import { processPdfBufferWithOcr, OcrConfig } from './ocr.service.js';
-import { processPdfBufferWithGemini, GeminiOcrConfig, PageText } from './gemini-ocr.service.js';
+import { loadConfig } from '@settleflow/shared-config';
+import { SettlementStatus } from '@settleflow/shared-types';
+
 import { detectDocumentType } from '../parsers/nvl/detectDocumentType.js';
 import { parseRemittance, BatchMetadata } from '../parsers/nvl/remittance.parser.js';
 import { extractBatchMetadata as extractBatchMetadataFromSettlement } from '../parsers/nvl/settlement-detail.parser.js';
-import { SettlementStatus } from '@settleflow/shared-types';
-import { loadConfig } from '@settleflow/shared-config';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
-import { parseImportFile, extractPlainText } from './import-line.service.js';
 import { logger } from '../utils/sentry.js';
+
+import { processPdfBufferWithGemini, GeminiOcrConfig, PageText } from './gemini-ocr.service.js';
+import { parseImportFile, extractPlainText } from './import-line.service.js';
+import { processPdfBufferWithOcr, OcrConfig } from './ocr.service.js';
 
 export interface AutoBatchImportResult {
   batchId: string;
@@ -57,7 +60,7 @@ export async function uploadPdfAndCreateBatch(
 
   // Step 2: Find and parse remittance page (or settlement detail as fallback)
   let remittanceMetadata: BatchMetadata | undefined;
-  let settlementDetailPages: Array<{ pageNumber: number; text: string }> = [];
+  const settlementDetailPages: Array<{ pageNumber: number; text: string }> = [];
   
   console.log(`[AUTO-BATCH] Processing ${pages.length} pages from OCR`);
   

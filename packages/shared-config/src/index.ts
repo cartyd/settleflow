@@ -1,6 +1,7 @@
-import * as dotenv from 'dotenv';
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
+
+import * as dotenv from 'dotenv';
 
 // Find the monorepo root by looking for package.json with workspaces
 function findMonorepoRoot(): string {

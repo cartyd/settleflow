@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { parseRevenueDistribution } from '../../src/parsers/nvl/revenue-distribution.parser.js';
 
 describe('Revenue Distribution Parser', () => {

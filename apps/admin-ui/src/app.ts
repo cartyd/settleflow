@@ -1,9 +1,13 @@
-import Fastify, { FastifyInstance } from 'fastify';
-import fastifyView from '@fastify/view';
-import fastifyStatic from '@fastify/static';
-import * as nunjucks from 'nunjucks';
 import * as path from 'path';
+
+import fastifyStatic from '@fastify/static';
+import fastifyView from '@fastify/view';
 import { AppConfig } from '@settleflow/shared-config';
+import Fastify, { FastifyInstance } from 'fastify';
+import * as nunjucks from 'nunjucks';
+
+
+
 import { batchRoutes } from './routes/batches';
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {

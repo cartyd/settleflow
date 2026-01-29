@@ -155,7 +155,7 @@ function tryMinimalDescription(text: string): string | undefined {
  */
 function extractDescriptions(text: string): string[] {
   // Try main section extraction
-  let descriptions = tryDescriptionSection(text);
+  const descriptions = tryDescriptionSection(text);
   if (descriptions.length > 0) return descriptions;
   
   // Try tab-separated format
