@@ -504,7 +504,8 @@ window.toggleRawOcrData = async function() {
             try {
                 const importFileId = '{{ batch.importFileId }}';
                 console.log('Fetching OCR data for importFileId:', importFileId);
-                const response = await fetch(`http://localhost:3000/batches/import-files/${importFileId}/documents`);
+                const apiBaseUrl = window.location.protocol + '//' + window.location.hostname + ':3000';
+                const response = await fetch(`${apiBaseUrl}/batches/import-files/${importFileId}/documents`);
                 
                 if (!response.ok) {
                     const errorText = await response.text();

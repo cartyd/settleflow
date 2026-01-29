@@ -4,6 +4,8 @@ import { batchStatusConfig } from '../config/statusConfig';
 import { batchesViewConfig, batchDetailConfig } from '../config/viewConfig';
 import * as apiClient from '../services/api-client';
 
+const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3000';
+
 // Map status values to CSS classes
 const statusClasses = Object.entries(batchStatusConfig).reduce(
   (acc, [status, config]) => {
@@ -41,7 +43,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       // Build URL with query parameters
-      const url = new URL(`http://localhost:3000/batches/${id}/pdf`);
+      const url = new URL(`${API_BASE_URL}/batches/${id}/pdf`);
       if (query.page) {
         url.searchParams.set('page', query.page);
       }
@@ -126,7 +128,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
     const { importFileId } = request.params as { importFileId: string };
     try {
       const response = await fetch(
-        `http://localhost:3000/batches/import-files/${importFileId}/reset`,
+        `${API_BASE_URL}/batches/import-files/${importFileId}/reset`,
         {
           method: 'POST',
         }
@@ -146,7 +148,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
     const { importFileId } = request.params as { importFileId: string };
     try {
       const response = await fetch(
-        `http://localhost:3000/batches/import-files/${importFileId}/lines`
+        `${API_BASE_URL}/batches/import-files/${importFileId}/lines`
       );
       const result = await response.json();
       return reply.send(result);

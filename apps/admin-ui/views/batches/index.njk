@@ -36,6 +36,9 @@
 {% include "batches/table.njk" %}
 
 <script>
+// Determine API base URL from current location
+const API_BASE_URL = window.location.protocol + '//' + window.location.hostname + ':3000';
+
 // Reset and re-parse import file
 window.resetAndReparseAction = function(importFileId, event) {
     if (!importFileId) {
@@ -53,7 +56,7 @@ window.resetAndReparseAction = function(importFileId, event) {
     resetBtn.textContent = 'Resetting...';
     
     // Step 1: Reset the import file
-    fetch(`http://localhost:3000/batches/import-files/${importFileId}/reset`, {
+    fetch(`${API_BASE_URL}/batches/import-files/${importFileId}/reset`, {
         method: 'POST'
     })
     .then(response => {
@@ -63,7 +66,7 @@ window.resetAndReparseAction = function(importFileId, event) {
     .then(() => {
         resetBtn.textContent = 'Reparsing...';
         // Step 2: Re-parse the import file
-        return fetch(`http://localhost:3000/batches/import-files/${importFileId}/parse`, {
+        return fetch(`${API_BASE_URL}/batches/import-files/${importFileId}/parse`, {
             method: 'POST'
         });
     })
@@ -89,7 +92,7 @@ window.deleteBatchAction = function(batchId, batchRef) {
         return;
     }
     
-    fetch(`http://localhost:3000/batches/${batchId}`, {
+    fetch(`${API_BASE_URL}/batches/${batchId}`, {
         method: 'DELETE'
     })
     .then(response => {
@@ -149,7 +152,7 @@ window.deleteBatchAction = function(batchId, batchRef) {
                 progressFill.style.width = progress + '%';
             }, 1000);
 
-            const response = await fetch('http://localhost:3000/batches/upload', {
+            const response = await fetch(`${API_BASE_URL}/batches/upload`, {
                 method: 'POST',
                 body: formData
             });
