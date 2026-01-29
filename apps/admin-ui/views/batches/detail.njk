@@ -282,18 +282,18 @@
                     <tbody>
                         {% set postingTicketTotal = 0 %}
                         {% for line in batch.lineItems.postingTicket %}
-                            {% set postingTicketTotal = postingTicketTotal + (line.amount | abs) %}
+                            {% set postingTicketTotal = postingTicketTotal + line.amount %}
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
                                 <td>{{ line.description }}</td>
-                                <td class="amount-cell negative">${{ line.amount | abs | number(2) }}</td>
+                                <td class="amount-cell {{ 'positive' if line.amount > 0 else 'negative' }}">${{ line.amount | abs | number(2) }}</td>
                             </tr>
                         {% endfor %}
                     </tbody>
                     <tfoot>
                         <tr class="subtotal-row">
                             <td colspan="2" class="subtotal-label">Subtotal</td>
-                            <td class="amount-cell negative subtotal-amount">${{ postingTicketTotal | number(2) }}</td>
+                            <td class="amount-cell {{ 'positive' if postingTicketTotal > 0 else 'negative' }} subtotal-amount">${{ postingTicketTotal | abs | number(2) }}</td>
                         </tr>
                     </tfoot>
                 </table>

@@ -192,8 +192,18 @@ export async function getBatchDetailData(
   // Calculate financial totals from import lines
   const revenueLines = allLines.filter((l) => l.lineType === 'REVENUE');
   const advanceLines = allLines.filter((l) => l.lineType === 'ADVANCE');
-  const deductionLines = allLines.filter((l) => l.lineType === 'DEDUCTION');
+  
+  // Total deductions should only include deductions displayed in the UI:
+  // - Credit/Debit documents (CREDIT_DEBIT)
+  // - Posting Ticket DEBITS (lineType === 'DEDUCTION')
+  // This excludes other DEDUCTION line types that may come from Settlement Detail
+  const creditDebitLines = allLines.filter((l) => l.documentType === 'CREDIT_DEBIT');
+  const postingTicketLines = allLines.filter((l) => l.documentType === 'POSTING_TICKET');
+  const postingTicketDebitLines = postingTicketLines.filter((l) => l.lineType === 'DEDUCTION');
+  const deductionLines = [...creditDebitLines, ...postingTicketDebitLines];
 
+  // Revenue includes posting ticket credits
+  const postingTicketCreditLines = postingTicketLines.filter((l) => l.lineType === 'REVENUE');
   const totalRevenue = revenueLines.reduce((sum, l) => sum + Math.abs(l.amount), 0);
   const totalAdvances = advanceLines.reduce((sum, l) => sum + Math.abs(l.amount), 0);
   const totalDeductions = deductionLines.reduce((sum, l) => sum + Math.abs(l.amount), 0);
@@ -204,8 +214,10 @@ export async function getBatchDetailData(
     revenueDistribution: allLines.filter((l) => l.category === 'REV DIST').map(formatLineItem),
     remittance: allLines.filter((l) => l.documentType === 'REMITTANCE').map(formatLineItem),
     advances: advanceLines.map(formatLineItem),
-    creditDebit: allLines.filter((l) => l.documentType === 'CREDIT_DEBIT').map(formatLineItem),
-    postingTicket: allLines.filter((l) => l.documentType === 'POSTING_TICKET').map(formatLineItem),
+    creditDebit: creditDebitLines.map(formatLineItem),
+    // Posting tickets include both credits (revenue/green) and debits (deduction/red)
+    // The UI will display them with appropriate colors based on the amount sign
+    postingTicket: postingTicketLines.map(formatLineItem),
   };
 
   // Extract trip details from Revenue Distribution lines

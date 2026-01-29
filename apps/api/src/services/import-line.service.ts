@@ -392,7 +392,8 @@ export async function parseAndSaveImportLines(
     }
 
     case DocumentType.POSTING_TICKET: {
-      // Posting Ticket pages are the PRIMARY source for posting ticket deductions.
+      // Posting Ticket pages can be either revenue (credits/toll reimbursements)
+      // or deductions (debits/miscellaneous charges).
       const plainText = extractPlainText(document.rawText);
       const parseResult = parsePostingTicket(plainText);
       errors.push(...parseResult.errors);
@@ -404,16 +405,18 @@ export async function parseAndSaveImportLines(
             importDocumentId: document.id,
             driverId: null,
             category: 'POSTING TICKET',
-            lineType: 'DEDUCTION',
+            // Credits are REVENUE (toll reimbursements), debits are DEDUCTION (charges)
+            lineType: line.isCredit ? 'REVENUE' : 'DEDUCTION',
             description: line.description || 'OTHER CHARGES',
-            amount: line.debitAmount,
+            amount: line.amount,
             date: line.date ? parseISODateLocal(line.date) : null,
             reference: line.ptNumber,
             accountNumber: line.accountNumber,
             rawData: JSON.stringify({
               ptNumber: line.ptNumber,
               accountNumber: line.accountNumber,
-              debitAmount: line.debitAmount,
+              amount: line.amount,
+              isCredit: line.isCredit,
               description: line.description,
             }),
           },
