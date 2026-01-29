@@ -93,7 +93,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     prefix: '/public/',
   });
 
-  app.get('/', async (request, reply) => {
+  app.get('/', async (_request, reply) => {
     return reply.redirect('/admin/batches');
   });
 

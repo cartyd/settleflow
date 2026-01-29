@@ -14,7 +14,7 @@ const statusClasses = Object.entries(batchStatusConfig).reduce(
 );
 
 export const batchRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', async (_request, reply) => {
     try {
       const batchesData = await apiClient.getBatches();
       const batchesWithUrls = (batchesData.batches || []).map((batch) => ({
