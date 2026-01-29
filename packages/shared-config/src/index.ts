@@ -146,7 +146,7 @@ export function loadConfig(): AppConfig {
       provider: databaseProvider,
     },
     sentry: {
-      dsn: process.env.SENTRY_DSN,
+      ...(process.env.SENTRY_DSN ? { dsn: process.env.SENTRY_DSN } : {}),
       enabled: !!process.env.SENTRY_DSN,
       environment: nodeEnv,
       tracesSampleRate: getEnvVarAsNumber('SENTRY_TRACES_SAMPLE_RATE', isDevelopment ? 1.0 : 0.1),
@@ -169,7 +169,7 @@ export function loadConfig(): AppConfig {
       model: getEnvVar('OCR_MODEL', 'gemma3:27b'),
       timeoutMs: getEnvVarAsNumber('OCR_TIMEOUT_MS', 120000), // Default 120 seconds
       // Gemini config
-      geminiApiKey: process.env.GEMINI_API_KEY,
+      ...(process.env.GEMINI_API_KEY ? { geminiApiKey: process.env.GEMINI_API_KEY } : {}),
       geminiModel: getEnvVar('GEMINI_MODEL', 'gemini-2.0-flash-exp'),
     },
     storage: {
