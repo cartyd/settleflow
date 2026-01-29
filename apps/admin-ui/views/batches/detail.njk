@@ -44,11 +44,11 @@
         </div>
         <div class="meta-item">
             <span class="meta-label">Uploaded:</span>
-            <span class="meta-value">{{ batch.uploadedAt | date('MMM D, YYYY h:mm A') }}</span>
+            <span class="meta-value">{{ batch.uploadedAt | date('MMM D, YYYY') }}</span>
         </div>
         <div class="meta-item">
             <span class="meta-label">Last Parsed:</span>
-            <span class="meta-value">{{ batch.lastParsedAt | date('MMM D, YYYY h:mm A') if batch.lastParsedAt else 'Not parsed' }}</span>
+            <span class="meta-value">{{ batch.lastParsedAt | date('MMM D, YYYY') if batch.lastParsedAt else 'Not parsed' }}</span>
         </div>
     </div>
     {% if batch.parseErrors and batch.parseErrors.length > 0 %}
@@ -147,10 +147,11 @@
                             <th>Description</th>
                             <th>Driver</th>
                             <th>RDD</th>
-                            <th>Amount</th>
+                            <th class="amount-header">Amount</th>
                         </tr>
                     </thead>
                     <tbody>
+                        {% set revenueTotal = 0 %}
                         {% for line in batch.lineItems.revenueDistribution %}
                             {% set shipper = line.shipperName or 'Unknown' %}
                             {% set origin = line.origin or 'Unknown' %}
@@ -158,16 +159,23 @@
                             {% set driverLast = line.driverLastName or line.driverName or '-' %}
                             {% set driverFirst = line.driverFirstName or '' %}
                             {% set deliveryDate = line.deliveryDate or '-' %}
+                            {% set revenueTotal = revenueTotal + (line.amount | abs) %}
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
                                 <td>{{ line.tripNumber or '-' }}</td>
                                 <td>{{ shipper }}: {{ origin }} → {{ destination }}</td>
                                 <td>{{ driverLast }}{{ (', ' + driverFirst) if driverFirst else '' }}</td>
                                 <td>{{ deliveryDate | date('MM/DD/YYYY') if deliveryDate != '-' else '-' }}</td>
-                                <td class="amount-cell negative">${{ line.amount | abs | number(2) }}</td>
+                                <td class="amount-cell positive">${{ line.amount | abs | number(2) }}</td>
                             </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot>
+                        <tr class="subtotal-row">
+                            <td colspan="5" class="subtotal-label">Subtotal</td>
+                            <td class="amount-cell positive subtotal-amount">${{ revenueTotal | number(2) }}</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </details>
@@ -188,20 +196,28 @@
                             <th>Description</th>
                             <th>Date</th>
                             <th>Reference</th>
-                            <th>Amount</th>
+                            <th class="amount-header">Amount</th>
                         </tr>
                     </thead>
                     <tbody>
+                        {% set advancesTotal = 0 %}
                         {% for line in batch.lineItems.advances %}
+                            {% set advancesTotal = advancesTotal + (line.amount | abs) %}
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
                                 <td>{{ line.description }}</td>
                                 <td>{{ line.date | date('MMM D, YYYY') if line.date else '-' }}</td>
                                 <td>{{ line.reference or '-' }}</td>
-                                <td class="amount-cell positive">${{ line.amount | abs | number(2) }}</td>
+                                <td class="amount-cell negative">${{ line.amount | abs | number(2) }}</td>
                             </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot>
+                        <tr class="subtotal-row">
+                            <td colspan="4" class="subtotal-label">Subtotal</td>
+                            <td class="amount-cell negative subtotal-amount">${{ advancesTotal | number(2) }}</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </details>
@@ -221,19 +237,27 @@
                             <th>Page</th>
                             <th>Description</th>
                             <th>Date</th>
-                            <th>Amount</th>
+                            <th class="amount-header">Amount</th>
                         </tr>
                     </thead>
                     <tbody>
+                        {% set deductionsTotal = 0 %}
                         {% for line in batch.lineItems.creditDebit %}
+                            {% set deductionsTotal = deductionsTotal + (line.amount | abs) %}
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
                                 <td>{{ line.description }}</td>
                                 <td>{{ line.date | date('MMM D, YYYY') if line.date else '-' }}</td>
-                                <td class="amount-cell positive">${{ line.amount | abs | number(2) }}</td>
+                                <td class="amount-cell negative">${{ line.amount | abs | number(2) }}</td>
                             </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot>
+                        <tr class="subtotal-row">
+                            <td colspan="3" class="subtotal-label">Subtotal</td>
+                            <td class="amount-cell negative subtotal-amount">${{ deductionsTotal | number(2) }}</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </details>
@@ -252,18 +276,26 @@
                         <tr>
                             <th>Page</th>
                             <th>Description</th>
-                            <th>Amount</th>
+                            <th class="amount-header">Amount</th>
                         </tr>
                     </thead>
                     <tbody>
+                        {% set postingTicketTotal = 0 %}
                         {% for line in batch.lineItems.postingTicket %}
+                            {% set postingTicketTotal = postingTicketTotal + (line.amount | abs) %}
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
                                 <td>{{ line.description }}</td>
-                                <td class="amount-cell positive">${{ line.amount | abs | number(2) }}</td>
+                                <td class="amount-cell negative">${{ line.amount | abs | number(2) }}</td>
                             </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot>
+                        <tr class="subtotal-row">
+                            <td colspan="2" class="subtotal-label">Subtotal</td>
+                            <td class="amount-cell negative subtotal-amount">${{ postingTicketTotal | number(2) }}</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </details>
@@ -369,7 +401,7 @@
                 
                 <div class="trip-total">
                     <strong>Net Balance:</strong>
-                    <span class="trip-net-balance">${{ trip.netBalance | number(2) }}</span>
+                    <span class="trip-net-balance positive">${{ trip.netBalance | number(2) }}</span>
                 </div>
             </div>
         {% endfor %}

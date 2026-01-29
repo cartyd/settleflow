@@ -422,6 +422,28 @@ a:focus {
   color: #388e3c;
 }
 
+.amount-header {
+  text-align: right !important;
+}
+
+/* Subtotal row styles */
+.subtotal-row {
+  font-weight: 700;
+  background-color: #f8f9fa;
+  border-top: 2px solid #dee2e6;
+}
+
+.subtotal-label {
+  text-align: right;
+  padding-right: 20px;
+  font-weight: 700;
+}
+
+.subtotal-amount {
+  font-size: 16px;
+  font-weight: 700;
+}
+
 /* Trip Details */
 .trip-details {
   margin-bottom: 40px;
@@ -526,9 +548,12 @@ a:focus {
 
 .trip-net-balance {
   font-weight: 700;
-  color: #d32f2f;
   font-size: 18px;
   font-family: 'Courier New', monospace;
+}
+
+.trip-net-balance.positive {
+  color: #388e3c;
 }
 
 /* Page Actions */
