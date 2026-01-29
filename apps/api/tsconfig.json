@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
+    "types": ["node"],
     "paths": {
       "@settleflow/shared-types": ["../../packages/shared-types/src"],
       "@settleflow/shared-validation": ["../../packages/shared-validation/src"],
