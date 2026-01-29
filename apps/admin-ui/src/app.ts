@@ -1,10 +1,14 @@
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 import fastifyStatic from '@fastify/static';
 import fastifyView from '@fastify/view';
 import { AppConfig } from '@settleflow/shared-config';
 import Fastify, { FastifyInstance } from 'fastify';
 import * as nunjucks from 'nunjucks';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 import { batchRoutes } from './routes/batches';
 
