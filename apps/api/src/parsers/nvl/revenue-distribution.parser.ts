@@ -1,10 +1,10 @@
 /**
  * Regex-based parser for REVENUE_DISTRIBUTION document type
- * 
+ *
  * These pages contain detailed trip information with driver assignments,
  * origin/destination, service breakdowns, and net earnings calculations.
  * Enhanced with flexible patterns to handle multiple OCR providers (Ollama, Gemini)
- * 
+ *
  * Example structure (Pages 12-13):
  * - Driver name: BIDETTI, DONNY
  * - Trip number: 1854
@@ -15,8 +15,27 @@
  */
 
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
-import { STATE_CODE_CAPTURE, STATE_CODE_LINE_RE, CITY_LINE_RE, ORIGIN_LOOKAHEAD_LINES, DEST_LOOKAHEAD_LINES, DEST_STATE_LOOKAHEAD_AFTER_CITY, BOL_SECTION_SPAN, NET_BALANCE_SECTION_SPAN, ORIGIN_SECTION_SCAN_CHARS, DESTINATION_FALLBACK_LOOKAHEAD, DEFAULT_DECADE_BASE, CENTURY_BASE, PREFERRED_YEAR_MIN, PREFERRED_YEAR_MAX } from '../constants.js';
-import { isValidDate as validateDate, parseCompactDate, parseSlashDate } from '../utils/date-parser.js';
+import {
+  STATE_CODE_CAPTURE,
+  STATE_CODE_LINE_RE,
+  CITY_LINE_RE,
+  ORIGIN_LOOKAHEAD_LINES,
+  DEST_LOOKAHEAD_LINES,
+  DEST_STATE_LOOKAHEAD_AFTER_CITY,
+  BOL_SECTION_SPAN,
+  NET_BALANCE_SECTION_SPAN,
+  ORIGIN_SECTION_SCAN_CHARS,
+  DESTINATION_FALLBACK_LOOKAHEAD,
+  DEFAULT_DECADE_BASE,
+  CENTURY_BASE,
+  PREFERRED_YEAR_MIN,
+  PREFERRED_YEAR_MAX,
+} from '../constants.js';
+import {
+  isValidDate as validateDate,
+  parseCompactDate,
+  parseSlashDate,
+} from '../utils/date-parser.js';
 import { parseDriverName as parseDriverNameUtil } from '../utils/name-parser.js';
 import { parseCurrency } from '../utils/string-utils.js';
 
@@ -54,8 +73,14 @@ export interface RevenueDistributionParseResult {
 
 // Precompiled regex patterns for location parsing (supports diacritics and punctuation)
 const CITY_STATE_RE = new RegExp(`^([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${STATE_CODE_CAPTURE})$`, 'i');
-const CITY_STATE_WITH_DATE_RE = new RegExp(`^([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+\\d`, 'i');
-const CITY_STATE_PAIR_RE = new RegExp(`^([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${STATE_CODE_CAPTURE})$`, 'i');
+const CITY_STATE_WITH_DATE_RE = new RegExp(
+  `^([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+\\d`,
+  'i'
+);
+const CITY_STATE_PAIR_RE = new RegExp(
+  `^([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${STATE_CODE_CAPTURE})\\s+([A-ZÀ-ÿ'\\-\\s]+?)\\s+(${STATE_CODE_CAPTURE})$`,
+  'i'
+);
 
 // Header keywords to skip when looking for city names
 const NON_CITY_KEYWORDS = /^(ZIP|INTER|REFERENCE|DESTINATION|WEIGHT|MILES|SIT|PAY|SHIPPER|NAME)/i;
@@ -64,10 +89,12 @@ const NON_CITY_KEYWORDS = /^(ZIP|INTER|REFERENCE|DESTINATION|WEIGHT|MILES|SIT|PA
 const NON_DESTINATION_KEYWORDS = /^(ZIP|WEIGHT|MILES|SIT|PAY|INTER)/i;
 
 // Section header keywords that aren't shipper names
-const NON_SHIPPER_NAME_KEYWORDS = /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|DESTINATION|ORIGIN|INTER|REFERENCE|ZIP|WEIGHT|MILES)$/i;
+const NON_SHIPPER_NAME_KEYWORDS =
+  /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|DESTINATION|ORIGIN|INTER|REFERENCE|ZIP|WEIGHT|MILES)$/i;
 
 // Common non-name words after B/L numbers
-const NON_SHIPPER_NAME_KEYWORDS_SHORT = /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|SHIPPER|NAME)$/i;
+const NON_SHIPPER_NAME_KEYWORDS_SHORT =
+  /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|SHIPPER|NAME)$/i;
 
 /**
  * Parse driver name into first and last name
@@ -78,14 +105,16 @@ function parseDriverName(fullName: string): { firstName?: string; lastName?: str
   return parseDriverNameUtil(fullName);
 }
 
-
 /**
  * Parse date in various formats to ISO string
  * Handles: MM DD Y (11 19 5), MM/DD/YY, MMDDYY
  * Validates date components before returning
  * Year is interpreted based on decadeBase (deterministic) or current decade (fallback)
  */
-function parseDate(dateStr: string | undefined, opts?: { decadeBase?: number }): string | undefined {
+function parseDate(
+  dateStr: string | undefined,
+  opts?: { decadeBase?: number }
+): string | undefined {
   if (!dateStr) return undefined;
 
   const cleanStr = dateStr.trim();
@@ -96,11 +125,11 @@ function parseDate(dateStr: string | undefined, opts?: { decadeBase?: number }):
     const [, month, day, year] = spacedMatch;
     const monthNum = parseInt(month);
     const dayNum = parseInt(day);
-    
+
     if (!validateDate(monthNum, dayNum)) {
       return undefined; // Invalid date components
     }
-    
+
     // Compute full year deterministically from provided decadeBase (e.g., 2020 + 5 = 2025)
     const decadeBase = opts?.decadeBase ?? DEFAULT_DECADE_BASE;
     const fullYearNum = decadeBase + parseInt(year, 10);
@@ -140,7 +169,7 @@ function detectDecadeBaseFromText(text: string): number | undefined {
   }
   if (yys.length === 0) return undefined;
   // Prefer years in 2000-2029 to avoid drifting into 2030s anchors
-  const preferred = yys.filter(yy => yy >= PREFERRED_YEAR_MIN && yy <= PREFERRED_YEAR_MAX);
+  const preferred = yys.filter((yy) => yy >= PREFERRED_YEAR_MIN && yy <= PREFERRED_YEAR_MAX);
   const pick = (arr: number[]) => {
     // Choose the mode (most frequent); fall back to min
     const counts = new Map<number, number>();
@@ -149,7 +178,8 @@ function detectDecadeBaseFromText(text: string): number | undefined {
     let bestCount = -1;
     for (const [v, c] of counts) {
       if (c > bestCount || (c === bestCount && (best === undefined || v < best))) {
-        best = v; bestCount = c;
+        best = v;
+        bestCount = c;
       }
     }
     return best ?? Math.min(...arr);
@@ -184,36 +214,41 @@ function detectDecadeBaseAroundOrigin(text: string): number | undefined {
 function extractServicePerformedBy(text: string): { agent?: string; driver?: string } {
   // Format 1: "AGENT / LASTNAME,\nFIRSTNAME" (driver name split across lines after slash)
   // Example: "CICEROS' MOVING & ST/ BIDETTI,\nMOVING\nDONNY" (skip intermediate lines)
-  let match = text.match(/FOR\s+SERVICE\s+PERFORMED\s+BY\s*\n\s*([^/]+)\/\s*([A-Z]+),\s*\n(?:[^\n]*\n)*?\s*([A-Z]+)(?=\s*\n[&S]|\s*\n\s*SHIPPER|\s*\n\s*BILL)/i);
+  let match = text.match(
+    /FOR\s+SERVICE\s+PERFORMED\s+BY\s*\n\s*([^/]+)\/\s*([A-Z]+),\s*\n(?:[^\n]*\n)*?\s*([A-Z]+)(?=\s*\n[&S]|\s*\n\s*SHIPPER|\s*\n\s*BILL)/i
+  );
   if (match) {
     // Make sure the captured name is a first name, not a word like "MOVING"
     const lastName = match[2].trim();
     const potentialFirstName = match[3].trim();
-    
+
     // Filter out common non-name words
     if (!potentialFirstName.match(/^(MOVING|STORAGE|CARE|SERVICE|VAN|LINES)$/i)) {
       return {
         agent: match[1].trim(),
-        driver: `${lastName}, ${potentialFirstName}`
+        driver: `${lastName}, ${potentialFirstName}`,
       };
     }
   }
-  
+
   // Format 2: "AGENT / DRIVER" (complete driver name on one line)
   // Example: "CICEROS' MOVING & ST/ BIDETTI, DONNY"
   match = text.match(/FOR\s+SERVICE\s+PERFORMED\s+BY\s*\n\s*([^/]+)\/\s*([^\n]+)/i);
   if (match) {
     const agent = match[1].trim();
     const driverPart = match[2].trim();
-    
+
     // Check if driver looks complete (has comma for last,first format)
     if (driverPart.includes(',')) {
       return { agent, driver: driverPart };
     }
-    
+
     // Driver might be incomplete, check next line
     const multiLineCheck = text.match(
-      new RegExp(`FOR\\s+SERVICE\\s+PERFORMED\\s+BY\\s*\\n\\s*[^/]+\\/\\s*${driverPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\n\\s*([A-Z][^\\n]+)`, 'i')
+      new RegExp(
+        `FOR\\s+SERVICE\\s+PERFORMED\\s+BY\\s*\\n\\s*[^/]+\\/\\s*${driverPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\n\\s*([A-Z][^\\n]+)`,
+        'i'
+      )
     );
     if (multiLineCheck && multiLineCheck[1]) {
       const nextLine = multiLineCheck[1].trim();
@@ -221,10 +256,10 @@ function extractServicePerformedBy(text: string): { agent?: string; driver?: str
         return { agent, driver: nextLine };
       }
     }
-    
+
     return { agent, driver: driverPart };
   }
-  
+
   return {};
 }
 
@@ -253,19 +288,19 @@ function extractTripNumber(text: string): string | undefined {
   if (match) {
     return match[1];
   }
-  
+
   // Try "ACCOUNT NUMBER TRIP NUMBER\n3101 416" format
   match = text.match(/TRIP\s+NUMBER\s*\n\s*\d+\s+(\d+)/i);
   if (match) {
     return match[1];
   }
-  
+
   // Use flexible pattern for basic TRIP extraction
   match = text.match(OCR_PATTERNS.TRIP);
   if (match) {
     return match[1];
   }
-  
+
   return undefined;
 }
 
@@ -276,17 +311,21 @@ function extractTripNumber(text: string): string | undefined {
  */
 function extractBillOfLading(text: string): string | undefined {
   // Look for pattern like "356985/357175" or just "356985" after BILL OF LADING section
-  const match = text.match(new RegExp(`BILL\\s+OF\\s+LADING[\\s\\S]{0,${BOL_SECTION_SPAN}}?(\\d{6})\\s*\\/\\s*\\d{6}`, 'i'));
+  const match = text.match(
+    new RegExp(`BILL\\s+OF\\s+LADING[\\s\\S]{0,${BOL_SECTION_SPAN}}?(\\d{6})\\s*\\/\\s*\\d{6}`, 'i')
+  );
   if (match) {
     return match[1];
   }
-  
+
   // Fallback: try to find just a 6-digit number in the BOL section
-  const simpleMatch = text.match(new RegExp(`BILL\\s+OF\\s+LADING[\\s\\S]{0,${BOL_SECTION_SPAN}}?(\\d{6})`, 'i'));
+  const simpleMatch = text.match(
+    new RegExp(`BILL\\s+OF\\s+LADING[\\s\\S]{0,${BOL_SECTION_SPAN}}?(\\d{6})`, 'i')
+  );
   if (simpleMatch) {
     return simpleMatch[1];
   }
-  
+
   return undefined;
 }
 
@@ -306,19 +345,19 @@ function extractShipperName(text: string): string | undefined {
       return name;
     }
   }
-  
+
   // Format 2: "356985/357175 BELLI COD" or "356985/357175\nBELLI"
   match = text.match(/\d{6}\/\d{6}\s*\n?\s*([A-ZÀ-ÿ]+)\s+(?:COD|GOV|TRN|ORIGIN)/i);
   if (match) {
     return match[1].trim();
   }
-  
+
   // Format 3: "357236/\nHARRIS" or "357236/ HARRIS"
   match = text.match(/\d{6}\/\s*\n?\s*([A-ZÀ-ÿ]+)\s+(?:COD|GOV|TRN|ORIGIN)/i);
   if (match) {
     return match[1].trim();
   }
-  
+
   // Format 4: After B/L number (no slash) and before ORIGIN
   // Pattern: "356833\nTAYLOR\nORIGIN"
   match = text.match(/\d{6}\s*\n\s*([A-ZÀ-ÿ\s'-]+?)\s*\n\s*ORIGIN/i);
@@ -329,7 +368,7 @@ function extractShipperName(text: string): string | undefined {
       return name;
     }
   }
-  
+
   return undefined;
 }
 
@@ -344,19 +383,19 @@ function extractEntryDate(text: string, opts?: { decadeBase?: number }): string 
   if (match) {
     return parseDate(match[1].trim(), opts);
   }
-  
+
   // Format 2: Original format "NVL ENTRY\n...\n123456" (6-digit date)
   match = text.match(/NVL\s+ENTRY\s*\n[^\n]*\n(\d{6})/i);
   if (match) {
     return parseDate(match[1], opts);
   }
-  
+
   // Format 3: "NVL ENTRY\nDATE\n12 01 5" (without type)
   match = text.match(/NVL\s+ENTRY\s*\n\s*DATE\s*\n\s*([\d\s]+)/i);
   if (match) {
     return parseDate(match[1].trim(), opts);
   }
-  
+
   return undefined;
 }
 
@@ -370,22 +409,26 @@ function extractEntryDate(text: string, opts?: { decadeBase?: number }): string 
 function extractOrigin(text: string): string | undefined {
   // Split into lines and find the origin line
   const lines = text.split('\n');
-  const originIdx = lines.findIndex(l => l.trim().startsWith('ORIGIN'));
-  
+  const originIdx = lines.findIndex((l) => l.trim().startsWith('ORIGIN'));
+
   if (originIdx >= 0) {
     let city: string | undefined;
     let state: string | undefined;
-    
+
     // Look ahead for origin data (state might come after ZIP)
-    for (let i = originIdx + 1; i < Math.min(originIdx + ORIGIN_LOOKAHEAD_LINES, lines.length); i++) {
+    for (
+      let i = originIdx + 1;
+      i < Math.min(originIdx + ORIGIN_LOOKAHEAD_LINES, lines.length);
+      i++
+    ) {
       const line = lines[i].trim();
-      
+
       // Skip empty lines
       if (!line) continue;
-      
+
       // Stop if we hit destination or shipper sections
       if (line.match(/^(DESTINATION|SHIPPER)/i)) break;
-      
+
       // Check if this is a state code (comes after ZIP usually)
       if (!state && STATE_CODE_LINE_RE.test(line)) {
         state = line;
@@ -394,7 +437,7 @@ function extractOrigin(text: string): string | undefined {
         }
         continue;
       }
-      
+
       // Format: "CITY ST" on same line (prefer this before treating as city-only)
       const cityState = line.match(CITY_STATE_RE);
       if (cityState) {
@@ -409,20 +452,20 @@ function extractOrigin(text: string): string | undefined {
         }
         continue;
       }
-      
+
       // Format: Both origin and destination on same line
       const sameLineWithDate = line.match(CITY_STATE_WITH_DATE_RE);
       if (sameLineWithDate) {
         return `${sameLineWithDate[1].trim()}, ${sameLineWithDate[2]}`;
       }
-      
+
       const sameLine = line.match(CITY_STATE_PAIR_RE);
       if (sameLine) {
         return `${sameLine[1].trim()}, ${sameLine[2]}`;
       }
     }
   }
-  
+
   return undefined;
 }
 
@@ -436,25 +479,25 @@ function extractOrigin(text: string): string | undefined {
 function extractDestination(text: string): string | undefined {
   // Split into lines
   const lines = text.split('\n');
-  
+
   // Look for DESTINATION header specifically
-  const destIdx = lines.findIndex(l => l.trim().startsWith('DESTINATION'));
-  
+  const destIdx = lines.findIndex((l) => l.trim().startsWith('DESTINATION'));
+
   if (destIdx >= 0) {
     // Look in the next several lines after DESTINATION header
     for (let i = destIdx + 1; i < Math.min(destIdx + DEST_LOOKAHEAD_LINES, lines.length); i++) {
       const line = lines[i].trim();
       if (!line || line.length < 2) continue;
-      
+
       // Skip non-city lines (ZIP, WEIGHT, etc.)
       if (NON_DESTINATION_KEYWORDS.test(line)) continue;
-      
+
       // Format 1: "PRESCOTT V AZ" (city with abbreviated word and state on same line)
       const cityStateMatch = line.match(CITY_STATE_RE);
       if (cityStateMatch) {
         return `${cityStateMatch[1].trim()}, ${cityStateMatch[2]}`;
       }
-      
+
       // Format 2: City name alone - check if this looks like a city name
       if (CITY_LINE_RE.test(line)) {
         // Look for state in next several lines (may be after ZIP, WEIGHT, MILES)
@@ -468,20 +511,24 @@ function extractDestination(text: string): string | undefined {
       }
     }
   }
-  
+
   // Fallback: Look in ORIGIN section for combined format
-  const originIdx = lines.findIndex(l => l.trim().startsWith('ORIGIN'));
+  const originIdx = lines.findIndex((l) => l.trim().startsWith('ORIGIN'));
   if (originIdx >= 0) {
-    for (let i = originIdx + 1; i < Math.min(originIdx + DESTINATION_FALLBACK_LOOKAHEAD, lines.length); i++) {
+    for (
+      let i = originIdx + 1;
+      i < Math.min(originIdx + DESTINATION_FALLBACK_LOOKAHEAD, lines.length);
+      i++
+    ) {
       const line = lines[i].trim();
       if (!line) continue;
-      
+
       // Check if origin and destination are on the same line with date
       const sameLineWithDate = line.match(CITY_STATE_WITH_DATE_RE);
       if (sameLineWithDate) {
         return `${sameLineWithDate[3].trim()}, ${sameLineWithDate[4]}`;
       }
-      
+
       // Check if origin and destination are on the same line without date
       const sameLine = line.match(CITY_STATE_PAIR_RE);
       if (sameLine) {
@@ -489,7 +536,7 @@ function extractDestination(text: string): string | undefined {
       }
     }
   }
-  
+
   return undefined;
 }
 
@@ -508,12 +555,12 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     const month = match[1];
     const day = match[2];
     const year = match[3];
-    
+
     if (validateDate(parseInt(month), parseInt(day))) {
       return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
     }
   }
-  
+
   // Strategy 2: Handle OCR error where day+year are merged
   // Pattern: "MM XY P##" where XY is a 2-digit number that should be "X Y"
   // Example: "12 15 P62" should be "12 1 5 P62" (day=1, year=5)
@@ -522,11 +569,11 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
   if (match) {
     const month = match[1];
     const merged = match[2]; // e.g., "15" should be "1" and "5"
-    
+
     // Split the 2-digit merged value: first digit = day, second digit = year
     const day = merged[0];
     const year = merged[1];
-    
+
     // Validate: month 1-12, day 1-9 (single digit only for merged case)
     const monthNum = parseInt(month);
     const dayNum = parseInt(day);
@@ -534,31 +581,42 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
       return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
     }
   }
-  
+
   // Format 3: "MM.DD Y" format (dot separator)
-  const dotMatch = text.match(/ORIGIN[^\n]*\n[\s\S]*?([A-Z]{2})\s*\n?(\d{1,2})\.(\d{1,2})\s+(\d{1})/i);
+  const dotMatch = text.match(
+    /ORIGIN[^\n]*\n[\s\S]*?([A-Z]{2})\s*\n?(\d{1,2})\.(\d{1,2})\s+(\d{1})/i
+  );
   if (dotMatch) {
-    return parseDate(`${dotMatch[2]} ${dotMatch[3]} ${dotMatch[4]}`, { decadeBase: localDecadeBase });
+    return parseDate(`${dotMatch[2]} ${dotMatch[3]} ${dotMatch[4]}`, {
+      decadeBase: localDecadeBase,
+    });
   }
-  
+
   // Format 4: "MM DD Y" near ORIGIN section with route on same line
   const originIdx = text.search(/ORIGIN/i);
   if (originIdx >= 0) {
     const endIdx = Math.min(text.length, originIdx + ORIGIN_SECTION_SCAN_CHARS);
     const segment = text.slice(originIdx, endIdx);
     // For route line, accept any two-letter state tokens (OCR may produce placeholders in tests)
-    const routeMatch = segment.match(new RegExp(`([A-ZÀ-ÿ'\\-\\s]+?)\\s+([A-Z]{2})\\s+([A-ZÀ-ÿ'\\-\\s]+?)\\s+([A-Z]{2})\\s+(\\d{1,2})\\s+(\\d{1,2})\\s+(\\d{1})`, 'i'));
+    const routeMatch = segment.match(
+      new RegExp(
+        `([A-ZÀ-ÿ'\\-\\s]+?)\\s+([A-Z]{2})\\s+([A-ZÀ-ÿ'\\-\\s]+?)\\s+([A-Z]{2})\\s+(\\d{1,2})\\s+(\\d{1,2})\\s+(\\d{1})`,
+        'i'
+      )
+    );
     if (routeMatch) {
-      return parseDate(`${routeMatch[5]} ${routeMatch[6]} ${routeMatch[7]}`, { decadeBase: localDecadeBase });
+      return parseDate(`${routeMatch[5]} ${routeMatch[6]} ${routeMatch[7]}`, {
+        decadeBase: localDecadeBase,
+      });
     }
   }
-  
+
   // Format 5: DELIVERY DATE header format
   const headerMatch = text.match(/DELIVERY\s*\n?DATE\s*\n(\d+\s+\d+\s+\d+)/i);
   if (headerMatch) {
     return parseDate(headerMatch[1], { decadeBase: localDecadeBase });
   }
-  
+
   return undefined;
 }
 
@@ -620,11 +678,13 @@ function extractServiceItems(text: string): Array<{
   if (!serviceSection) return items;
 
   const lines = serviceSection[1].split('\n');
-  
+
   for (const line of lines) {
     // Flexible pattern: DESCRIPTION  AMOUNT  [PERCENT]  [EARNINGS]
     // Allows negatives and optional percentage/earnings
-    const match = line.match(/^([A-ZÀ-ÿ&'\-\s]+?)\s+(-?\d[\d,]*\.\d{2})(?:\s+(\d+(?:\.\d+)?))?(?:\s+(-?\d[\d,]*\.\d{2}))?/);
+    const match = line.match(
+      /^([A-ZÀ-ÿ&'\-\s]+?)\s+(-?\d[\d,]*\.\d{2})(?:\s+(\d+(?:\.\d+)?))?(?:\s+(-?\d[\d,]*\.\d{2}))?/
+    );
     if (match) {
       const description = match[1].trim();
       const amount = parseCurrency(match[2]);
@@ -654,32 +714,41 @@ function extractNetBalance(text: string): number | undefined {
   if (match) {
     return parseCurrency(match[1]);
   }
-  
+
   // Try single-line format with DUE: "NET BALANCE DUE NVL 3890.63"
-  match = text.match(/NET\s+BALANCE\s+DUE\s+(?:N[.\/]?V[.\/]?L[.\/]?|ACCOUNT)\s+(-?\d+(?:,\d+)*\.\d{2})/i);
+  match = text.match(
+    /NET\s+BALANCE\s+DUE\s+(?:N[.\/]?V[.\/]?L[.\/]?|ACCOUNT)\s+(-?\d+(?:,\d+)*\.\d{2})/i
+  );
   if (match) {
     return parseCurrency(match[1]);
   }
-  
+
   // Try format where amount appears after "NET BALANCE DUE NVL" with content in between
   // Example: "NET BALANCE DUE NVL\n*RATES...\n314.83\nDUE ACCOUNT"
-  match = text.match(new RegExp(`NET\\s+BALANCE[\\s\\S]{0,${NET_BALANCE_SECTION_SPAN}}?^\\s*(-?\\d+(?:,\\d+)*\\.\\d{2})\\s*$`, 'mi'));
+  match = text.match(
+    new RegExp(
+      `NET\\s+BALANCE[\\s\\S]{0,${NET_BALANCE_SECTION_SPAN}}?^\\s*(-?\\d+(?:,\\d+)*\\.\\d{2})\\s*$`,
+      'mi'
+    )
+  );
   if (match) {
     return parseCurrency(match[1]);
   }
-  
+
   // Try "NET BALANCE\nDUE NVL\n3,890.63" format (multi-line, direct)
-  match = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+(?:N\.?V\.?L\.?|ACCOUNT)\s*\n(-?\d+(?:,\d+)*\.\d{2})/i);
+  match = text.match(
+    /NET\s+BALANCE\s*\n\s*DUE\s+(?:N\.?V\.?L\.?|ACCOUNT)\s*\n(-?\d+(?:,\d+)*\.\d{2})/i
+  );
   if (match) {
     return parseCurrency(match[1]);
   }
-  
+
   // Try simple "NET BALANCE\n3,890.63" format
   match = text.match(/NET\s+BALANCE\s*\n(-?\d+(?:,\d+)*\.\d{2})/i);
   if (match) {
     return parseCurrency(match[1]);
   }
-  
+
   return undefined;
 }
 
@@ -702,17 +771,17 @@ export function parseRevenueDistribution(ocrText: string): RevenueDistributionPa
     const provider = detectOcrProvider(ocrText);
     const normalizedText = normalizeOcrText(ocrText, provider);
     const anchoredDecadeBase = detectDecadeBaseFromText(normalizedText) ?? DEFAULT_DECADE_BASE;
-    
+
     const servicePerformedBy = extractServicePerformedBy(normalizedText);
     const driverName = servicePerformedBy.driver;
     const { firstName, lastName } = driverName ? parseDriverName(driverName) : {};
-    
+
     const accountNumber = extractAccountNumber(normalizedText);
     const tripNumber = extractTripNumber(normalizedText);
-    
+
     // Extract B/L
     const billOfLading = extractBillOfLading(normalizedText);
-    
+
     const shipperName = extractShipperName(normalizedText);
     const entryDate = extractEntryDate(normalizedText, { decadeBase: anchoredDecadeBase });
     const origin = extractOrigin(normalizedText);

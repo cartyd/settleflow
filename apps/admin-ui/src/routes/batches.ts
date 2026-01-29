@@ -17,11 +17,11 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/', async (request, reply) => {
     try {
       const batchesData = await apiClient.getBatches();
-      const batchesWithUrls = (batchesData.batches || []).map(batch => ({
+      const batchesWithUrls = (batchesData.batches || []).map((batch) => ({
         ...batch,
         detailUrl: batchesViewConfig.detailViewPath(batch.id),
       }));
-      
+
       return reply.view('batches/index.njk', {
         batches: batchesWithUrls,
         config: batchesViewConfig,
@@ -38,16 +38,16 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/:id/pdf', async (request, reply) => {
     const { id } = request.params as { id: string };
     const query = request.query as { page?: string };
-    
+
     try {
       // Build URL with query parameters
       const url = new URL(`http://localhost:3000/batches/${id}/pdf`);
       if (query.page) {
         url.searchParams.set('page', query.page);
       }
-      
+
       const response = await fetch(url.toString());
-      
+
       if (!response.ok) {
         const error = await response.json();
         return reply.status(response.status).send(error);
@@ -56,7 +56,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
       // Forward the PDF stream
       const contentType = response.headers.get('content-type');
       const contentDisposition = response.headers.get('content-disposition');
-      
+
       if (contentType) {
         reply.type(contentType);
       }
@@ -79,10 +79,8 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
     const { id } = request.params as { id: string };
     try {
       const batchDetails = await apiClient.getBatchDetails(id);
-      const pageTitle = batchDetailConfig.pageTitle(
-        batchDetails.nvlPaymentRef || 'Unknown'
-      );
-      
+      const pageTitle = batchDetailConfig.pageTitle(batchDetails.nvlPaymentRef || 'Unknown');
+
       return reply.view('batches/detail.njk', {
         batch: batchDetails,
         config: batchDetailConfig,
@@ -127,9 +125,12 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/import-files/:importFileId/reset', async (request, reply) => {
     const { importFileId } = request.params as { importFileId: string };
     try {
-      const response = await fetch(`http://localhost:3000/batches/import-files/${importFileId}/reset`, {
-        method: 'POST',
-      });
+      const response = await fetch(
+        `http://localhost:3000/batches/import-files/${importFileId}/reset`,
+        {
+          method: 'POST',
+        }
+      );
       const result = await response.json();
       return reply.send(result);
     } catch (error) {
@@ -144,7 +145,9 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/import-files/:importFileId/lines', async (request, reply) => {
     const { importFileId } = request.params as { importFileId: string };
     try {
-      const response = await fetch(`http://localhost:3000/batches/import-files/${importFileId}/lines`);
+      const response = await fetch(
+        `http://localhost:3000/batches/import-files/${importFileId}/lines`
+      );
       const result = await response.json();
       return reply.send(result);
     } catch (error) {

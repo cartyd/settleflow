@@ -1,10 +1,10 @@
 /**
  * Parser for SETTLEMENT_DETAIL document type (e.g., Page 2 of NVL settlement PDF)
  * Enhanced with flexible patterns to handle multiple OCR providers (Ollama, Gemini)
- * 
+ *
  * Extracts transaction lines from the settlement detail table which has the format:
  * B/L | TRIP | REF # | DATE | TRANSACTION/DESCRIPTION | AMOUNT | COMMENTS
- * 
+ *
  * Example lines:
  * 1855 590493 12/02/25 CM COMDATA 518.00
  * 12/10/25 MC MOTOR VEH REP 5.25
@@ -12,7 +12,13 @@
  */
 
 import { OCR_PATTERNS, detectOcrProvider, OcrProvider } from '../../utils/ocr-normalizer.js';
-import { WEEK_END_OFFSET_DAYS, WEEK_DURATION_DAYS, MIN_LINE_LENGTH, MAX_TRIP_NUMBER_LENGTH, AMOUNT_TOLERANCE } from '../constants.js';
+import {
+  WEEK_END_OFFSET_DAYS,
+  WEEK_DURATION_DAYS,
+  MIN_LINE_LENGTH,
+  MAX_TRIP_NUMBER_LENGTH,
+  AMOUNT_TOLERANCE,
+} from '../constants.js';
 import { parseSlashDate, addDaysUtc } from '../utils/date-parser.js';
 import { parseSignedCurrency } from '../utils/string-utils.js';
 
@@ -68,8 +74,10 @@ const HEADER_CHECK_TOTAL_RE = /CHECK\s+TOTAL/;
 const HEADER_PAGE_RE = /\bPAGE\b/;
 
 // Transaction line format patterns
-const FULL_FORMAT_RE = /^(\d+)\s+(\d+)\s+(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/i;
-const ONE_NUMBER_FORMAT_RE = /^(\d+)\s+(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/i;
+const FULL_FORMAT_RE =
+  /^(\d+)\s+(\d+)\s+(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/i;
+const ONE_NUMBER_FORMAT_RE =
+  /^(\d+)\s+(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/i;
 const MINIMAL_FORMAT_RE = /^(\d{2}\/\d{2}\/\d{2})\s+([A-Z]{2})\s+(.+?)\s+([\d,]+\.\d{2}-?)$/i;
 
 // Header extraction patterns
@@ -105,15 +113,15 @@ function normalizeForSettlement(text: string, provider?: OcrProvider): string {
  * Maps NVL transaction codes to line types
  */
 const TRANSACTION_CODE_MAP: Record<string, 'REVENUE' | 'ADVANCE' | 'DEDUCTION' | 'OTHER'> = {
-  RD: 'REVENUE',      // Revenue Distribution
-  CM: 'ADVANCE',      // Comdata (cash advance)
-  CA: 'ADVANCE',      // Cash Advance
-  MC: 'DEDUCTION',    // Miscellaneous Charge
-  PT: 'DEDUCTION',    // Posting Ticket
-  CL: 'DEDUCTION',    // Claims
-  CD: 'DEDUCTION',    // Cash Disbursement
-  UA: 'DEDUCTION',    // Unapplied Deduction
-  POA: 'OTHER',       // Payment on Account
+  RD: 'REVENUE', // Revenue Distribution
+  CM: 'ADVANCE', // Comdata (cash advance)
+  CA: 'ADVANCE', // Cash Advance
+  MC: 'DEDUCTION', // Miscellaneous Charge
+  PT: 'DEDUCTION', // Posting Ticket
+  CL: 'DEDUCTION', // Claims
+  CD: 'DEDUCTION', // Cash Disbursement
+  UA: 'DEDUCTION', // Unapplied Deduction
+  POA: 'OTHER', // Payment on Account
 };
 
 /**
@@ -127,13 +135,15 @@ function getLineType(transactionCode: string): 'REVENUE' | 'ADVANCE' | 'DEDUCTIO
  * Check if a line is a header or invalid (should be skipped)
  */
 function isHeaderOrInvalidLine(trimmed: string): boolean {
-  return !trimmed ||
+  return (
+    !trimmed ||
     HEADER_BL_RE.test(trimmed) ||
     HEADER_TRIP_RE.test(trimmed) ||
     HEADER_TRANSACTION_RE.test(trimmed) ||
     HEADER_CHECK_TOTAL_RE.test(trimmed) ||
     HEADER_PAGE_RE.test(trimmed) ||
-    trimmed.length < MIN_LINE_LENGTH;
+    trimmed.length < MIN_LINE_LENGTH
+  );
 }
 
 /**
@@ -142,7 +152,7 @@ function isHeaderOrInvalidLine(trimmed: string): boolean {
 function tryFullFormat(trimmed: string): ParsedSettlementLine | null {
   const m = trimmed.match(FULL_FORMAT_RE);
   if (!m) return null;
-  
+
   const [, n1, n2, date, code, description, amountStr] = m;
   const amount = parseSignedCurrency(amountStr);
   return {
@@ -164,7 +174,7 @@ function tryFullFormat(trimmed: string): ParsedSettlementLine | null {
 function tryOneNumberFormat(trimmed: string): ParsedSettlementLine | null {
   const m = trimmed.match(ONE_NUMBER_FORMAT_RE);
   if (!m) return null;
-  
+
   const [, n1, date, code, description, amountStr] = m;
   const amount = parseSignedCurrency(amountStr);
   const isTrip = n1.length <= MAX_TRIP_NUMBER_LENGTH;
@@ -186,7 +196,7 @@ function tryOneNumberFormat(trimmed: string): ParsedSettlementLine | null {
 function tryMinimalFormat(trimmed: string): ParsedSettlementLine | null {
   const m = trimmed.match(MINIMAL_FORMAT_RE);
   if (!m) return null;
-  
+
   const [, date, code, description, amountStr] = m;
   const amount = parseSignedCurrency(amountStr);
   return {
@@ -201,17 +211,17 @@ function tryMinimalFormat(trimmed: string): ParsedSettlementLine | null {
 
 /**
  * Parse a single transaction line from the settlement detail table
- * 
+ *
  * Line formats:
  * 1. Full: B/L TRIP REF# DATE CODE DESCRIPTION AMOUNT
  *    Example: 1855 590493 12/02/25 CM COMDATA 518.00
- * 
+ *
  * 2. No B/L: TRIP REF# DATE CODE DESCRIPTION AMOUNT
  *    Example: 256483 12/12/25 PT OTHER CHARGES 10.00
- * 
+ *
  * 3. Minimal: DATE CODE DESCRIPTION AMOUNT
  *    Example: 12/10/25 MC MOTOR VEH REP 5.25
- * 
+ *
  * 4. With B/L on separate line: B/L TRIP DATE CODE DESCRIPTION AMOUNT
  *    Example: 356985 1854 12/12/25 RD REVENUE DISTR 3,890.63-
  */
@@ -224,9 +234,7 @@ function parseTransactionLine(line: string): ParsedSettlementLine | null {
   }
 
   // Try parsing strategies from most specific to least
-  return tryFullFormat(trimmed)
-    || tryOneNumberFormat(trimmed)
-    || tryMinimalFormat(trimmed);
+  return tryFullFormat(trimmed) || tryOneNumberFormat(trimmed) || tryMinimalFormat(trimmed);
 }
 
 /**
@@ -292,27 +300,28 @@ export function extractBatchMetadata(ocrText: string): SettlementBatchMetadata |
   const provider = detectOcrProvider(ocrText) ?? 'gemini';
   const normalizedText = normalizeForSettlement(ocrText, provider);
   const headerInfo = extractHeaderInfo(normalizedText);
-  
+
   // Generate a payment reference from settlement date if no check number
   let paymentRef = headerInfo.checkNumber;
   if (!paymentRef && headerInfo.settlementDate) {
     // Use settlement date as payment ref: 2025-12-03 -> 20251203
     paymentRef = headerInfo.settlementDate.replace(/-/g, '');
   }
-  
+
   // Need at least account number and a date
   if (!headerInfo.accountNumber || (!headerInfo.checkDate && !headerInfo.settlementDate)) {
     return null;
   }
-  
+
   const checkDate = headerInfo.checkDate || headerInfo.settlementDate!;
-  
+
   // Calculate week dates from check/settlement date using UTC-safe arithmetic
   const weekEndStr = addDaysUtc(checkDate, WEEK_END_OFFSET_DAYS);
   const weekStartStr = addDaysUtc(weekEndStr, WEEK_DURATION_DAYS);
-  
+
   return {
-    nvlPaymentRef: paymentRef || `${SETTLEMENT_DETAIL_REF_PREFIX}-${headerInfo.accountNumber}-${checkDate}`,
+    nvlPaymentRef:
+      paymentRef || `${SETTLEMENT_DETAIL_REF_PREFIX}-${headerInfo.accountNumber}-${checkDate}`,
     agencyCode: headerInfo.accountNumber,
     agencyName: headerInfo.accountName || DEFAULT_AGENCY_NAME,
     checkDate,
@@ -358,7 +367,7 @@ export function parseSettlementDetail(ocrText: string): SettlementDetailParseRes
     const calculatedTotal = lines.reduce((sum, line) => sum + line.amount, 0);
     const absoluteCalculated = Math.abs(calculatedTotal);
     const difference = Math.abs(absoluteCalculated - headerInfo.checkTotal);
-    
+
     // Allow for small floating point errors
     if (difference > AMOUNT_TOLERANCE) {
       errors.push(

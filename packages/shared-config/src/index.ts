@@ -6,10 +6,10 @@ import * as dotenv from 'dotenv';
 // Find the monorepo root by looking for package.json with workspaces
 function findMonorepoRoot(): string {
   let currentDir = process.cwd();
-  
+
   while (currentDir !== path.parse(currentDir).root) {
     const packageJsonPath = path.join(currentDir, 'package.json');
-    
+
     if (fs.existsSync(packageJsonPath)) {
       try {
         const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
@@ -21,10 +21,10 @@ function findMonorepoRoot(): string {
         // Continue searching if package.json is invalid
       }
     }
-    
+
     currentDir = path.dirname(currentDir);
   }
-  
+
   // Fallback to process.cwd() if no monorepo root found
   return process.cwd();
 }
@@ -164,7 +164,7 @@ export function loadConfig(): AppConfig {
     },
     ocr: {
       enabled: getEnvVar('OCR_ENABLED', 'true') === 'true',
-      provider: (getEnvVar('OCR_PROVIDER', 'ollama') as 'ollama' | 'gemini'),
+      provider: getEnvVar('OCR_PROVIDER', 'ollama') as 'ollama' | 'gemini',
       // Ollama config
       serverUrl: getEnvVar('OCR_SERVER_URL', 'http://10.147.17.205:11434/api/generate'),
       model: getEnvVar('OCR_MODEL', 'gemma3:27b'),

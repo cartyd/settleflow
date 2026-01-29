@@ -1,9 +1,9 @@
 /**
  * Regex-based parser for CREDIT_DEBIT document type
- * 
+ *
  * These are form-based documents showing individual charges or credits
  * Enhanced with flexible patterns to handle multiple OCR providers (Ollama, Gemini)
- * 
+ *
  * Example structure (Pages 6-10):
  * - Transaction type: SAFETY CHARGEBACKS, PROFILE SEO, ELD SRVC FEE
  * - Description: MOTOR VEH REP, PROFILE SEO, ELD SRVC FEE
@@ -15,7 +15,7 @@
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { NET_BALANCE_SECTION_SPAN, MIN_DESCRIPTION_LENGTH } from '../constants.js';
 import { parseDate } from '../utils/date-parser.js';
-import { removeLeadingZeros, parseCurrency, parseSignedCurrency, CURRENCY_AMOUNT_PATTERN } from '../utils/string-utils.js';
+import { removeLeadingZeros, CURRENCY_AMOUNT_PATTERN, parseSignedCurrency } from '../utils/string-utils.js';
 
 export interface CreditDebitLine {
   transactionType?: string;
@@ -39,7 +39,8 @@ export interface CreditDebitParseResult {
 // ===== PRECOMPILED REGEX PATTERNS (Performance Optimization) =====
 
 // Keywords to exclude from descriptions (headers, common words, etc.)
-const EXCLUDED_DESCRIPTION_KEYWORDS = /^(NVL|ENTRY|DATE|PROCESS|ACCOUNT|NUMBER|UNIT|AGENT|DRIVER|NAME|FOR|ANY|DISCREPANCIES|FOLLOWING|DEPARTMENTS|LEASE|CONVENTION|WATTS|PAYMENTS|PLEASE|CONTACT|THE|ACCOUNTING|DEPARTMENT|YELLOW|PAGES|AGENCY|BOND|TRAILER|EMERGENCY|FUNDING|SETTLEMENT|INQUIRIES|SAFETY|NET|BALANCE|DUE|DEBITS|CREDITS|N\.V\.L\.|#)$/i;
+const EXCLUDED_DESCRIPTION_KEYWORDS =
+  /^(NVL|ENTRY|DATE|PROCESS|ACCOUNT|NUMBER|UNIT|AGENT|DRIVER|NAME|FOR|ANY|DISCREPANCIES|FOLLOWING|DEPARTMENTS|LEASE|CONVENTION|WATTS|PAYMENTS|PLEASE|CONTACT|THE|ACCOUNTING|DEPARTMENT|YELLOW|PAGES|AGENCY|BOND|TRAILER|EMERGENCY|FUNDING|SETTLEMENT|INQUIRIES|SAFETY|NET|BALANCE|DUE|DEBITS|CREDITS|N\.V\.L\.|#)$/i;
 
 // Pattern for valid description text (all caps with spaces)
 const VALID_DESCRIPTION_PATTERN = /^[A-Z][A-Z\s]+$/;
@@ -50,8 +51,10 @@ const SENTENCE_FRAGMENT_RE = /(contact|please|or|and|for|the|to|of)$/i;
 
 // Extraction patterns
 const TRANSACTION_TYPE_RE = /TRANSACTION\s+TYPE[\s\t]*\n\s*([^\n\t]+)/i;
-const DESCRIPTION_SECTION_RE = /DESCRIPTION[\s\t]*\n([\s\S]*?)(?:AGENT\/DRIVER\s+NAME|NVL\s+ENTRY|FOR\s+ANY\s+DISCREPANCIES)/i;
-const TAB_SEPARATED_DESC_RE = /DESCRIPTION[\s\t]+DEBITS[\s\t]+CREDITS[\s\t]*\n([^\t\n]+)[\s\t]+\d+\.\d{2}/i;
+const DESCRIPTION_SECTION_RE =
+  /DESCRIPTION[\s\t]*\n([\s\S]*?)(?:AGENT\/DRIVER\s+NAME|NVL\s+ENTRY|FOR\s+ANY\s+DISCREPANCIES)/i;
+const TAB_SEPARATED_DESC_RE =
+  /DESCRIPTION[\s\t]+DEBITS[\s\t]+CREDITS[\s\t]*\n([^\t\n]+)[\s\t]+\d+\.\d{2}/i;
 const MINIMAL_DESC_RE = /DESCRIPTION[\s\t]*\n\s*([^\n]+)\s*\n\s*(?:DEBITS|CREDITS)/i;
 
 // Date extraction patterns
@@ -59,21 +62,6 @@ const ENTRY_DATE_RE = /N\.?V\.?L\.?\s+ENTRY[\s\t]*\n?[\s\t]*(\d{6})/i;
 const PROCESS_DATE_COMPACT_RE = /PROCESS\s+DATE[\s\t]*\n?[\s\t]*(\d{6})/i;
 const PROCESS_STANDALONE_RE = /PROCESS[\s\t]*\n?[\s\t]*(\d{6})/i;
 const PROCESS_DATE_SLASH_RE = /PROCESS\s+DATE[\s\t]*\n?[\s\t]*(\d{1,2}\/\d{1,2}\/\d{2})/i;
-
-// Amount extraction patterns
-const DEBIT_SECTION_RE = /DEBITS[\s\t]+CREDITS[\s\t]*\n([\s\S]*?)(?:NET\s+BALANCE|DUE|FOR\s+ANY|$)/i;
-const NEWLINE_FORMAT_RE = new RegExp(`DESCRIPTION[\\s\\t]*\\n[\\s\\t]*DEBITS[\\s\\t]*\\n[\\s\\t]*CREDITS[\\s\\t]*\\n[^\\n]+\\n(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i');
-const DEBIT_COLUMN_RE = new RegExp(`DEBITS[\\s\\t]+CREDITS[\\s\\t]*\\n[^\\n]*[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i');
-const DEBIT_TAB_RE = new RegExp(`DEBITS[\\s\\t]*\\n[^\\n\\t]+[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i');
-const DEBIT_SINGLE_RE = new RegExp(`DEBITS[\\s\\t]*\\n(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i');
-const CREDIT_FORMAT_RE = new RegExp(`CREDITS[\\s\\t]*\\n[^\\n]*[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i');
-const BALANCE_MULTI_RE = /NET\s+BALANCE\s*\n\s*DUE\s+[^\n]+\n\s*DUE\s+[^\n]+\n(-?\d+(?:,\d+)*\.\d{2}-?)/i;
-const BALANCE_SIMPLE_RE = /NET\s+BALANCE[\s\t]*\n?[\s\t]*(-?\d+(?:,\d+)*\.\d{2}-?)/i;
-
-// Reference extraction patterns
-const UNIT_NUMBER_RE = /UNIT\s*#[\s\t]*\n?[\s\t]*(\d+)/i;
-const PAYMENT_REF_RE = /PAYMENT[\s\t]+(\d+)[\s\t]+OF[\s\t]+(\d+)/i;
-const LONG_REF_RE = /(\d{10,})/;
 
 
 /**
@@ -93,19 +81,19 @@ function extractTransactionType(text: string): string | undefined {
  */
 function isValidDescription(line: string): boolean {
   const trimmed = line.trim();
-  
+
   // Skip empty lines
   if (!trimmed) return false;
-  
+
   // Skip if it's just numbers or dates
   if (NUMERIC_ONLY_RE.test(trimmed)) return false;
-  
+
   // Skip common header words and fragments
   if (EXCLUDED_DESCRIPTION_KEYWORDS.test(trimmed)) return false;
-  
+
   // Skip sentence fragments (lines that end with common prepositions or conjunctions)
   if (SENTENCE_FRAGMENT_RE.test(trimmed)) return false;
-  
+
   // Only include lines that look like actual item descriptions
   return trimmed.length >= MIN_DESCRIPTION_LENGTH && VALID_DESCRIPTION_PATTERN.test(trimmed);
 }
@@ -116,18 +104,18 @@ function isValidDescription(line: string): boolean {
 function tryDescriptionSection(text: string): string[] {
   const descriptions: string[] = [];
   const sectionMatch = text.match(DESCRIPTION_SECTION_RE);
-  
+
   if (sectionMatch) {
     const sectionText = sectionMatch[1].trim();
     const lines = sectionText.split('\n');
-    
+
     for (const line of lines) {
       if (isValidDescription(line)) {
         descriptions.push(line.trim());
       }
     }
   }
-  
+
   return descriptions;
 }
 
@@ -157,19 +145,19 @@ function extractDescriptions(text: string): string[] {
   // Try main section extraction
   const descriptions = tryDescriptionSection(text);
   if (descriptions.length > 0) return descriptions;
-  
+
   // Try tab-separated format
   const tabDesc = tryTabSeparatedDescription(text);
   if (tabDesc) return [tabDesc];
-  
+
   // Try minimal format
   const minimalDesc = tryMinimalDescription(text);
   if (minimalDesc) return [minimalDesc];
-  
+
   // Fallback: use transaction type if available
   const transType = extractTransactionType(text);
   if (transType) return [transType];
-  
+
   return [];
 }
 
@@ -228,14 +216,16 @@ function extractAccountNumber(text: string): string | undefined {
  */
 function extractAmountsAndTypes(text: string): Array<{ amount: number; isDebit: boolean }> {
   const results: Array<{ amount: number; isDebit: boolean }> = [];
-  
+
   // Find all amounts in DEBITS column after the DEBITS header
-  const debitSection = text.match(/DEBITS[\s\t]+CREDITS[\s\t]*\n([\s\S]*?)(?:NET\s+BALANCE|DUE|FOR\s+ANY|$)/i);
+  const debitSection = text.match(
+    /DEBITS[\s\t]+CREDITS[\s\t]*\n([\s\S]*?)(?:NET\s+BALANCE|DUE|FOR\s+ANY|$)/i
+  );
   if (debitSection) {
     const sectionText = debitSection[1];
     // Match all decimal numbers that look like amounts
     const amountMatches = sectionText.matchAll(new RegExp(`(${CURRENCY_AMOUNT_PATTERN}-?)`, 'g'));
-    
+
     for (const match of amountMatches) {
       const amount = parseSignedCurrency(match[1]);
       // Check if this might be a credit by looking at context
@@ -243,7 +233,7 @@ function extractAmountsAndTypes(text: string): Array<{ amount: number; isDebit: 
       results.push({ amount, isDebit: true });
     }
   }
-  
+
   // If no amounts found, try the old single-amount extraction
   if (results.length === 0) {
     const singleResult = extractSingleAmountAndType(text);
@@ -251,7 +241,7 @@ function extractAmountsAndTypes(text: string): Array<{ amount: number; isDebit: 
       results.push(singleResult);
     }
   }
-  
+
   return results;
 }
 
@@ -259,7 +249,12 @@ function extractAmountsAndTypes(text: string): Array<{ amount: number; isDebit: 
  * Try extracting amount from newline format: DESCRIPTION\nDEBITS\nCREDITS\nTEXT\nAMOUNT
  */
 function tryNewlineFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const match = text.match(new RegExp(`DESCRIPTION[\\s\\t]*\\n[\\s\\t]*DEBITS[\\s\\t]*\\n[\\s\\t]*CREDITS[\\s\\t]*\\n[^\\n]+\\n(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i'));
+  const match = text.match(
+    new RegExp(
+      `DESCRIPTION[\\s\\t]*\\n[\\s\\t]*DEBITS[\\s\\t]*\\n[\\s\\t]*CREDITS[\\s\\t]*\\n[^\\n]+\\n(${CURRENCY_AMOUNT_PATTERN}-?)`,
+      'i'
+    )
+  );
   return match ? { amount: parseSignedCurrency(match[1]), isDebit: true } : undefined;
 }
 
@@ -267,7 +262,12 @@ function tryNewlineFormat(text: string): { amount: number; isDebit: boolean } | 
  * Try extracting amount from DEBITS column (tab-separated)
  */
 function tryDebitColumnFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const match = text.match(new RegExp(`DEBITS[\\s\\t]+CREDITS[\\s\\t]*\\n[^\\n]*[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i'));
+  const match = text.match(
+    new RegExp(
+      `DEBITS[\\s\\t]+CREDITS[\\s\\t]*\\n[^\\n]*[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`,
+      'i'
+    )
+  );
   return match ? { amount: parseSignedCurrency(match[1]), isDebit: true } : undefined;
 }
 
@@ -275,7 +275,9 @@ function tryDebitColumnFormat(text: string): { amount: number; isDebit: boolean 
  * Try extracting amount after DEBITS label (tab-separated format)
  */
 function tryDebitTabFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const match = text.match(new RegExp(`DEBITS[\\s\\t]*\\n[^\\n\\t]+[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i'));
+  const match = text.match(
+    new RegExp(`DEBITS[\\s\\t]*\\n[^\\n\\t]+[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i')
+  );
   return match ? { amount: parseSignedCurrency(match[1]), isDebit: true } : undefined;
 }
 
@@ -291,7 +293,9 @@ function tryDebitSingleFormat(text: string): { amount: number; isDebit: boolean 
  * Try extracting amount from CREDITS column
  */
 function tryCreditFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const match = text.match(new RegExp(`CREDITS[\\s\\t]*\\n[^\\n]*[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i'));
+  const match = text.match(
+    new RegExp(`CREDITS[\\s\\t]*\\n[^\\n]*[\\s\\t]+(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i')
+  );
   if (!match) return undefined;
   const parsed = parseSignedCurrency(match[1]);
   return { amount: parsed < 0 ? parsed : -parsed, isDebit: false };
@@ -301,7 +305,9 @@ function tryCreditFormat(text: string): { amount: number; isDebit: boolean } | u
  * Try NET BALANCE with multi-line format (DUE NVL / DUE ACCOUNT)
  */
 function tryBalanceMultiFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const match = text.match(/NET\s+BALANCE\s*\n\s*DUE\s+[^\n]+\n\s*DUE\s+[^\n]+\n(-?\d+(?:,\d+)*\.\d{2}-?)/i);
+  const match = text.match(
+    /NET\s+BALANCE\s*\n\s*DUE\s+[^\n]+\n\s*DUE\s+[^\n]+\n(-?\d+(?:,\d+)*\.\d{2}-?)/i
+  );
   return match ? { amount: parseSignedCurrency(match[1]), isDebit: true } : undefined;
 }
 
@@ -317,7 +323,10 @@ function tryBalanceSimpleFormat(text: string): { amount: number; isDebit: boolea
  * Try flexible NET BALANCE within bounded span after header
  */
 function tryFlexibleBalanceFormat(text: string): { amount: number; isDebit: boolean } | undefined {
-  const pattern = new RegExp(`NET\\s+BALANCE[\\s\\S]{0,${NET_BALANCE_SECTION_SPAN}}?(?:^|\\n)\\s*(-?\\d+(?:,\\d+)*\\.\\d{2}-?)\\s*(?:$|\\n)`, 'mi');
+  const pattern = new RegExp(
+    `NET\\s+BALANCE[\\s\\S]{0,${NET_BALANCE_SECTION_SPAN}}?(?:^|\\n)\\s*(-?\\d+(?:,\\d+)*\\.\\d{2}-?)\\s*(?:$|\\n)`,
+    'mi'
+  );
   const match = text.match(pattern);
   return match ? { amount: parseSignedCurrency(match[1]), isDebit: true } : undefined;
 }
@@ -327,16 +336,20 @@ function tryFlexibleBalanceFormat(text: string): { amount: number; isDebit: bool
  * Pattern: Amount in DEBITS or CREDITS column
  * Returns undefined if no amount found (distinguishes from finding $0.00)
  */
-function extractSingleAmountAndType(text: string): { amount: number; isDebit: boolean } | undefined {
+function extractSingleAmountAndType(
+  text: string
+): { amount: number; isDebit: boolean } | undefined {
   // Try extraction strategies in order
-  return tryNewlineFormat(text)
-    || tryDebitColumnFormat(text)
-    || tryDebitTabFormat(text)
-    || tryDebitSingleFormat(text)
-    || tryCreditFormat(text)
-    || tryBalanceMultiFormat(text)
-    || tryBalanceSimpleFormat(text)
-    || tryFlexibleBalanceFormat(text);
+  return (
+    tryNewlineFormat(text) ||
+    tryDebitColumnFormat(text) ||
+    tryDebitTabFormat(text) ||
+    tryDebitSingleFormat(text) ||
+    tryCreditFormat(text) ||
+    tryBalanceMultiFormat(text) ||
+    tryBalanceSimpleFormat(text) ||
+    tryFlexibleBalanceFormat(text)
+  );
 }
 
 /**
@@ -379,7 +392,7 @@ export function parseCreditDebit(ocrText: string): CreditDebitParseResult {
     // Default to Gemini if provider cannot be detected from text patterns
     const provider = detectOcrProvider(ocrText) ?? 'gemini';
     const normalizedText = normalizeOcrText(ocrText, provider);
-    
+
     const transactionType = extractTransactionType(normalizedText);
     const descriptions = extractDescriptions(normalizedText);
     const entryDate = extractEntryDate(normalizedText);
@@ -390,7 +403,7 @@ export function parseCreditDebit(ocrText: string): CreditDebitParseResult {
 
     // Match descriptions with amounts (they should be in the same order)
     const itemCount = Math.min(descriptions.length, amountsAndTypes.length);
-    
+
     if (itemCount === 0) {
       // If we have amounts but no descriptions, try to use transaction type
       if (amountsAndTypes.length > 0 && transactionType) {
@@ -413,7 +426,7 @@ export function parseCreditDebit(ocrText: string): CreditDebitParseResult {
       for (let i = 0; i < itemCount; i++) {
         const description = descriptions[i];
         const amountInfo = amountsAndTypes[i];
-        
+
         const line: CreditDebitLine = {
           transactionType,
           description,
@@ -429,7 +442,7 @@ export function parseCreditDebit(ocrText: string): CreditDebitParseResult {
         lines.push(line);
       }
     }
-    
+
     // If we still have no lines, add an error
     if (lines.length === 0) {
       // If we at least captured a date, create a placeholder line

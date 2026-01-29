@@ -6,8 +6,6 @@ import { AppConfig } from '@settleflow/shared-config';
 import Fastify, { FastifyInstance } from 'fastify';
 import * as nunjucks from 'nunjucks';
 
-
-
 import { batchRoutes } from './routes/batches';
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
@@ -42,8 +40,21 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
         // Add date filter
         env.addFilter('date', (dateString: string, format: string) => {
           const date = new Date(dateString);
-          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-          
+          const months = [
+            'Jan',
+            'Feb',
+            'Mar',
+            'Apr',
+            'May',
+            'Jun',
+            'Jul',
+            'Aug',
+            'Sep',
+            'Oct',
+            'Nov',
+            'Dec',
+          ];
+
           if (format === 'MMM D') {
             return `${months[date.getMonth()]} ${date.getDate()}`;
           } else if (format === 'MMM D, YYYY') {

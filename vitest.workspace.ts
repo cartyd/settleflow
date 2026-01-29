@@ -15,7 +15,7 @@ export default defineWorkspace([
       },
     },
   },
-  
+
   // Admin UI tests (when added)
   {
     test: {
@@ -29,7 +29,7 @@ export default defineWorkspace([
       },
     },
   },
-  
+
   // Unit tests for shared packages
   {
     test: {

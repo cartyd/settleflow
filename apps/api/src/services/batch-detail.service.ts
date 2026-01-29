@@ -158,7 +158,7 @@ export async function getBatchDetailData(
     const errors = importFile.parsingErrors ? JSON.parse(importFile.parsingErrors) : [];
     throw new Error(
       `This batch failed to parse and cannot be viewed. ` +
-      `Errors: ${errors.join('; ') || 'Unknown parsing error'}`
+        `Errors: ${errors.join('; ') || 'Unknown parsing error'}`
     );
   }
 
@@ -177,9 +177,7 @@ export async function getBatchDetailData(
     .map((d) => `Page ${d.pageNumber} (${d.documentType}) not parsed`);
 
   // Parse parsingErrors from JSON
-  const parsingErrors = importFile.parsingErrors 
-    ? JSON.parse(importFile.parsingErrors) 
-    : [];
+  const parsingErrors = importFile.parsingErrors ? JSON.parse(importFile.parsingErrors) : [];
 
   // Flatten all import lines with document context
   const allLines = documents.flatMap((doc) =>
@@ -203,19 +201,11 @@ export async function getBatchDetailData(
 
   // Group lines by category
   const lineItems = {
-    revenueDistribution: allLines
-      .filter((l) => l.category === 'REV DIST')
-      .map(formatLineItem),
-    remittance: allLines
-      .filter((l) => l.documentType === 'REMITTANCE')
-      .map(formatLineItem),
+    revenueDistribution: allLines.filter((l) => l.category === 'REV DIST').map(formatLineItem),
+    remittance: allLines.filter((l) => l.documentType === 'REMITTANCE').map(formatLineItem),
     advances: advanceLines.map(formatLineItem),
-    creditDebit: allLines
-      .filter((l) => l.documentType === 'CREDIT_DEBIT')
-      .map(formatLineItem),
-    postingTicket: allLines
-      .filter((l) => l.documentType === 'POSTING_TICKET')
-      .map(formatLineItem),
+    creditDebit: allLines.filter((l) => l.documentType === 'CREDIT_DEBIT').map(formatLineItem),
+    postingTicket: allLines.filter((l) => l.documentType === 'POSTING_TICKET').map(formatLineItem),
   };
 
   // Extract trip details from Revenue Distribution lines
@@ -298,7 +288,7 @@ function extractTripDetails(revenueLines: any[]): TripDetail[] {
   for (const line of revenueLines) {
     try {
       const rawData = JSON.parse(line.rawData);
-      
+
       // Only include lines that have trip details (Revenue Distribution)
       if (!rawData.tripNumber) {
         continue;

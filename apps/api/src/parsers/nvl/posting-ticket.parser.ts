@@ -1,12 +1,16 @@
 /**
  * Regex-based parser for POSTING_TICKET document type
- * 
+ *
  * Posting tickets are deduction documents for miscellaneous charges
  */
 import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { POSTING_TICKET_DEBIT_SECTION_SPAN } from '../constants.js';
 import { parseSlashDate } from '../utils/date-parser.js';
-import { parseSignedCurrency, CURRENCY_AMOUNT_PATTERN, removeLeadingZeros } from '../utils/string-utils.js';
+import {
+  parseSignedCurrency,
+  CURRENCY_AMOUNT_PATTERN,
+  removeLeadingZeros,
+} from '../utils/string-utils.js';
 
 export interface PostingTicketLine {
   ptNumber?: string;
@@ -45,7 +49,10 @@ function extractAccountNumber(text: string): string | undefined {
  * Extract debit amount from document
  */
 function extractDebitAmount(text: string): number | undefined {
-  const pattern = new RegExp(`DEBIT[\\s\\S]{0,${POSTING_TICKET_DEBIT_SECTION_SPAN}}?(${CURRENCY_AMOUNT_PATTERN}-?)`, 'i');
+  const pattern = new RegExp(
+    `DEBIT[\\s\\S]{0,${POSTING_TICKET_DEBIT_SECTION_SPAN}}?(${CURRENCY_AMOUNT_PATTERN}-?)`,
+    'i'
+  );
   const match = text.match(pattern);
   return match ? parseSignedCurrency(match[1]) : undefined;
 }
@@ -77,7 +84,7 @@ export function parsePostingTicket(ocrText: string): PostingTicketParseResult {
     // Default to Gemini if provider cannot be detected from text patterns
     const provider = detectOcrProvider(ocrText) ?? 'gemini';
     const text = normalizeOcrText(ocrText, provider);
-    
+
     const ptNumber = extractPTNumber(text);
     const accountNumber = extractAccountNumber(text);
     const debitAmount = extractDebitAmount(text);
@@ -97,7 +104,6 @@ export function parsePostingTicket(ocrText: string): PostingTicketParseResult {
       date,
       rawText: ocrText,
     });
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     errors.push(`Error parsing posting ticket: ${errorMessage}`);

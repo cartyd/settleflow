@@ -26,7 +26,7 @@ export interface AutoBatchImportResult {
 
 /**
  * Upload PDF and auto-create batch from parsed remittance data
- * 
+ *
  * Workflow:
  * 1. Process PDF with OCR to extract all page text
  * 2. Find and parse the REMITTANCE page to extract batch metadata
@@ -45,7 +45,7 @@ export async function uploadPdfAndCreateBatch(
   // Step 1: Process PDF with OCR
   const config = loadConfig();
   let pages: PageText[];
-  
+
   if (config.ocr.provider === 'gemini') {
     console.log(`[AUTO-BATCH] Using Gemini OCR provider`);
     pages = await processPdfBufferWithGemini(fileBuffer, ocrConfig as GeminiOcrConfig);
@@ -61,9 +61,9 @@ export async function uploadPdfAndCreateBatch(
   // Step 2: Find and parse remittance page (or settlement detail as fallback)
   let remittanceMetadata: BatchMetadata | undefined;
   const settlementDetailPages: Array<{ pageNumber: number; text: string }> = [];
-  
+
   console.log(`[AUTO-BATCH] Processing ${pages.length} pages from OCR`);
-  
+
   for (const page of pages) {
     if (!page.text || page.text.trim().length === 0) {
       console.log(`[AUTO-BATCH] Page ${page.pageNumber}: EMPTY`);
@@ -73,18 +73,24 @@ export async function uploadPdfAndCreateBatch(
     // Extract plain text in case it's JSON formatted from Gemini
     const plainText = extractPlainText(page.text);
     const docType = detectDocumentType(plainText);
-    console.log(`[AUTO-BATCH] Page ${page.pageNumber}: Detected as ${docType}, text length: ${plainText.length}`);
-    
+    console.log(
+      `[AUTO-BATCH] Page ${page.pageNumber}: Detected as ${docType}, text length: ${plainText.length}`
+    );
+
     if (docType === 'REMITTANCE') {
       console.log(`[AUTO-BATCH] Attempting to parse remittance from page ${page.pageNumber}`);
       const parseResult = parseRemittance(plainText);
-      
+
       if (parseResult.metadata) {
-        console.log(`[AUTO-BATCH] Successfully parsed remittance metadata from page ${page.pageNumber}`);
+        console.log(
+          `[AUTO-BATCH] Successfully parsed remittance metadata from page ${page.pageNumber}`
+        );
         remittanceMetadata = parseResult.metadata;
         break;
       } else {
-        console.log(`[AUTO-BATCH] Page ${page.pageNumber} detected as REMITTANCE but parsing failed`);
+        console.log(
+          `[AUTO-BATCH] Page ${page.pageNumber} detected as REMITTANCE but parsing failed`
+        );
         console.log(`[AUTO-BATCH] Parse errors:`, parseResult.errors);
       }
     } else if (docType === 'SETTLEMENT_DETAIL') {
@@ -95,12 +101,16 @@ export async function uploadPdfAndCreateBatch(
 
   // Fallback: Try to extract metadata from SETTLEMENT_DETAIL if no REMITTANCE found
   if (!remittanceMetadata && settlementDetailPages.length > 0) {
-    console.log(`[AUTO-BATCH] No REMITTANCE page found, attempting to extract metadata from SETTLEMENT_DETAIL pages`);
-    
+    console.log(
+      `[AUTO-BATCH] No REMITTANCE page found, attempting to extract metadata from SETTLEMENT_DETAIL pages`
+    );
+
     for (const sdPage of settlementDetailPages) {
       const metadata = extractBatchMetadataFromSettlement(sdPage.text);
       if (metadata) {
-        console.log(`[AUTO-BATCH] Successfully extracted metadata from SETTLEMENT_DETAIL page ${sdPage.pageNumber}`);
+        console.log(
+          `[AUTO-BATCH] Successfully extracted metadata from SETTLEMENT_DETAIL page ${sdPage.pageNumber}`
+        );
         remittanceMetadata = metadata;
         break;
       }
@@ -113,11 +123,15 @@ export async function uploadPdfAndCreateBatch(
     for (const page of pages) {
       const plainText = extractPlainText(page.text);
       const docType = detectDocumentType(plainText);
-      console.error(`  Page ${page.pageNumber}: ${docType} (text length: ${plainText?.length || 0})`);
+      console.error(
+        `  Page ${page.pageNumber}: ${docType} (text length: ${plainText?.length || 0})`
+      );
     }
     const firstPagePlain = extractPlainText(pages[0]?.text || '');
     console.error('[AUTO-BATCH] First page text sample:', firstPagePlain.substring(0, 800));
-    throw new Error('Could not extract batch metadata from remittance or settlement detail page. Please ensure the PDF contains valid NVL settlement documents.');
+    throw new Error(
+      'Could not extract batch metadata from remittance or settlement detail page. Please ensure the PDF contains valid NVL settlement documents.'
+    );
   }
 
   // Validate essential metadata
@@ -154,13 +168,13 @@ export async function uploadPdfAndCreateBatch(
   if (existingBatch) {
     throw new Error(
       `A batch already exists for payment reference ${remittanceMetadata.nvlPaymentRef}. ` +
-      `Batch ID: ${existingBatch.id}`
+        `Batch ID: ${existingBatch.id}`
     );
   }
 
   // Calculate week dates or use defaults
   const checkDate = new Date(remittanceMetadata.checkDate);
-  const weekStartDate = remittanceMetadata.weekStartDate 
+  const weekStartDate = remittanceMetadata.weekStartDate
     ? new Date(remittanceMetadata.weekStartDate)
     : new Date(checkDate.getTime() - 14 * 24 * 60 * 60 * 1000); // 2 weeks before
   const weekEndDate = remittanceMetadata.weekEndDate
@@ -249,7 +263,9 @@ export async function uploadPdfAndCreateBatch(
       parsingStatus = 'COMPLETED';
     }
 
-    console.log(`[AUTO-BATCH] Parsing completed with status: ${parsingStatus}, lines: ${parseResult.totalLinesCreated}, errors: ${parsingErrors.length}`);
+    console.log(
+      `[AUTO-BATCH] Parsing completed with status: ${parsingStatus}, lines: ${parseResult.totalLinesCreated}, errors: ${parsingErrors.length}`
+    );
   } catch (error) {
     parsingStatus = 'FAILED';
     const errorMessage = error instanceof Error ? error.message : String(error);

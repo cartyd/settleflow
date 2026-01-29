@@ -2,7 +2,7 @@ import * as Sentry from '@sentry/node';
 
 /**
  * Sentry utilities for manual logging and error tracking in services
- * 
+ *
  * Usage:
  * - Import these utilities in your services for custom error tracking
  * - Use captureCustomError for business logic errors
@@ -50,7 +50,7 @@ export function captureMessage(
 
 /**
  * High-value event logger for structured logging to Sentry Logs
- * 
+ *
  * Focus on capturing important business events, not debug logs.
  * Use this for significant operations like:
  * - File imports and processing
@@ -92,18 +92,15 @@ export const logger = {
 
 /**
  * Track a custom performance metric
- * 
+ *
  * Example:
  * const metric = startPerformanceTracking('ocr.process_pdf');
  * // ... do work
  * metric.finish({ success: true, pages: 10 });
  */
-export function startPerformanceTracking(
-  operation: string,
-  data?: Record<string, any>
-) {
+export function startPerformanceTracking(operation: string, data?: Record<string, any>) {
   let span: any = null;
-  
+
   // Use startSpanManual to get a handle to the span
   const { end } = Sentry.startSpanManual(
     {
@@ -124,7 +121,26 @@ export function startPerformanceTracking(
       }
       end();
     },
-    setStatus: (statusCode: 'ok' | 'cancelled' | 'unknown_error' | 'invalid_argument' | 'deadline_exceeded' | 'not_found' | 'already_exists' | 'permission_denied' | 'resource_exhausted' | 'failed_precondition' | 'aborted' | 'out_of_range' | 'unimplemented' | 'internal_error' | 'unavailable' | 'data_loss' | 'unauthenticated') => {
+    setStatus: (
+      statusCode:
+        | 'ok'
+        | 'cancelled'
+        | 'unknown_error'
+        | 'invalid_argument'
+        | 'deadline_exceeded'
+        | 'not_found'
+        | 'already_exists'
+        | 'permission_denied'
+        | 'resource_exhausted'
+        | 'failed_precondition'
+        | 'aborted'
+        | 'out_of_range'
+        | 'unimplemented'
+        | 'internal_error'
+        | 'unavailable'
+        | 'data_loss'
+        | 'unauthenticated'
+    ) => {
       if (span) {
         span.setStatus({ code: statusCode });
       }
@@ -191,7 +207,7 @@ export function setExtra(key: string, value: any) {
 
 /**
  * Wrap an async function with performance tracking
- * 
+ *
  * Example:
  * const result = await trackAsyncOperation(
  *   'parser.parse_document',
@@ -205,7 +221,7 @@ export async function trackAsyncOperation<T>(
   tags?: Record<string, string>
 ): Promise<T> {
   const metric = startPerformanceTracking(operationName, tags);
-  
+
   try {
     const result = await fn();
     metric.setStatus('ok');
@@ -231,34 +247,29 @@ export function logMetric(
   unit?: string,
   tags?: Record<string, string>
 ) {
-  addBreadcrumb(
-    `Metric: ${name} = ${value}${unit ? ` ${unit}` : ''}`,
-    'metric',
-    'info',
-    {
-      metric: name,
-      value,
-      unit,
-      ...tags,
-    }
-  );
+  addBreadcrumb(`Metric: ${name} = ${value}${unit ? ` ${unit}` : ''}`, 'metric', 'info', {
+    metric: name,
+    value,
+    unit,
+    ...tags,
+  });
 }
 
 /**
  * Example usage in a service:
- * 
+ *
  * import { trackAsyncOperation, addBreadcrumb, captureCustomError, logger } from '../utils/sentry';
- * 
+ *
  * async function processDocument(doc: Document) {
  *   logger.info('Starting document processing', { docId: doc.id, docType: doc.type });
- *   
+ *
  *   return trackAsyncOperation(
  *     'document.process',
  *     async () => {
  *       addBreadcrumb('Starting document processing', 'document', 'info', { docId: doc.id });
- *       
+ *
  *       const result = await heavyOperation(doc);
- *       
+ *
  *       if (!result.valid) {
  *         logger.warn('Invalid processing result', { result, docId: doc.id });
  *         captureCustomError(new Error('Invalid result'), {
@@ -269,7 +280,7 @@ export function logMetric(
  *       } else {
  *         logger.info('Document processed successfully', { docId: doc.id, linesProcessed: result.lines.length });
  *       }
- *       
+ *
  *       return result;
  *     },
  *     { documentType: doc.type }

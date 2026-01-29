@@ -24,7 +24,9 @@ export function detectDocumentType(text: string): DocumentType {
   const hasRevenueDistributionMarkers =
     upperText.includes('FOR SERVICE PERFORMED BY') ||
     (upperText.includes('BILL OF LADING') && upperText.includes('SHIPPER')) ||
-    (upperText.includes('ORIGIN') && upperText.includes('DESTINATION') && upperText.includes('SHIPPER'));
+    (upperText.includes('ORIGIN') &&
+      upperText.includes('DESTINATION') &&
+      upperText.includes('SHIPPER'));
 
   if (
     upperText.includes('REVENUE DISTRIBUTION') ||
@@ -42,11 +44,18 @@ export function detectDocumentType(text: string): DocumentType {
     return DocumentType.POSTING_TICKET;
   }
 
-  if (upperText.includes('ADVANCE') && (upperText.includes('CHARGEBACK') || upperText.includes('REQUEST FOR ADVANCE'))) {
+  if (
+    upperText.includes('ADVANCE') &&
+    (upperText.includes('CHARGEBACK') || upperText.includes('REQUEST FOR ADVANCE'))
+  ) {
     return DocumentType.ADVANCE_ADVICE;
   }
 
-  if (upperText.includes('CREDIT') || upperText.includes('DEBIT') || upperText.includes('ADJUSTMENT')) {
+  if (
+    upperText.includes('CREDIT') ||
+    upperText.includes('DEBIT') ||
+    upperText.includes('ADJUSTMENT')
+  ) {
     return DocumentType.CREDIT_DEBIT;
   }
 

@@ -53,11 +53,11 @@ export async function processUploadedPdf(
 
   // Process PDF with OCR
   console.log(`[IMPORT] Starting OCR processing for ${fileName}`);
-  
+
   // Determine which OCR provider to use
   const config = loadConfig();
   let pages: PageText[];
-  
+
   if (config.ocr.provider === 'gemini') {
     console.log(`[IMPORT] Using Gemini OCR provider`);
     pages = await processPdfBufferWithGemini(fileBuffer, ocrConfig as GeminiOcrConfig);
@@ -65,16 +65,19 @@ export async function processUploadedPdf(
     console.log(`[IMPORT] Using Ollama OCR provider`);
     pages = await processPdfBufferWithOcr(fileBuffer, ocrConfig as OcrConfig);
   }
-  
+
   console.log(`[IMPORT] OCR returned ${pages.length} pages`);
-  console.log(`[IMPORT] Page numbers:`, pages.map(p => p.pageNumber));
+  console.log(
+    `[IMPORT] Page numbers:`,
+    pages.map((p) => p.pageNumber)
+  );
 
   // Create import document records for each page
   let documentsCreated = 0;
   let pagesWithEmptyText = 0;
   for (const page of pages) {
     const hasText = page.text && page.text.trim().length > 0;
-    
+
     if (!hasText) {
       console.log(`[IMPORT] WARNING: Page ${page.pageNumber} has no text - OCR may have failed`);
       pagesWithEmptyText++;
@@ -96,9 +99,13 @@ export async function processUploadedPdf(
   }
 
   // Log successful import
-  console.log(`[IMPORT] Created ${documentsCreated} documents, ${pagesWithEmptyText} pages with empty text, total pages from OCR: ${pages.length}`);
+  console.log(
+    `[IMPORT] Created ${documentsCreated} documents, ${pagesWithEmptyText} pages with empty text, total pages from OCR: ${pages.length}`
+  );
   if (pagesWithEmptyText > 0) {
-    console.warn(`[IMPORT] WARNING: ${pagesWithEmptyText} pages had no OCR text - check Ollama logs for errors`);
+    console.warn(
+      `[IMPORT] WARNING: ${pagesWithEmptyText} pages had no OCR text - check Ollama logs for errors`
+    );
   }
   logger.info('File import completed', {
     importFileId: importFile.id,
@@ -132,7 +139,9 @@ export async function processUploadedPdf(
       parsingStatus = 'COMPLETED';
     }
 
-    console.log(`[IMPORT] Parsing completed with status: ${parsingStatus}, lines: ${linesProcessed}, errors: ${parsingErrors.length}`);
+    console.log(
+      `[IMPORT] Parsing completed with status: ${parsingStatus}, lines: ${linesProcessed}, errors: ${parsingErrors.length}`
+    );
   } catch (error) {
     // Critical parsing failure
     parsingStatus = 'FAILED';

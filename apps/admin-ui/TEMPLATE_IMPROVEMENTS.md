@@ -1,6 +1,7 @@
 # Nunjucks Template Improvements
 
 ## Overview
+
 This document describes the improvements made to fix code smells and bad practices in the Nunjucks templates.
 
 ## Changes Summary
@@ -19,12 +20,14 @@ A centralized collection of reusable template macros to eliminate code duplicati
 ### 2. Layout Template Improvements (`views/layout.njk`)
 
 **Before:**
+
 - Empty `<h1>` rendered when child templates didn't provide heading
 - No skip link for keyboard navigation
 - No footer
 - Missing semantic structure
 
 **After:**
+
 - ✅ Skip link for accessibility (`<a href="#main-content">`)
 - ✅ Conditional heading block (only renders `<h1>` if child provides content)
 - ✅ Footer with copyright information
@@ -35,12 +38,14 @@ A centralized collection of reusable template macros to eliminate code duplicati
 ### 3. Error Template Improvements (`views/error.njk`)
 
 **Before:**
+
 - Function calls in template (`config.pageTitle(statusCode)`)
 - No explicit escaping of user content
 - Magic number comparison (`statusCode >= 500`)
 - Missing heading block override
 
 **After:**
+
 - ✅ All user content explicitly escaped with `| escape`
 - ✅ `pageTitle` computed in controller
 - ✅ `showSupportLink` boolean computed in controller (no logic in template)
@@ -50,6 +55,7 @@ A centralized collection of reusable template macros to eliminate code duplicati
 ### 4. Detail Template Improvements (`views/batches/detail.njk`)
 
 **Before:**
+
 - Function calls in template
 - Three identical info-item blocks
 - Complex nested conditionals
@@ -57,6 +63,7 @@ A centralized collection of reusable template macros to eliminate code duplicati
 - `<div role="list">` instead of semantic `<ul>`
 
 **After:**
+
 - ✅ Uses macros for all repeated patterns
 - ✅ All user content explicitly escaped
 - ✅ `pageTitle` computed in controller
@@ -68,12 +75,14 @@ A centralized collection of reusable template macros to eliminate code duplicati
 ### 5. Table Template Improvements (`views/batches/table.njk`)
 
 **Before:**
+
 - Incorrect `role="grid"` on table
 - Function calls in template (`detailViewPath(batch.id)`)
 - Repeated status and currency logic
 - Visible caption cluttering UI
 
 **After:**
+
 - ✅ Removed incorrect `role="grid"` (native table semantics)
 - ✅ Caption has `sr-only` class (hidden visually, available to screen readers)
 - ✅ Uses macros for status, currency, and date formatting
@@ -87,18 +96,16 @@ A centralized collection of reusable template macros to eliminate code duplicati
 
 ```typescript
 // List view
-const batchesWithUrls = (batchesData.batches || []).map(batch => ({
+const batchesWithUrls = (batchesData.batches || []).map((batch) => ({
   ...batch,
   detailUrl: batchesViewConfig.detailViewPath(batch.id),
 }));
 
 // Detail view
-const pageTitle = batchDetailConfig.pageTitle(
-  batch.nvlPaymentRef || 'Unknown'
-);
+const pageTitle = batchDetailConfig.pageTitle(batch.nvlPaymentRef || 'Unknown');
 
 // Both views
-currentYear: new Date().getFullYear()
+currentYear: new Date().getFullYear();
 ```
 
 ### 7. Error Handler Improvements (`src/middleware/errorHandler.ts`)
@@ -153,59 +160,64 @@ footer {
 
 ### Template-Level Issues
 
-| Issue | Before | After |
-|-------|--------|-------|
-| Function calls in templates | `{{ config.pageTitle(statusCode) }}` | `{{ pageTitle \| escape }}` |
-| No explicit escaping | `{{ title }}` | `{{ title \| escape }}` |
-| Duplicated code | 3x identical info-item blocks | 1x `infoCard` macro |
-| Complex conditionals | `batch.agency.name or 'N/A' if batch.agency else 'N/A'` | `macros.safeValue(batch.agency.name if batch.agency)` |
-| Magic numbers | `statusCode >= 500` | `showSupportLink` boolean |
-| Incorrect ARIA roles | `role="grid"` | Removed (use native semantics) |
-| Non-semantic HTML | `<div role="list">` | `<ul>` and `<li>` |
+| Issue                       | Before                                                  | After                                                 |
+| --------------------------- | ------------------------------------------------------- | ----------------------------------------------------- |
+| Function calls in templates | `{{ config.pageTitle(statusCode) }}`                    | `{{ pageTitle \| escape }}`                           |
+| No explicit escaping        | `{{ title }}`                                           | `{{ title \| escape }}`                               |
+| Duplicated code             | 3x identical info-item blocks                           | 1x `infoCard` macro                                   |
+| Complex conditionals        | `batch.agency.name or 'N/A' if batch.agency else 'N/A'` | `macros.safeValue(batch.agency.name if batch.agency)` |
+| Magic numbers               | `statusCode >= 500`                                     | `showSupportLink` boolean                             |
+| Incorrect ARIA roles        | `role="grid"`                                           | Removed (use native semantics)                        |
+| Non-semantic HTML           | `<div role="list">`                                     | `<ul>` and `<li>`                                     |
 
 ### Layout Issues
 
-| Issue | Before | After |
-|-------|--------|-------|
-| Empty heading | Always rendered `<h1></h1>` | Conditional: `{% if self.heading() %}` |
-| No skip link | Missing | `<a href="#main-content">` |
-| No footer | Missing | Footer with copyright |
-| Main not targetable | No id | `id="main-content"` |
+| Issue               | Before                      | After                                  |
+| ------------------- | --------------------------- | -------------------------------------- |
+| Empty heading       | Always rendered `<h1></h1>` | Conditional: `{% if self.heading() %}` |
+| No skip link        | Missing                     | `<a href="#main-content">`             |
+| No footer           | Missing                     | Footer with copyright                  |
+| Main not targetable | No id                       | `id="main-content"`                    |
 
 ### Accessibility Issues
 
-| Issue | Before | After |
-|-------|--------|-------|
-| No keyboard navigation | Missing | Skip link |
-| Visible but redundant caption | `<caption>` visible | `<caption class="sr-only">` |
-| Missing ARIA relationships | None | `aria-labelledby` for sections |
-| Poor screen reader support | Limited | Multiple ARIA improvements |
+| Issue                         | Before              | After                          |
+| ----------------------------- | ------------------- | ------------------------------ |
+| No keyboard navigation        | Missing             | Skip link                      |
+| Visible but redundant caption | `<caption>` visible | `<caption class="sr-only">`    |
+| Missing ARIA relationships    | None                | `aria-labelledby` for sections |
+| Poor screen reader support    | Limited             | Multiple ARIA improvements     |
 
 ## Best Practices Applied
 
 ### 1. Separation of Concerns
+
 - ✅ Business logic in controllers
 - ✅ Presentation logic in templates
 - ✅ Reusable components in macros
 
 ### 2. Security
+
 - ✅ All user content explicitly escaped
 - ✅ No raw HTML rendering
 - ✅ Safe URL construction
 
 ### 3. Accessibility (WCAG 2.1)
+
 - ✅ Skip links (WCAG 2.4.1)
 - ✅ Semantic HTML (WCAG 1.3.1)
 - ✅ ARIA labels (WCAG 4.1.2)
 - ✅ Screen reader support (WCAG 4.1.3)
 
 ### 4. Maintainability
+
 - ✅ DRY principle (macros for repeated code)
 - ✅ Single source of truth (configuration)
 - ✅ Consistent patterns across templates
 - ✅ Clear comments documenting intent
 
 ### 5. Performance
+
 - ✅ Minimal template logic
 - ✅ Pre-computed values in controller
 - ✅ Efficient macro usage
@@ -215,11 +227,13 @@ footer {
 ### For New Templates
 
 1. **Import macros:**
+
    ```nunjucks
    {% import "macros.njk" as macros %}
    ```
 
 2. **Use macros instead of inline logic:**
+
    ```nunjucks
    {# Instead of: #}
    {% if amount is defined %}
@@ -227,17 +241,19 @@ footer {
    {% else %}
      N/A
    {% endif %}
-   
+
    {# Use: #}
    {{ macros.formatCurrency(amount, '$', 2) }}
    ```
 
 3. **Always escape user content:**
+
    ```nunjucks
    {{ userValue | escape }}
    ```
 
 4. **Compute values in controller:**
+
    ```typescript
    // In route handler
    const computed = someFunction(data);

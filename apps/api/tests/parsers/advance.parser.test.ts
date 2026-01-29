@@ -26,7 +26,7 @@ COMDATA
     expect(line.tripNumber).toBe('1854');
     expect(line.accountNumber).toBe('3101');
     expect(line.driverName).toContain('BIDETTI');
-    expect(line.advanceAmount).toBe(1033.00);
+    expect(line.advanceAmount).toBe(1033.0);
     expect(line.description).toBe('COMDATA');
     expect(line.date).toBe('2025-12-05');
   });
@@ -41,7 +41,7 @@ ACCOUNT NUMBER 03101
 DATE 120525
 `;
     const result = parseAdvance(text);
-    expect(result.lines[0].advanceAmount).toBe(1033.00);
+    expect(result.lines[0].advanceAmount).toBe(1033.0);
   });
 
   describe('Edge cases', () => {
@@ -49,7 +49,7 @@ DATE 120525
       const result = parseAdvance('');
       // Parser creates a line even for empty text with amount 0
       expect(result.lines.length).toBeGreaterThanOrEqual(1);
-      expect(result.errors.some(e => e.toLowerCase().includes('amount'))).toBe(true);
+      expect(result.errors.some((e) => e.toLowerCase().includes('amount'))).toBe(true);
     });
 
     it('should handle whitespace-only text', () => {
@@ -66,7 +66,7 @@ DRIVER--> BIDETTI, DONNY
 DATE--> 120525
 `;
       const result = parseAdvance(text);
-      expect(result.errors.some(e => e.toLowerCase().includes('amount'))).toBe(true);
+      expect(result.errors.some((e) => e.toLowerCase().includes('amount'))).toBe(true);
     });
 
     it('should handle missing trip number', () => {
@@ -79,7 +79,7 @@ G/L # AMOUNT
       const result = parseAdvance(text);
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].tripNumber).toBeUndefined();
-      expect(result.lines[0].advanceAmount).toBe(1033.00);
+      expect(result.lines[0].advanceAmount).toBe(1033.0);
     });
   });
 
@@ -91,7 +91,7 @@ G/L # AMOUNT
 2032-01 1,033.00
 `;
       const result = parseAdvance(text);
-      expect(result.lines[0].advanceAmount).toBe(1033.00);
+      expect(result.lines[0].advanceAmount).toBe(1033.0);
     });
 
     it('should extract from AMOUNT header pattern', () => {
@@ -101,7 +101,7 @@ AMOUNT
 1,033.00
 `;
       const result = parseAdvance(text);
-      expect(result.lines[0].advanceAmount).toBe(1033.00);
+      expect(result.lines[0].advanceAmount).toBe(1033.0);
     });
 
     it('should extract from simple AMOUNT pattern', () => {
@@ -110,7 +110,7 @@ TRIP NUMBER 1854
 AMOUNT 1,033.00
 `;
       const result = parseAdvance(text);
-      expect(result.lines[0].advanceAmount).toBe(1033.00);
+      expect(result.lines[0].advanceAmount).toBe(1033.0);
     });
 
     it('should use right-most amount from TOTAL CHARGE table', () => {
@@ -121,7 +121,7 @@ CHARGE
 TRIP NUMBER 1854
 `;
       const result = parseAdvance(text);
-      expect(result.lines[0].advanceAmount).toBe(1033.00);
+      expect(result.lines[0].advanceAmount).toBe(1033.0);
     });
   });
 
@@ -151,7 +151,7 @@ TRIP NUMBER 1854
 AMOUNT 0.00
 `;
       const result = parseAdvance(text);
-      expect(result.lines[0].advanceAmount).toBe(0.00);
+      expect(result.lines[0].advanceAmount).toBe(0.0);
     });
   });
 

@@ -41,12 +41,12 @@ B/L      TRIP   REF #    DATE      TRANSACTION/DESCRIPTION    AMOUNT          CO
     expect(result.checkDate).toBe('2025-12-18');
     expect(result.checkTotal).toBe(3330.53);
     expect(result.lines.length).toBeGreaterThanOrEqual(8); // At least 8 transaction lines
-    
+
     // Verify line types
-    const advances = result.lines.filter(l => l.lineType === 'ADVANCE');
-    const deductions = result.lines.filter(l => l.lineType === 'DEDUCTION');
-    const revenues = result.lines.filter(l => l.lineType === 'REVENUE');
-    
+    const advances = result.lines.filter((l) => l.lineType === 'ADVANCE');
+    const deductions = result.lines.filter((l) => l.lineType === 'DEDUCTION');
+    const revenues = result.lines.filter((l) => l.lineType === 'REVENUE');
+
     expect(advances.length).toBeGreaterThanOrEqual(2); // At least 2 COMDATA advances
     expect(deductions.length).toBeGreaterThanOrEqual(4); // Multiple deductions
     expect(revenues.length).toBeGreaterThanOrEqual(2); // 2 revenue distributions
@@ -63,7 +63,7 @@ B/L      TRIP   REF #    DATE      TRANSACTION/DESCRIPTION    AMOUNT          CO
     expect(line.date).toBe('2025-12-02');
     expect(line.transactionCode).toBe('CM');
     expect(line.description).toBe('COMDATA');
-    expect(line.amount).toBe(518.00);
+    expect(line.amount).toBe(518.0);
     expect(line.lineType).toBe('ADVANCE');
   });
 
@@ -105,7 +105,7 @@ B/L      TRIP   REF #    DATE      TRANSACTION/DESCRIPTION    AMOUNT          CO
     expect(line.date).toBe('2025-12-12');
     expect(line.transactionCode).toBe('PT');
     expect(line.description).toBe('OTHER CHARGES');
-    expect(line.amount).toBe(10.00);
+    expect(line.amount).toBe(10.0);
     expect(line.lineType).toBe('DEDUCTION');
   });
 
@@ -169,8 +169,8 @@ CHECK 590668 ON 12/18/25
 
     const result = parseSettlementDetail(sampleText);
     expect(result.lines).toHaveLength(3);
-    expect(result.lines.every(l => l.amount === 33.06)).toBe(true);
-    expect(result.lines.every(l => l.lineType === 'DEDUCTION')).toBe(true);
+    expect(result.lines.every((l) => l.amount === 33.06)).toBe(true);
+    expect(result.lines.every((l) => l.lineType === 'DEDUCTION')).toBe(true);
   });
 
   it('should extract account name from header', () => {
@@ -227,7 +227,7 @@ TOO SHORT
     it('should handle invalid date format gracefully', () => {
       const sampleText = `99/99/99 MC INVALID DATE 5.25`;
       const result = parseSettlementDetail(sampleText);
-      
+
       // Parser may skip or include line with invalid date
       // At minimum, should not crash
       expect(result).toBeDefined();
@@ -236,7 +236,7 @@ TOO SHORT
     it('should parse leap year date', () => {
       const sampleText = `02/29/24 MC LEAP YEAR 10.00`;
       const result = parseSettlementDetail(sampleText);
-      
+
       if (result.lines.length > 0) {
         expect(result.lines[0].date).toBe('2024-02-29');
       }
@@ -261,7 +261,7 @@ TOO SHORT
       const result = parseSettlementDetail(sampleText);
 
       expect(result.lines).toHaveLength(1);
-      expect(result.lines[0].amount).toBe(0.00);
+      expect(result.lines[0].amount).toBe(0.0);
     });
 
     it('should handle large amounts with multiple commas', () => {
@@ -292,7 +292,7 @@ CHECK 590668 ON 12/18/25
 
       const result = parseSettlementDetail(sampleText);
       // Larger mismatch should be detected (0.10 difference > tolerance)
-      expect(result.errors.some(e => e.includes('mismatch'))).toBe(true);
+      expect(result.errors.some((e) => e.includes('mismatch'))).toBe(true);
     });
   });
 

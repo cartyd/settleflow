@@ -53,8 +53,8 @@ export async function getBatches(
         agency: true,
         importFiles: {
           take: 1,
-          select: { 
-            id: true, 
+          select: {
+            id: true,
             parsingStatus: true,
             parsingCompletedAt: true,
           },

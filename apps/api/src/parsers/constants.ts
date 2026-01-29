@@ -1,7 +1,57 @@
 // Shared parsing constants for NVL parsers
 
 export const STATE_CODES = [
-  'AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'
+  'AL',
+  'AK',
+  'AZ',
+  'AR',
+  'CA',
+  'CO',
+  'CT',
+  'DE',
+  'DC',
+  'FL',
+  'GA',
+  'HI',
+  'ID',
+  'IL',
+  'IN',
+  'IA',
+  'KS',
+  'KY',
+  'LA',
+  'ME',
+  'MD',
+  'MA',
+  'MI',
+  'MN',
+  'MS',
+  'MO',
+  'MT',
+  'NE',
+  'NV',
+  'NH',
+  'NJ',
+  'NM',
+  'NY',
+  'NC',
+  'ND',
+  'OH',
+  'OK',
+  'OR',
+  'PA',
+  'RI',
+  'SC',
+  'SD',
+  'TN',
+  'TX',
+  'UT',
+  'VT',
+  'VA',
+  'WA',
+  'WV',
+  'WI',
+  'WY',
 ];
 
 export const STATE_CODE_CAPTURE = `(?:${STATE_CODES.join('|')})`;
@@ -33,7 +83,7 @@ export const POSTING_TICKET_DEBIT_SECTION_SPAN = 200; // characters after DEBIT 
 
 // Remittance week calculation offsets relative to check date
 export const WEEK_END_OFFSET_DAYS = -7; // Settlement week ends 7 days before check date
-export const WEEK_DURATION_DAYS = -6;  // Settlement week spans 7 days (start is 6 days before end)
+export const WEEK_DURATION_DAYS = -6; // Settlement week spans 7 days (start is 6 days before end)
 
 // Advance parser scan span for TOTAL CHARGE search
 export const ADVANCE_TOTAL_CHARGE_SCAN_SPAN = 300; // characters after TOTAL CHARGE header to search

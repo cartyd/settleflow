@@ -18,21 +18,21 @@ export function extractPlainText(rawText: string): string {
   if (cleanedText.trimStart().startsWith('```')) {
     cleanedText = cleanedText.replace(/^```[a-z]*\s*\n/, '').replace(/\n```\s*$/, '');
   }
-  
+
   // Try to parse as JSON first
   if (cleanedText.trimStart().startsWith('[') || cleanedText.trimStart().startsWith('{')) {
     try {
       const parsed = JSON.parse(cleanedText);
-      
+
       // Handle array format: [{"page_number": 1, "text_content": "..."}]
       if (Array.isArray(parsed) && parsed.length > 0) {
         // Concatenate all text_content fields
         return parsed
-          .map(page => page.text_content || '')
+          .map((page) => page.text_content || '')
           .join('\n')
           .trim();
       }
-      
+
       // Handle single object format: {"page_number": 1, "text_content": "..."}
       if (parsed.text_content) {
         return parsed.text_content.trim();
@@ -41,7 +41,7 @@ export function extractPlainText(rawText: string): string {
       // Not valid JSON, treat as plain text
     }
   }
-  
+
   // Return as-is if not JSON
   return cleanedText;
 }
@@ -118,32 +118,30 @@ export async function parseAndSaveImportLines(
 
       // Validate that Settlement Detail matches existing import lines
       for (const settlementLine of parseResult.lines) {
-        let matched = false;
 
         // Match RD (Revenue Distribution) lines by B/L
         if (settlementLine.transactionCode === 'RD' && settlementLine.billOfLading) {
           const matchingLine = existingLines.find(
             (el) => el.lineType === 'REVENUE' && el.billOfLading === settlementLine.billOfLading
           );
-          
+
           if (matchingLine) {
-            matched = true;
             // Validate amounts match (within 0.01 tolerance for rounding)
             if (Math.abs(Math.abs(matchingLine.amount) - Math.abs(settlementLine.amount)) > 0.01) {
               errors.push(
                 `Revenue mismatch for B/L ${settlementLine.billOfLading}: ` +
-                `Settlement Detail shows $${Math.abs(settlementLine.amount).toFixed(2)}, ` +
-                `but Revenue Distribution shows $${Math.abs(matchingLine.amount).toFixed(2)}`
+                  `Settlement Detail shows $${Math.abs(settlementLine.amount).toFixed(2)}, ` +
+                  `but Revenue Distribution shows $${Math.abs(matchingLine.amount).toFixed(2)}`
               );
             }
           } else {
             errors.push(
               `Settlement Detail references Revenue Distribution B/L ${settlementLine.billOfLading}, ` +
-              `but no matching Revenue Distribution document was found`
+                `but no matching Revenue Distribution document was found`
             );
           }
         }
-        
+
         // Match MC (Miscellaneous Charge) lines by description and amount
         else if (settlementLine.transactionCode === 'MC') {
           const matchingLine = existingLines.find(
@@ -152,38 +150,25 @@ export async function parseAndSaveImportLines(
               el.description.toUpperCase().includes(settlementLine.description.toUpperCase()) &&
               Math.abs(el.amount - settlementLine.amount) < 0.01
           );
-          
-          if (matchingLine) {
-            matched = true;
-          } else {
+
+          if (!matchingLine) {
             errors.push(
               `Settlement Detail shows MC deduction "${settlementLine.description}" ($${settlementLine.amount}), ` +
-              `but no matching Credit/Debit document was found`
+                `but no matching Credit/Debit document was found`
             );
           }
         }
-        
+
         // Match CM (Comdata/Advance) lines
         else if (settlementLine.transactionCode === 'CM') {
-          const matchingLine = existingLines.find(
-            (el) =>
-              el.lineType === 'ADVANCE' &&
-              Math.abs(el.amount - settlementLine.amount) < 0.01 &&
-              el.tripNumber === settlementLine.tripNumber
-          );
-          
-          if (matchingLine) {
-            matched = true;
-          } else {
-            // This is expected - CM advances might not have supporting docs
-            // Just note it, don't error
-          }
+          // CM advances might not have supporting docs - this is expected
+          // Just note it, don't error
         }
-        
+
         // Match PT (Posting Ticket) lines
         else if (settlementLine.transactionCode === 'PT') {
           // PT lines might not have supporting docs either
-          matched = true; // Accept as-is for now
+          // Accept as-is for now
         }
       }
 
@@ -210,7 +195,7 @@ export async function parseAndSaveImportLines(
         const origin = line.origin || 'Unknown';
         const destination = line.destination || 'Unknown';
         const description = `${shipper}: ${origin} → ${destination}`;
-        
+
         await prisma.importLine.create({
           data: {
             importDocumentId: document.id,
@@ -218,7 +203,7 @@ export async function parseAndSaveImportLines(
             category: 'REV DIST',
             lineType: 'REVENUE',
             description,
-            amount: -Math.abs(line.netBalance), // Revenue is negative (owed to driver)
+            amount: -Math.abs(line.netBalance ?? 0), // Revenue is negative (owed to driver)
             date: line.entryDate ? parseISODateLocal(line.entryDate) : null,
             reference: line.tripNumber,
             accountNumber: line.accountNumber,
@@ -271,12 +256,20 @@ export async function parseAndSaveImportLines(
           if (line.processDate) {
             lineDate = new Date(line.processDate);
             // Validate date is reasonable (between 1900 and 2100)
-            if (isNaN(lineDate.getTime()) || lineDate.getFullYear() < 1900 || lineDate.getFullYear() > 2100) {
+            if (
+              isNaN(lineDate.getTime()) ||
+              lineDate.getFullYear() < 1900 ||
+              lineDate.getFullYear() > 2100
+            ) {
               lineDate = null;
             }
           } else if (line.entryDate) {
             lineDate = new Date(line.entryDate);
-            if (isNaN(lineDate.getTime()) || lineDate.getFullYear() < 1900 || lineDate.getFullYear() > 2100) {
+            if (
+              isNaN(lineDate.getTime()) ||
+              lineDate.getFullYear() < 1900 ||
+              lineDate.getFullYear() > 2100
+            ) {
               lineDate = null;
             }
           }

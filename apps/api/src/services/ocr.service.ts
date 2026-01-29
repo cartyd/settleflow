@@ -27,19 +27,19 @@ function validateOllamaResponse(data: unknown): OllamaResponse {
   if (!data || typeof data !== 'object') {
     throw new Error('Invalid Ollama response: expected object, got ' + typeof data);
   }
-  
+
   const obj = data as Record<string, unknown>;
-  
+
   if (!('response' in obj)) {
     throw new Error('Invalid Ollama response: missing "response" field');
   }
-  
+
   if (typeof obj.response !== 'string') {
     throw new Error(
       `Invalid Ollama response: "response" field must be string, got ${typeof obj.response}`
     );
   }
-  
+
   return {
     response: obj.response,
   };
@@ -66,7 +66,7 @@ const DEFAULT_OCR_PROMPT =
  */
 function getBinaryInstallInstructions(binaryName: string): string {
   const platform = process.platform;
-  
+
   switch (binaryName) {
     case 'pdftocairo':
       if (platform === 'darwin') {
@@ -77,7 +77,7 @@ function getBinaryInstallInstructions(binaryName: string): string {
         return 'Download from https://poppler.freedesktop.org/ or use choco install poppler';
       }
       return 'Please install poppler-utils for your operating system';
-    
+
     default:
       return `Please install ${binaryName} for your operating system`;
   }
@@ -96,12 +96,12 @@ interface PdfConversionResult {
 /**
  * Convert PDF to PNG images using pdftocairo
  * Returns image paths and a cleanup function to remove temporary files
- * 
+ *
  * Note: This is a critical operation - if it fails, we cannot proceed with OCR.
  * Unlike per-page OCR errors, PDF conversion errors are unrecoverable.
- * 
+ *
  * The caller is responsible for calling the cleanup function after processing.
- * 
+ *
  * @throws {Error} If pdfPath is invalid or pdftocairo is not available
  */
 async function convertPdfToImages(pdfPath: string): Promise<PdfConversionResult> {
@@ -117,17 +117,14 @@ async function convertPdfToImages(pdfPath: string): Promise<PdfConversionResult>
     await ensureBinaryAvailable('pdftocairo');
 
     // Convert PDF to PNG images
-    await execFilePromise('pdftocairo', [
-      '-png',
-      pdfPath,
-      join(outputDir, prefix),
-    ]);
+    await execFilePromise('pdftocairo', ['-png', pdfPath, join(outputDir, prefix)]);
 
     // pdftocairo creates files like: prefix-1.png, prefix-2.png, etc.
     // Filter and validate filenames match expected pattern
-    const pngFiles = (await readdir(outputDir))
-      .filter((filename) => filename.startsWith(prefix) && filename.endsWith('.png'));
-    
+    const pngFiles = (await readdir(outputDir)).filter(
+      (filename) => filename.startsWith(prefix) && filename.endsWith('.png')
+    );
+
     // Extract page numbers and validate all files match the expected pattern
     const filesWithPageNumbers = pngFiles.map((filename) => {
       const match = filename.match(/-?(\d+)\.png$/);
@@ -141,7 +138,7 @@ async function convertPdfToImages(pdfPath: string): Promise<PdfConversionResult>
         pageNumber: parseInt(match[1], 10),
       };
     });
-    
+
     // Sort by page number and return full paths
     const files = filesWithPageNumbers
       .sort((a, b) => a.pageNumber - b.pageNumber)
@@ -158,14 +155,10 @@ async function convertPdfToImages(pdfPath: string): Promise<PdfConversionResult>
       cleanup: async () => {
         await rm(outputDir, { recursive: true, force: true }).catch((cleanupError) => {
           console.error('Failed to clean up temporary directory:', outputDir, cleanupError);
-          captureMessage(
-            `Failed to clean up OCR temporary directory: ${outputDir}`,
-            'warning',
-            {
-              tags: { module: 'ocr', operation: 'cleanup' },
-              extra: { outputDir, error: cleanupError },
-            }
-          );
+          captureMessage(`Failed to clean up OCR temporary directory: ${outputDir}`, 'warning', {
+            tags: { module: 'ocr', operation: 'cleanup' },
+            extra: { outputDir, error: cleanupError },
+          });
         });
       },
     };
@@ -195,15 +188,13 @@ async function ensureBinaryAvailable(binaryName: string): Promise<void> {
     await execFilePromise('which', [binaryName]);
   } catch {
     const instructions = getBinaryInstallInstructions(binaryName);
-    throw new Error(
-      `Required binary not found: ${binaryName}. Install with: ${instructions}`
-    );
+    throw new Error(`Required binary not found: ${binaryName}. Install with: ${instructions}`);
   }
 }
 
 /**
  * Convert image file to base64 string
- * 
+ *
  * Note: For very large images, this could consume significant memory.
  * Consider processing in batches if memory becomes an issue.
  */
@@ -214,24 +205,21 @@ async function imageToBase64(imagePath: string): Promise<string> {
 
 /**
  * Extract text from image using Ollama vision model
- * 
+ *
  * @throws {Error} If config is invalid, Ollama API request fails, or request times out
  */
-async function ocrImageWithOllama(
-  base64Image: string,
-  config: OcrConfig
-): Promise<string> {
+async function ocrImageWithOllama(base64Image: string, config: OcrConfig): Promise<string> {
   if (!config?.model || !config?.serverUrl) {
     throw new Error('Invalid OCR config: model and serverUrl are required');
   }
-  
+
   // Validate serverUrl is a valid URL
   try {
     new URL(config.serverUrl);
   } catch {
     throw new Error(`Invalid server URL: ${config.serverUrl}`);
   }
-  
+
   const payload: OllamaRequest = {
     model: config.model,
     prompt: config.prompt || DEFAULT_OCR_PROMPT,
@@ -268,7 +256,7 @@ async function ocrImageWithOllama(
         `Failed to parse Ollama response as JSON: ${error instanceof Error ? error.message : String(error)}`
       );
     }
-    
+
     const data = validateOllamaResponse(rawData);
     return data.response || '';
   } catch (error) {
@@ -283,24 +271,21 @@ async function ocrImageWithOllama(
 
 /**
  * Process a PDF file and extract text from all pages
- * 
+ *
  * @throws {Error} If pdfPath is invalid or config is missing required fields
  */
-export async function processPdfWithOcr(
-  pdfPath: string,
-  config: OcrConfig
-): Promise<PageText[]> {
+export async function processPdfWithOcr(pdfPath: string, config: OcrConfig): Promise<PageText[]> {
   if (!pdfPath || typeof pdfPath !== 'string') {
     throw new Error('Invalid PDF path provided');
   }
-  
+
   if (!config?.model || !config?.serverUrl) {
     throw new Error('Invalid OCR config: model and serverUrl are required');
   }
-  
+
   // Convert PDF to images - this creates temp files and returns cleanup function
   const { imagePaths, cleanup } = await convertPdfToImages(pdfPath);
-  
+
   console.log(`[OCR] PDF converted to ${imagePaths.length} images`);
   console.log(`[OCR] Image paths:`, imagePaths);
 
@@ -330,7 +315,7 @@ export async function processPdfWithOcr(
           // This allows processing other pages even if one fails
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`OCR failed for page ${pageIndex + 1}:`, errorMessage);
-          
+
           captureCustomError(error as Error, {
             level: 'warning',
             tags: {
@@ -344,7 +329,7 @@ export async function processPdfWithOcr(
               totalPages: imagePaths.length,
             },
           });
-          
+
           return {
             pageNumber: pageIndex + 1,
             text: '',
@@ -354,7 +339,9 @@ export async function processPdfWithOcr(
 
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
-      console.log(`[OCR] Processed batch ${i / concurrency + 1}, total results so far: ${results.length}`);
+      console.log(
+        `[OCR] Processed batch ${i / concurrency + 1}, total results so far: ${results.length}`
+      );
       for (const result of batchResults) {
         console.log(`[OCR] Page ${result.pageNumber}: ${result.text.length} chars`);
       }
@@ -369,7 +356,7 @@ export async function processPdfWithOcr(
 
 /**
  * Process a PDF buffer and extract text from all pages
- * 
+ *
  * @throws {Error} If pdfBuffer is invalid or config is missing required fields
  */
 export async function processPdfBufferWithOcr(
@@ -379,7 +366,7 @@ export async function processPdfBufferWithOcr(
   if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
     throw new Error('Invalid PDF buffer provided');
   }
-  
+
   if (!config?.model || !config?.serverUrl) {
     throw new Error('Invalid OCR config: model and serverUrl are required');
   }
@@ -394,14 +381,10 @@ export async function processPdfBufferWithOcr(
     // Clean up temporary directory
     await rm(tempDir, { recursive: true, force: true }).catch((cleanupError) => {
       console.error('Failed to clean up temporary directory:', tempDir, cleanupError);
-      captureMessage(
-        `Failed to clean up PDF upload temporary directory: ${tempDir}`,
-        'warning',
-        {
-          tags: { module: 'ocr', operation: 'cleanup_upload' },
-          extra: { tempDir, error: cleanupError },
-        }
-      );
+      captureMessage(`Failed to clean up PDF upload temporary directory: ${tempDir}`, 'warning', {
+        tags: { module: 'ocr', operation: 'cleanup_upload' },
+        extra: { tempDir, error: cleanupError },
+      });
     });
   }
 }

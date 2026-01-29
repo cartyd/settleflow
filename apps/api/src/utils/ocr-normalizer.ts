@@ -55,48 +55,52 @@ export function detectOcrProvider(text: string): OcrProvider | undefined {
  * Gemini-specific text normalizations
  */
 function normalizeGeminiText(text: string): string {
-  return text
-    // Remove Hebrew/Unicode artifacts that appear in Gemini output
-    .replace(/יווווד/g, '')
-    
-    // Fix split company names that get broken across lines
-    .replace(/MOVING\s*&\s*ST\s*\/\s*BIDETTI,?\s*\n\s*DONNY/gi, 'MOVING & ST/ BIDETTI, DONNY')
-    .replace(/CICEROS'\s*\n\s*MOVING\s*&\s*STORAGE/gi, "CICEROS' MOVING & STORAGE")
-    .replace(/CICEROS'\s*\n\s*MOVING\s*&\s*ST/gi, "CICEROS' MOVING & ST")
-    
-    // Fix split driver names
-    .replace(/BIDETTI,\s*\n\s*DONNY/gi, 'BIDETTI, DONNY')
-    
-    // Fix split account/trip numbers that may be broken across lines
-    .replace(/ACCOUNT\s*\n\s*NUMBER\s*\n\s*(\d+)/gi, 'ACCOUNT NUMBER $1')
-    .replace(/TRIP\s*\n\s*NUMBER\s*\n\s*(\d+)/gi, 'TRIP NUMBER $1')
-    
-    // Fix split amounts that may be broken across lines
-    .replace(/(\d+),?\s*\n\s*(\d{3})\s*\.\s*(\d{2})/g, '$1,$2.$3')
-    .replace(/(\d+)\s*\.\s*\n\s*(\d{2})/g, '$1.$2')
-    
-    // Fix split dates
-    .replace(/(\d{2})\/\s*\n\s*(\d{2})\/\s*\n\s*(\d{2})/g, '$1/$2/$3')
-    .replace(/(\d{2})\s*\/\s*(\d{2})\s*\/\s*\n\s*(\d{2})/g, '$1/$2/$3')
-    
-    // Normalize spacing around forward slashes
-    .replace(/\s*\/\s*/g, '/')
-    
-    // Fix table headers that may be split
-    .replace(/TRANSACTION\s*\/\s*\n\s*DESCRIPTION/gi, 'TRANSACTION/DESCRIPTION')
-    .replace(/BILL\s+OF\s+\n\s*LADING/gi, 'BILL OF LADING')
-    .replace(/NET\s+\n\s*BALANCE/gi, 'NET BALANCE')
-    .replace(/GENERAL\s+LEDGER\s+\n\s*AGENT/gi, 'GENERAL LEDGER AGENT');
+  return (
+    text
+      // Remove Hebrew/Unicode artifacts that appear in Gemini output
+      .replace(/יווווד/g, '')
+
+      // Fix split company names that get broken across lines
+      .replace(/MOVING\s*&\s*ST\s*\/\s*BIDETTI,?\s*\n\s*DONNY/gi, 'MOVING & ST/ BIDETTI, DONNY')
+      .replace(/CICEROS'\s*\n\s*MOVING\s*&\s*STORAGE/gi, "CICEROS' MOVING & STORAGE")
+      .replace(/CICEROS'\s*\n\s*MOVING\s*&\s*ST/gi, "CICEROS' MOVING & ST")
+
+      // Fix split driver names
+      .replace(/BIDETTI,\s*\n\s*DONNY/gi, 'BIDETTI, DONNY')
+
+      // Fix split account/trip numbers that may be broken across lines
+      .replace(/ACCOUNT\s*\n\s*NUMBER\s*\n\s*(\d+)/gi, 'ACCOUNT NUMBER $1')
+      .replace(/TRIP\s*\n\s*NUMBER\s*\n\s*(\d+)/gi, 'TRIP NUMBER $1')
+
+      // Fix split amounts that may be broken across lines
+      .replace(/(\d+),?\s*\n\s*(\d{3})\s*\.\s*(\d{2})/g, '$1,$2.$3')
+      .replace(/(\d+)\s*\.\s*\n\s*(\d{2})/g, '$1.$2')
+
+      // Fix split dates
+      .replace(/(\d{2})\/\s*\n\s*(\d{2})\/\s*\n\s*(\d{2})/g, '$1/$2/$3')
+      .replace(/(\d{2})\s*\/\s*(\d{2})\s*\/\s*\n\s*(\d{2})/g, '$1/$2/$3')
+
+      // Normalize spacing around forward slashes
+      .replace(/\s*\/\s*/g, '/')
+
+      // Fix table headers that may be split
+      .replace(/TRANSACTION\s*\/\s*\n\s*DESCRIPTION/gi, 'TRANSACTION/DESCRIPTION')
+      .replace(/BILL\s+OF\s+\n\s*LADING/gi, 'BILL OF LADING')
+      .replace(/NET\s+\n\s*BALANCE/gi, 'NET BALANCE')
+      .replace(/GENERAL\s+LEDGER\s+\n\s*AGENT/gi, 'GENERAL LEDGER AGENT')
+  );
 }
 
 /**
  * Ollama-specific text normalizations
  */
 function normalizeOllamaText(text: string): string {
-  return text
-    // Ollama typically has cleaner output, minimal normalization needed
-    // Remove excessive dashes that sometimes appear
-    .replace(/-{3,}/g, '---');
+  return (
+    text
+      // Ollama typically has cleaner output, minimal normalization needed
+      // Remove excessive dashes that sometimes appear
+      .replace(/-{3,}/g, '---')
+  );
 }
 
 /**

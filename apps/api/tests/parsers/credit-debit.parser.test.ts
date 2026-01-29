@@ -94,7 +94,7 @@ DUE ACCOUNT
 
   it('should extract credit amount', () => {
     const result = parseCreditDebit(sampleCredit);
-    expect(result.lines[0].amount).toBe(85.00);
+    expect(result.lines[0].amount).toBe(85.0);
     expect(result.lines[0].isDebit).toBe(true); // "DEBITS" column in this example
   });
 
@@ -207,7 +207,7 @@ ACCOUNT NUMBER 3101
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].entryDate).toBe('2025-12-01');
       expect(result.lines[0].amount).toBe(0);
-      expect(result.errors.some(e => e.includes('description/amount'))).toBe(true);
+      expect(result.errors.some((e) => e.includes('description/amount'))).toBe(true);
     });
   });
 
@@ -305,7 +305,7 @@ ZERO CHARGE 0.00
 `;
       const result = parseCreditDebit(text);
       if (result.lines.length > 0) {
-        expect(result.lines[0].amount).toBe(0.00);
+        expect(result.lines[0].amount).toBe(0.0);
       }
     });
 
@@ -339,7 +339,7 @@ NEGATIVE 100.00-
 `;
       const result = parseCreditDebit(text);
       if (result.lines.length > 0) {
-        expect(result.lines[0].amount).toBe(-100.00);
+        expect(result.lines[0].amount).toBe(-100.0);
       }
     });
   });

@@ -9,11 +9,13 @@ Phase 2 implements **AI-powered parsing** using Ollama/Gemma for complex, unstru
 ### Parsers
 
 #### 1. REVENUE_DISTRIBUTION Parser
+
 - **File**: `apps/api/src/parsers/nvl/revenue-distribution.parser.ts`
 - **Pages**: 12-13 (detailed trip earnings)
 - **Method**: AI (Ollama/Gemma)
 
 **Extracts:**
+
 - Driver name (first + last)
 - Trip number and Bill of Lading
 - Origin and destination cities
@@ -22,6 +24,7 @@ Phase 2 implements **AI-powered parsing** using Ollama/Gemma for complex, unstru
 - Net balance owed to driver
 
 **Example Output:**
+
 ```json
 {
   "driverName": "BIDETTI, DONNY",
@@ -34,19 +37,21 @@ Phase 2 implements **AI-powered parsing** using Ollama/Gemma for complex, unstru
   "weight": 12000,
   "miles": 597,
   "serviceItems": [
-    {"description": "HAULER", "amount": 4638.54, "percentage": 62.5, "earnings": 2899.09},
-    {"description": "FUEL", "amount": 617.37, "percentage": 92.0, "earnings": 567.98}
+    { "description": "HAULER", "amount": 4638.54, "percentage": 62.5, "earnings": 2899.09 },
+    { "description": "FUEL", "amount": 617.37, "percentage": 92.0, "earnings": 567.98 }
   ],
   "netBalance": 3890.63
 }
 ```
 
 #### 2. CREDIT_DEBIT Parser
+
 - **File**: `apps/api/src/parsers/nvl/credit-debit.parser.ts`
 - **Pages**: 6-10 (individual charges)
 - **Method**: AI (Ollama/Gemma)
 
 **Extracts:**
+
 - Transaction type (SAFETY CHARGEBACKS, PROFILE SEO, etc.)
 - Description
 - Amount (debit or credit)
@@ -54,11 +59,13 @@ Phase 2 implements **AI-powered parsing** using Ollama/Gemma for complex, unstru
 - Reference numbers
 
 #### 3. REMITTANCE Parser
+
 - **File**: `apps/api/src/parsers/nvl/remittance.parser.ts`
 - **Pages**: 1 (check/payment info)
 - **Method**: AI (Ollama/Gemma)
 
 **Extracts:**
+
 - Check number and date
 - Check amount
 - Payee information
@@ -70,11 +77,13 @@ Phase 2 implements **AI-powered parsing** using Ollama/Gemma for complex, unstru
 **File**: `apps/api/src/services/driver-matcher.service.ts`
 
 Automatically matches extracted driver names to existing Driver records using:
+
 - **Exact matching**: Name matches 95%+ (auto-linked)
 - **Fuzzy matching**: Name matches 70-95% (flagged for review)
 - **Levenshtein distance** algorithm for similarity scoring
 
 **Features:**
+
 - Searches only within batch's agency
 - Returns top 5 candidate matches
 - Auto-updates ImportLine.driverId for exact matches
@@ -82,11 +91,13 @@ Automatically matches extracted driver names to existing Driver records using:
 ## API Endpoints
 
 ### 1. Parse Import File
+
 ```http
 POST /batches/import-files/:importFileId/parse
 ```
 
 Now parses **all document types**:
+
 - ✅ SETTLEMENT_DETAIL (regex)
 - ✅ REVENUE_DISTRIBUTION (AI)
 - ✅ CREDIT_DEBIT (AI)
@@ -95,19 +106,18 @@ Now parses **all document types**:
 - ❌ UNKNOWN (skipped)
 
 **Response:**
+
 ```json
 {
   "importFileId": "uuid",
   "documentsProcessed": 13,
   "totalLinesCreated": 22,
-  "errors": [
-    "Parser for ADVANCE_ADVICE not yet implemented",
-    "Unknown document type: UNKNOWN"
-  ]
+  "errors": ["Parser for ADVANCE_ADVICE not yet implemented", "Unknown document type: UNKNOWN"]
 }
 ```
 
 ### 2. Match Drivers
+
 ```http
 POST /batches/import-files/:importFileId/match-drivers
 ```
@@ -115,6 +125,7 @@ POST /batches/import-files/:importFileId/match-drivers
 Matches extracted driver names to Driver records.
 
 **Response:**
+
 ```json
 {
   "matched": 2,
@@ -164,6 +175,7 @@ curl http://localhost:3000/batches/import-files/{importId}/summary
 ### Phase 1 vs Phase 2 Comparison
 
 **Phase 1 Only (SETTLEMENT_DETAIL):**
+
 ```
 10 lines created:
 - 2 CM (COMDATA advances)
@@ -177,6 +189,7 @@ Missing:
 ```
 
 **Phase 1 + Phase 2:**
+
 ```
 22 lines created:
 - 10 from SETTLEMENT_DETAIL (regex)
@@ -194,15 +207,16 @@ Driver Matching:
 
 ## Performance
 
-| Metric | Phase 1 (Regex) | Phase 2 (AI) |
-|--------|----------------|--------------|
-| Speed per page | <0.1ms | 5-10 seconds |
-| Accuracy | 100% (structured) | 95%+ (needs review) |
-| Pages processed | 1 (SETTLEMENT_DETAIL) | 12 (all types) |
-| Driver extraction | ❌ No | ✅ Yes |
-| Total time (13 pages) | <1 second | ~30-60 seconds |
+| Metric                | Phase 1 (Regex)       | Phase 2 (AI)        |
+| --------------------- | --------------------- | ------------------- |
+| Speed per page        | <0.1ms                | 5-10 seconds        |
+| Accuracy              | 100% (structured)     | 95%+ (needs review) |
+| Pages processed       | 1 (SETTLEMENT_DETAIL) | 12 (all types)      |
+| Driver extraction     | ❌ No                 | ✅ Yes              |
+| Total time (13 pages) | <1 second             | ~30-60 seconds      |
 
 **Notes:**
+
 - AI parsing runs in parallel where possible
 - Ollama response time depends on model and hardware
 - Caching could improve repeat parsing
@@ -212,6 +226,7 @@ Driver Matching:
 ### AI Parsing Errors
 
 **Common Issues:**
+
 1. **"No JSON found in AI response"**
    - Model returned markdown or explanation text
    - Parser attempts to extract JSON from response
@@ -230,11 +245,13 @@ Driver Matching:
 ### Driver Matching Errors
 
 **Match Confidence Levels:**
+
 - **Exact (95%+)**: Auto-linked, high confidence
 - **Fuzzy (70-95%)**: Flagged for manual review
 - **None (<70%)**: Not matched, needs manual input
 
 **Edge Cases:**
+
 - Multiple drivers with similar names → Returns top 5 candidates
 - Driver not in database → No match, needs driver creation
 - Name variations (e.g., "Don" vs "Donny") → Fuzzy match
@@ -244,11 +261,13 @@ Driver Matching:
 ### Prerequisites
 
 1. **Ollama Server** must be running:
+
    ```bash
    ollama serve
    ```
 
 2. **Environment Variables**:
+
    ```env
    OCR_ENABLED=true
    OCR_SERVER_URL=http://10.147.17.205:11434/api/generate
@@ -263,12 +282,14 @@ Driver Matching:
 ### Tuning AI Parsing
 
 **Temperature** (in parser files):
+
 - Current: `0.1` (low = consistent, deterministic)
 - Higher (0.3-0.5): More creative, may help with varied formats
 - Lower (0.0-0.1): More consistent, better for structured extraction
 
 **Prompts**:
 Each parser has a specific prompt in the `parseWithAI()` function. Adjust prompts if:
+
 - Extraction accuracy is low
 - Model returns wrong format
 - Specific fields are consistently missed
@@ -278,23 +299,25 @@ Each parser has a specific prompt in the `parseWithAI()` function. Adjust prompt
 ### Manual Testing
 
 1. **Test Phase 2 parsing**:
+
    ```bash
    # Parse with Phase 2
    curl -X POST http://localhost:3000/batches/import-files/{importId}/parse
-   
+
    # Check database
-   SELECT lineType, description, amount, driverId 
-   FROM import_lines 
+   SELECT lineType, description, amount, driverId
+   FROM import_lines
    WHERE importDocumentId IN (
      SELECT id FROM import_documents WHERE importFileId = '{importId}'
    );
    ```
 
 2. **Test driver matching**:
+
    ```bash
    # Match drivers
    curl -X POST http://localhost:3000/batches/import-files/{importId}/match-drivers
-   
+
    # Verify matches
    SELECT il.description, il.amount, d.firstName, d.lastName
    FROM import_lines il
@@ -305,6 +328,7 @@ Each parser has a specific prompt in the `parseWithAI()` function. Adjust prompt
 ### Expected Results (Sample PDF)
 
 **Total Lines**: 22
+
 - SETTLEMENT_DETAIL: 10 lines (regex)
 - REVENUE_DISTRIBUTION: 2 lines (AI)
 - CREDIT_DEBIT: 6 lines (AI)
@@ -312,6 +336,7 @@ Each parser has a specific prompt in the `parseWithAI()` function. Adjust prompt
 - Skipped: 3 (ADVANCE_ADVICE, UNKNOWN)
 
 **Driver Matches**: 2
+
 - Donny Bidetti (exact match)
 - William Ebert (exact match)
 
@@ -322,6 +347,7 @@ Each parser has a specific prompt in the `parseWithAI()` function. Adjust prompt
 **Problem**: Parsing takes >2 minutes
 
 **Solutions**:
+
 - Use faster Ollama model (e.g., gemma2:7b instead of gemma3:27b)
 - Run Ollama locally instead of remote
 - Increase Ollama server resources
@@ -332,6 +358,7 @@ Each parser has a specific prompt in the `parseWithAI()` function. Adjust prompt
 **Problem**: AI extracts wrong or missing data
 
 **Solutions**:
+
 - Improve OCR quality (use higher resolution PDFs)
 - Adjust prompt in parser to be more specific
 - Lower temperature for more consistent output
@@ -342,6 +369,7 @@ Each parser has a specific prompt in the `parseWithAI()` function. Adjust prompt
 **Problem**: Drivers extracted but not matched
 
 **Solutions**:
+
 - Check driver names in database match PDF format
 - Lower matching threshold (change 0.7 to 0.5 in driver-matcher.service.ts)
 - Add drivers to database if missing
@@ -352,6 +380,7 @@ Each parser has a specific prompt in the `parseWithAI()` function. Adjust prompt
 **Problem**: Server runs out of memory during parsing
 
 **Solutions**:
+
 - Process documents sequentially instead of parallel
 - Increase Node.js heap size: `NODE_OPTIONS=--max-old-space-size=4096`
 - Implement pagination for large import files
@@ -389,6 +418,7 @@ Each parser has a specific prompt in the `parseWithAI()` function. Adjust prompt
 ## Files Created/Modified
 
 ### New Files
+
 - `apps/api/src/parsers/nvl/revenue-distribution.parser.ts`
 - `apps/api/src/parsers/nvl/credit-debit.parser.ts`
 - `apps/api/src/parsers/nvl/remittance.parser.ts`
@@ -396,12 +426,14 @@ Each parser has a specific prompt in the `parseWithAI()` function. Adjust prompt
 - `docs/PARSING_PHASE2.md`
 
 ### Modified Files
+
 - `apps/api/src/services/import-line.service.ts` - Added AI parser routing
 - `apps/api/src/routes/batches.ts` - Added driver matching endpoint
 
 ## Performance Benchmarks
 
 Sample PDF (13 pages):
+
 - **Phase 1 Only**: <1 second, 10 lines
 - **Phase 2 Added**: ~45 seconds, 22 lines
 - **Driver Matching**: ~0.5 seconds, 2 matches

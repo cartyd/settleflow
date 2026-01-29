@@ -25,6 +25,6 @@ declare module 'pdf-poppler' {
   function convert(input: string, options: ConvertOptions): Promise<void>;
 
   export default {
-    convert
+    convert,
   };
 }

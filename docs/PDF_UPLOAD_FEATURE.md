@@ -39,13 +39,14 @@ PDF Upload → API Endpoint → Import Service → OCR Service → Ollama
 ### System Requirements
 
 1. **pdftocairo** (from Poppler)
+
    ```bash
    # macOS
    brew install poppler
-   
+
    # Ubuntu/Debian
    apt-get install poppler-utils
-   
+
    # Verify installation
    which pdftocairo
    ```
@@ -76,6 +77,7 @@ OCR_MODEL=gemma3:27b
 **Endpoint:** `POST /api/batches/:id/upload`
 
 **Request:**
+
 ```bash
 curl -X POST http://localhost:3000/batches/{batchId}/upload \
   -F "file=@/path/to/settlement.pdf" \
@@ -83,6 +85,7 @@ curl -X POST http://localhost:3000/batches/{batchId}/upload \
 ```
 
 **Response:**
+
 ```json
 {
   "importId": "uuid-here",
@@ -109,6 +112,7 @@ curl -X POST http://localhost:3000/batches/abc-123/upload \
 ## Database Schema
 
 ### ImportFile
+
 ```prisma
 model ImportFile {
   id          String
@@ -118,12 +122,13 @@ model ImportFile {
   uploadedAt  DateTime
   approvedAt  DateTime?
   approvedBy  String?
-  
+
   importDocuments ImportDocument[]
 }
 ```
 
 ### ImportDocument
+
 ```prisma
 model ImportDocument {
   id            String
@@ -132,7 +137,7 @@ model ImportDocument {
   pageNumber    Int
   rawText       String    // Extracted OCR text
   parsedAt      DateTime?
-  
+
   importLines ImportLine[]
 }
 ```
@@ -151,7 +156,7 @@ model ImportDocument {
 1. Each PNG image is converted to base64
 2. Base64 image is sent to Ollama with prompt:
    ```
-   Extract and return all text from this image. 
+   Extract and return all text from this image.
    Provide only the text content without any additional commentary.
    ```
 3. Ollama returns extracted text
@@ -160,8 +165,9 @@ model ImportDocument {
 ### Document Type Detection
 
 The system automatically detects document types based on text patterns:
+
 - REMITTANCE
-- SETTLEMENT_DETAIL  
+- SETTLEMENT_DETAIL
 - REVENUE_DISTRIBUTION
 - ADVANCE_ADVICE
 - CREDIT_DEBIT
@@ -200,12 +206,14 @@ See `apps/api/src/parsers/nvl/detectDocumentType.ts` for detection logic.
 ### Processing Time
 
 Processing time depends on:
+
 - Number of pages in PDF
 - Ollama server performance
 - Network latency
 - Image resolution
 
 **Estimated times:**
+
 - 1-page PDF: 5-10 seconds
 - 10-page PDF: 50-100 seconds
 - 50-page PDF: 4-8 minutes
@@ -222,11 +230,13 @@ Processing time depends on:
 ### Manual Testing
 
 1. Start the development server:
+
    ```bash
    npm run dev
    ```
 
 2. Create a test batch:
+
    ```bash
    curl -X POST http://localhost:3000/batches \
      -H "Content-Type: application/json" \
@@ -239,6 +249,7 @@ Processing time depends on:
    ```
 
 3. Upload a PDF:
+
    ```bash
    curl -X POST http://localhost:3000/batches/{batchId}/upload \
      -F "file=@docs/ELECSETTLEBACKUP-121825.PDF"
@@ -257,6 +268,7 @@ Processing time depends on:
 **Problem:** System can't find pdftocairo binary
 
 **Solution:**
+
 ```bash
 # Install Poppler
 brew install poppler
@@ -270,6 +282,7 @@ which pdftocairo
 **Problem:** Can't connect to Ollama server
 
 **Solutions:**
+
 1. Check if Ollama is running: `curl http://localhost:11434`
 2. Verify server URL in `.env`
 3. Ensure vision model is pulled: `ollama list`
@@ -287,6 +300,7 @@ Set `OCR_ENABLED=true` in `.env` file
 **Problem:** PDF takes too long to process
 
 **Solutions:**
+
 1. Use a smaller/faster Ollama model
 2. Reduce PDF resolution before upload
 3. Split large PDFs into smaller chunks

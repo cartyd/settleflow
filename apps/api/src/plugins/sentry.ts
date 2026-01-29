@@ -10,7 +10,7 @@ interface SentryOptions {
 
 /**
  * Enhanced Sentry plugin for comprehensive error monitoring, logging, and performance tracking
- * 
+ *
  * Features:
  * - Automatic error capturing with context
  * - Performance monitoring (APM)
@@ -26,27 +26,27 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
 
   const environment = opts.environment || process.env.NODE_ENV || 'development';
   const isDevelopment = environment === 'development';
-  
+
   // Initialize Sentry with comprehensive configuration
   Sentry.init({
     dsn: opts.dsn,
     environment,
-    
+
     // Performance Monitoring
     tracesSampleRate: opts.tracesSampleRate ?? (isDevelopment ? 1.0 : 0.1),
-    
+
     // Release tracking
     release: process.env.npm_package_version || '1.0.0',
-    
+
     // Debug mode in development
     debug: isDevelopment,
-    
+
     // Enable Sentry Logs product
     enableLogs: true,
     // Note: We intentionally do NOT use consoleLoggingIntegration
     // Instead, we log high-value events explicitly via logger.info/warn/error
     // This avoids noise and focuses on business-critical events
-    
+
     // Filter sensitive data
     beforeSend(event) {
       // Remove sensitive headers
@@ -55,7 +55,7 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
         delete event.request.headers.cookie;
         delete event.request.headers['x-api-key'];
       }
-      
+
       // Remove sensitive query parameters
       if (event.request?.query_string && typeof event.request.query_string === 'string') {
         const sanitized = event.request.query_string
@@ -64,10 +64,10 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
           .replace(/secret=[^&]*/gi, 'secret=REDACTED');
         event.request.query_string = sanitized;
       }
-      
+
       return event;
     },
-    
+
     // Ignore health check and metrics endpoints
     ignoreErrors: [
       // Common errors to ignore
@@ -75,7 +75,7 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
       'EPIPE',
       'ECONNABORTED',
     ],
-    
+
     beforeBreadcrumb(breadcrumb) {
       // Don't log health check breadcrumbs
       if (breadcrumb.category === 'http' && breadcrumb.data?.url?.includes('/health')) {
@@ -109,7 +109,7 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
       () => {
         // This callback runs in isolation scope
         const scope = Sentry.getCurrentScope();
-        
+
         // Set request context
         scope.setContext('request', {
           id: request.id,
@@ -155,14 +155,14 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
   // Response timing and metrics
   fastify.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
     const span = (request as any).sentrySpan;
-    
+
     if (span) {
       // Add response data to span
       span.setAttributes({
         'http.response.status_code': reply.statusCode,
         'http.response_time_ms': Math.round(reply.getResponseTime() * 1000),
       });
-      
+
       // Set span status based on response
       if (reply.statusCode >= 500) {
         span.setStatus({ code: 'internal_error' });
@@ -171,7 +171,7 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
       } else {
         span.setStatus({ code: 'ok' });
       }
-      
+
       // End span
       span.end();
     }
@@ -198,7 +198,7 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
     }
 
     const span = (request as any).sentrySpan;
-    
+
     // Capture exception with full context
     Sentry.captureException(error, {
       contexts: {
@@ -237,12 +237,15 @@ const sentryPlugin: FastifyPluginAsync<SentryOptions> = async (fastify, opts) =>
   fastify.addHook('onClose', async () => {
     fastify.log.info('Flushing Sentry events before shutdown...');
     await Sentry.close(2000); // Wait up to 2 seconds for events to be sent
-  }); 
+  });
 
-  fastify.log.info({
-    environment,
-    tracesSampleRate: opts.tracesSampleRate ?? (isDevelopment ? 1.0 : 0.1),
-  }, 'Sentry plugin initialized');
+  fastify.log.info(
+    {
+      environment,
+      tracesSampleRate: opts.tracesSampleRate ?? (isDevelopment ? 1.0 : 0.1),
+    },
+    'Sentry plugin initialized'
+  );
 };
 
 export default fp(sentryPlugin);

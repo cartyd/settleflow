@@ -1,6 +1,6 @@
 /**
  * Regex-based parser for ADVANCE_ADVICE document type
- * 
+ *
  * Advance documents show cash advances given to drivers (COMDATA, etc.)
  * Enhanced with flexible patterns to handle multiple OCR providers (Ollama, Gemini)
  */
@@ -8,7 +8,12 @@
 import { normalizeOcrText, OCR_PATTERNS, detectOcrProvider } from '../../utils/ocr-normalizer.js';
 import { ADVANCE_TOTAL_CHARGE_SCAN_SPAN } from '../constants.js';
 import { parseCompactDate } from '../utils/date-parser.js';
-import { removeLeadingZeros, CURRENCY_AMOUNT_PATTERN, parseCurrency, CURRENCY_AMOUNT_GLOBAL_RE } from '../utils/string-utils.js';
+import {
+  removeLeadingZeros,
+  CURRENCY_AMOUNT_PATTERN,
+  parseCurrency,
+  CURRENCY_AMOUNT_GLOBAL_RE,
+} from '../utils/string-utils.js';
 
 export interface AdvanceLine {
   tripNumber?: string;
@@ -75,7 +80,10 @@ function extractDescription(ocrText: string): string {
  * Try extracting amount from G/L # AMOUNT table pattern
  */
 function tryGLAmountPattern(normalizedText: string): number | undefined {
-  const pattern = new RegExp(`G/L\\s*#[^\\n]*AMOUNT[^\\n]*\\n[^\\n]*?(${CURRENCY_AMOUNT_PATTERN})`, 'i');
+  const pattern = new RegExp(
+    `G/L\\s*#[^\\n]*AMOUNT[^\\n]*\\n[^\\n]*?(${CURRENCY_AMOUNT_PATTERN})`,
+    'i'
+  );
   const match = normalizedText.match(pattern);
   return match ? parseCurrency(match[1]) : undefined;
 }
@@ -89,7 +97,7 @@ function tryTotalChargePattern(normalizedText: string): number | undefined {
   // Bound search to limited span after header to avoid drift
   const bounded = normalizedText.substring(headerIdx, headerIdx + ADVANCE_TOTAL_CHARGE_SCAN_SPAN);
   const lines = bounded.split('\n');
-  
+
   // Inspect a few lines after header; select right-most amount token if present
   for (let k = 1; k < Math.min(lines.length, 5); k++) {
     const line = lines[k];
@@ -99,7 +107,7 @@ function tryTotalChargePattern(normalizedText: string): number | undefined {
       return parseCurrency(rightMost);
     }
   }
-  
+
   return undefined;
 }
 
@@ -125,10 +133,12 @@ function trySimpleAmountPattern(normalizedText: string): number | undefined {
  * Extract advance amount using multiple strategies
  */
 function extractAdvanceAmount(normalizedText: string): number | undefined {
-  return tryGLAmountPattern(normalizedText)
-    || tryTotalChargePattern(normalizedText)
-    || tryAmountHeaderPattern(normalizedText)
-    || trySimpleAmountPattern(normalizedText);
+  return (
+    tryGLAmountPattern(normalizedText) ||
+    tryTotalChargePattern(normalizedText) ||
+    tryAmountHeaderPattern(normalizedText) ||
+    trySimpleAmountPattern(normalizedText)
+  );
 }
 
 /**
@@ -151,7 +161,7 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
     const date = extractDate(normalizedText);
     const description = extractDescription(ocrText);
     const advanceAmount = extractAdvanceAmount(normalizedText) ?? 0;
-    
+
     if (advanceAmount === 0) {
       errors.push('Could not extract advance amount from document');
     }
@@ -165,7 +175,6 @@ export function parseAdvance(ocrText: string): AdvanceParseResult {
       date,
       rawText: ocrText,
     });
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     errors.push(`Error parsing advance: ${errorMessage}`);

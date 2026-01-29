@@ -3,7 +3,7 @@ import fp from 'fastify-plugin';
 import { ZodError } from 'zod';
 
 const errorHandler: FastifyPluginAsync = async (fastify) => {
-  fastify.setErrorHandler((error, request, reply) => {
+  fastify.setErrorHandler((error, _request, reply) => {
     if (error instanceof ZodError) {
       reply.status(400).send({
         error: 'Validation Error',

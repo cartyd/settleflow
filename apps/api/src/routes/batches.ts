@@ -18,7 +18,6 @@ import * as importLineService from '../services/import-line.service.js';
 import * as importService from '../services/import.service.js';
 import { captureCustomError } from '../utils/sentry.js';
 
-
 // Helper function to extract and serve a specific PDF page
 async function extractAndServePdfPage(
   pdfPath: string,
@@ -28,7 +27,7 @@ async function extractAndServePdfPage(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const outputPath = path.join('/tmp', `page-${Date.now()}-${pageNum}.pdf`);
-    
+
     // Use pdftk or qpdf to extract the page
     // Format: qpdf input.pdf --pages input.pdf pageNum -- output.pdf
     const args = [pdfPath, '--pages', pdfPath, String(pageNum), '--', outputPath];
@@ -52,7 +51,7 @@ async function extractAndServePdfPage(
       const stream = fs.createReadStream(outputPath);
       reply.type('application/pdf');
       reply.header('Content-Disposition', `inline; filename="page-${pageNum}.pdf"`);
-      
+
       stream.on('end', () => {
         // Cleanup temp file after sending
         fs.unlink(outputPath, (err) => {
@@ -130,7 +129,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (error) {
         fastify.log.error(error);
         const errorMessage = error instanceof Error ? error.message : String(error);
-        
+
         // Check if this is a parsing failure error
         if (errorMessage.includes('failed to parse and cannot be viewed')) {
           return reply.status(422).send({
@@ -139,7 +138,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
             statusCode: 422,
           });
         }
-        
+
         return reply.status(500).send({
           error: 'Failed to get batch details',
           message: errorMessage,
@@ -157,7 +156,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = BatchIdParamSchema.parse(request.params);
       const query = request.query as { page?: string };
       const pageNum = query.page ? parseInt(query.page) : null;
-      
+
       try {
         // Get the batch to find the import file
         const batch = await fastify.prisma.settlementBatch.findUnique({
@@ -171,8 +170,8 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         if (!batch?.importFiles[0]) {
-          return reply.status(404).send({ 
-            error: 'Batch or PDF file not found'
+          return reply.status(404).send({
+            error: 'Batch or PDF file not found',
           });
         }
 
@@ -182,8 +181,8 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Check if file exists
         if (!fs.existsSync(filePath)) {
-          return reply.status(404).send({ 
-            error: 'PDF file not found on disk'
+          return reply.status(404).send({
+            error: 'PDF file not found on disk',
           });
         }
 
@@ -307,18 +306,19 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
       // Upload PDF and auto-create batch
       try {
         // Build OCR config based on provider
-        const ocrConfig = config.ocr.provider === 'gemini'
-          ? {
-              apiKey: config.ocr.geminiApiKey!,
-              model: config.ocr.geminiModel,
-              timeoutMs: config.ocr.timeoutMs,
-            }
-          : {
-              model: config.ocr.model,
-              serverUrl: config.ocr.serverUrl,
-              timeoutMs: config.ocr.timeoutMs,
-            };
-        
+        const ocrConfig =
+          config.ocr.provider === 'gemini'
+            ? {
+                apiKey: config.ocr.geminiApiKey!,
+                model: config.ocr.geminiModel,
+                timeoutMs: config.ocr.timeoutMs,
+              }
+            : {
+                model: config.ocr.model,
+                serverUrl: config.ocr.serverUrl,
+                timeoutMs: config.ocr.timeoutMs,
+              };
+
         const result = await autoBatchImportService.uploadPdfAndCreateBatch(
           fastify.prisma,
           data.filename,
@@ -376,18 +376,19 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
       // Process PDF with OCR
       try {
         // Build OCR config based on provider
-        const ocrConfig = config.ocr.provider === 'gemini'
-          ? {
-              apiKey: config.ocr.geminiApiKey!,
-              model: config.ocr.geminiModel,
-              timeoutMs: config.ocr.timeoutMs,
-            }
-          : {
-              model: config.ocr.model,
-              serverUrl: config.ocr.serverUrl,
-              timeoutMs: config.ocr.timeoutMs,
-            };
-        
+        const ocrConfig =
+          config.ocr.provider === 'gemini'
+            ? {
+                apiKey: config.ocr.geminiApiKey!,
+                model: config.ocr.geminiModel,
+                timeoutMs: config.ocr.timeoutMs,
+              }
+            : {
+                model: config.ocr.model,
+                serverUrl: config.ocr.serverUrl,
+                timeoutMs: config.ocr.timeoutMs,
+              };
+
         const result = await importService.processUploadedPdf(
           fastify.prisma,
           id,
@@ -458,7 +459,10 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
       const { importFileId } = request.params as { importFileId: string };
 
       try {
-        const result = await driverMatcherService.matchDriversForImportFile(fastify.prisma, importFileId);
+        const result = await driverMatcherService.matchDriversForImportFile(
+          fastify.prisma,
+          importFileId
+        );
         return reply.send(result);
       } catch (error) {
         fastify.log.error(error);
@@ -566,10 +570,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
               },
             },
           },
-          orderBy: [
-            { importDocument: { pageNumber: 'asc' } },
-            { createdAt: 'asc' },
-          ],
+          orderBy: [{ importDocument: { pageNumber: 'asc' } }, { createdAt: 'asc' }],
         });
 
         // Manually fetch driver info for lines that have driverId
@@ -592,7 +593,7 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
 
         return reply.send({
           success: true,
-          lines: linesWithDrivers.map(line => ({
+          lines: linesWithDrivers.map((line) => ({
             id: line.id,
             pageNumber: line.importDocument?.pageNumber,
             documentType: line.importDocument?.documentType,
@@ -601,10 +602,12 @@ export const batchRoutes: FastifyPluginAsync = async (fastify) => {
             date: line.date,
             description: line.description,
             amount: line.amount,
-            driver: line.driver ? {
-              id: line.driver.id,
-              name: `${line.driver.firstName} ${line.driver.lastName}`,
-            } : null,
+            driver: line.driver
+              ? {
+                  id: line.driver.id,
+                  name: `${line.driver.firstName} ${line.driver.lastName}`,
+                }
+              : null,
             reference: line.reference,
             accountNumber: line.accountNumber,
             tripNumber: line.tripNumber,

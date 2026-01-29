@@ -22,7 +22,7 @@ OTHER CHARGES
     const line = result.lines[0];
     expect(line.ptNumber).toBe('256483');
     expect(line.accountNumber).toBe('3101');
-    expect(line.debitAmount).toBe(10.00);
+    expect(line.debitAmount).toBe(10.0);
     expect(line.description).toContain('OTHER CHARGES');
     expect(line.date).toBe('2025-12-10');
   });
@@ -60,7 +60,7 @@ DEBIT
 OTHER CHARGES
 `;
       const result = parsePostingTicket(text);
-      expect(result.errors.some(e => e.toLowerCase().includes('debit amount'))).toBe(true);
+      expect(result.errors.some((e) => e.toLowerCase().includes('debit amount'))).toBe(true);
     });
 
     it('should handle missing PT number', () => {
@@ -73,7 +73,7 @@ DEBIT
       const result = parsePostingTicket(text);
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].ptNumber).toBeUndefined();
-      expect(result.lines[0].debitAmount).toBe(10.00);
+      expect(result.lines[0].debitAmount).toBe(10.0);
     });
 
     it('should handle missing account number', () => {
@@ -86,7 +86,7 @@ DEBIT
       const result = parsePostingTicket(text);
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].accountNumber).toBeUndefined();
-      expect(result.lines[0].debitAmount).toBe(10.00);
+      expect(result.lines[0].debitAmount).toBe(10.0);
     });
   });
 
@@ -135,7 +135,7 @@ DEBIT
 0.00
 `;
       const result = parsePostingTicket(text);
-      expect(result.lines[0].debitAmount).toBe(0.00);
+      expect(result.lines[0].debitAmount).toBe(0.0);
     });
 
     it('should handle large amounts with multiple commas', () => {
@@ -168,7 +168,7 @@ DEBIT
 100.00-
 `;
       const result = parsePostingTicket(text);
-      expect(result.lines[0].debitAmount).toBe(-100.00);
+      expect(result.lines[0].debitAmount).toBe(-100.0);
     });
   });
 

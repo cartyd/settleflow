@@ -1,8 +1,8 @@
 /**
  * Regex-based parser for REMITTANCE document type
- * 
+ *
  * This is the cover page with check/payment information
- * 
+ *
  * Example structure (Page 1):
  * - Check number: 590668
  * - Check date: 12/18/25
@@ -14,13 +14,17 @@
  */
 
 import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
-import { CHECK_SCAN_TOP_LINES, ACCOUNT_SCAN_TOP_LINES, WEEK_END_OFFSET_DAYS, WEEK_DURATION_DAYS } from '../constants.js';
+import {
+  CHECK_SCAN_TOP_LINES,
+  ACCOUNT_SCAN_TOP_LINES,
+  WEEK_END_OFFSET_DAYS,
+  WEEK_DURATION_DAYS,
+} from '../constants.js';
 import { parseSlashDate } from '../utils/date-parser.js';
 import { removeLeadingZeros } from '../utils/string-utils.js';
 
 // Type for payment method to ensure consistency
 type PaymentMethod = 'Electronic Transfer' | 'Check';
-
 
 // Character class for company names: supports ASCII, diacritics, apostrophes (straight & curly), ampersands, hyphens
 const COMPANY_NAME_CHARS = `[A-ZÀ-ÿ''&,.\-\s]+`;
@@ -60,7 +64,6 @@ export interface BatchMetadata {
   weekStartDate?: string;
   weekEndDate?: string;
 }
-
 
 /**
  * Extract check number from the document
@@ -146,14 +149,20 @@ function extractPayeeName(text: string): string | undefined {
 
   // Try Gemini format with line breaks: TO THE\nORDER\nOF\nDATE...\nNAME
   // Look for name between AMOUNT and next section
-  const companyPattern = new RegExp(`AMOUNT\\s+\\$[^\\n]*\\n\\s*([A-Z]${COMPANY_NAME_CHARS}(?:LLC|INC|CORP|LTD))(?=\\s|\\n)`, 'i');
+  const companyPattern = new RegExp(
+    `AMOUNT\\s+\\$[^\\n]*\\n\\s*([A-Z]${COMPANY_NAME_CHARS}(?:LLC|INC|CORP|LTD))(?=\\s|\\n)`,
+    'i'
+  );
   const geminiMatch = text.match(companyPattern);
   if (geminiMatch) {
     return geminiMatch[1].trim();
   }
-  
+
   // Alternative: Name appears after amount/date section
-  const altPattern = new RegExp(`TO THE[\\s\\n]+ORDER[\\s\\n]+OF[\\s\\n]+(?:DATE[^\\n]*\\n)?(?:AMOUNT[^\\n]*\\n)?\\s*([A-Z]${COMPANY_NAME_CHARS}?)(?:\\n|$)`, 'i');
+  const altPattern = new RegExp(
+    `TO THE[\\s\\n]+ORDER[\\s\\n]+OF[\\s\\n]+(?:DATE[^\\n]*\\n)?(?:AMOUNT[^\\n]*\\n)?\\s*([A-Z]${COMPANY_NAME_CHARS}?)(?:\\n|$)`,
+    'i'
+  );
   const altMatch = text.match(altPattern);
   if (altMatch) {
     const name = altMatch[1].trim();
@@ -264,23 +273,27 @@ function tryAgencyAccountPattern(text: string): string | undefined {
  */
 function extractAccountNumber(text: string): string | undefined {
   // Try patterns in order of reliability
-  return tryGeneralLedgerPattern(text)
-    || tryTablePattern(text)
-    || tryTopOfDocumentPattern(text)
-    || trySimpleAccountPattern(text)
-    || tryAgencyAccountPattern(text);
+  return (
+    tryGeneralLedgerPattern(text) ||
+    tryTablePattern(text) ||
+    tryTopOfDocumentPattern(text) ||
+    trySimpleAccountPattern(text) ||
+    tryAgencyAccountPattern(text)
+  );
 }
 
 /**
  * Calculate week start and end dates from check date
  * Assumes settlement is for the week ending ~1 week before check date
  */
-function calculateWeekDates(checkDate: string): { weekStartDate: string; weekEndDate: string } | undefined {
+function calculateWeekDates(
+  checkDate: string
+): { weekStartDate: string; weekEndDate: string } | undefined {
   // Validate ISO date format (YYYY-MM-DD)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(checkDate)) {
     return undefined;
   }
-  
+
   try {
     // Use UTC math on ISO date strings to avoid TZ/DST drift
     const weekEndDate = addDaysUtc(checkDate, WEEK_END_OFFSET_DAYS);
@@ -335,10 +348,10 @@ export function parseRemittance(ocrText: string): RemittanceParseResult {
     lines.push(line);
 
     // Extract batch metadata if we have the essential fields
-    
+
     if (checkNumber && accountNumber && checkDate) {
       const weekDates = calculateWeekDates(checkDate);
-      
+
       metadata = {
         nvlPaymentRef: checkNumber,
         agencyCode: accountNumber,
