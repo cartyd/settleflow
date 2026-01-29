@@ -99,7 +99,7 @@ function getEnvVar(key: string, defaultValue?: string): string {
     console.warn(`Warning: Missing environment variable: ${key}`);
     return '';
   }
-  return value || defaultValue || '';
+  return value ?? defaultValue ?? '';
 }
 
 function getEnvVarAsNumber(key: string, defaultValue: number): number {
