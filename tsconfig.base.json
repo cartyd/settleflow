@@ -1,10 +1,16 @@
 {
+  // Shared compiler settings for all workspaces (JSONC allows comments)
   "compilerOptions": {
+    // Target modern Node runtime features
     "target": "ES2022",
+    // Emit native ES modules; aligns with ESM package.json usage
     "module": "ES2022",
     "lib": ["ES2022"],
+    // Bundler-style resolution preserves import specifiers and supports path aliases
     "moduleResolution": "bundler",
+    // Per-file checking compatible with tsx; catches non-emit-safe patterns
     "isolatedModules": true,
+    // Treat files as modules consistently (no implicit script fallback)
     "moduleDetection": "force",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -12,8 +18,11 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    // Safer error handling: avoid implicit any in catch
     "useUnknownInCatchVariables": true,
+    // Require explicit method overrides to prevent accidental shadowing
     "noImplicitOverride": true,
+    // Emit types and maps for packages that are imported by apps
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
