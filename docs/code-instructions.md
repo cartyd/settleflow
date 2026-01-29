@@ -398,6 +398,55 @@ test
 The scaffold is complete when:
 
 * `npm install && npm run dev` runs API + UI
+
+---
+
+## 13. TypeScript & ESM Conventions
+
+This repo uses modern ESM with TypeScript. These conventions ensure imports resolve correctly at runtime and keep types predictable across apps and packages.
+
+### Runtime & Emit
+
+- API app is ESM: see `"type": "module"` in [apps/api/package.json](apps/api/package.json).
+- TS emits ES modules: see `module: "ES2022"` in [tsconfig.base.json](tsconfig.base.json).
+- Resolution is `moduleResolution: "bundler"` in [tsconfig.base.json](tsconfig.base.json) to align with modern tooling.
+
+### Import Specifiers
+
+- Relative imports must include `.js` extensions in source TypeScript for Node ESM to run compiled code without a bundler.
+  - Example: [apps/api/src/parsers/nvl/settlement-detail.parser.ts](apps/api/src/parsers/nvl/settlement-detail.parser.ts) uses `../../utils/ocr-normalizer.js`.
+- Path aliases and package imports do not need extensions (e.g., `@settleflow/shared-types`).
+
+### TS Compiler Options (base)
+
+- Enabled for safety and consistency:
+  - `isolatedModules`: catches per-file emit issues; compatible with `tsx`.
+  - `moduleDetection: "force"`: treats files as modules consistently.
+  - `useUnknownInCatchVariables`: avoids implicit `any` in `catch`.
+  - `noImplicitOverride`: ensures method overrides are explicit.
+- Intentionally not enabled (would require broad refactors right now):
+  - `exactOptionalPropertyTypes`
+  - `noUncheckedIndexedAccess`
+  - `verbatimModuleSyntax`
+
+### Node Types
+
+- App-level configs include `types: ["node"]` in [apps/api/tsconfig.json](apps/api/tsconfig.json) and [apps/admin-ui/tsconfig.json](apps/admin-ui/tsconfig.json) to make Node globals/types explicit.
+
+### Build & Run
+
+- Build: `npm run build` emits to `dist` per app.
+- Dev: `npm run dev` uses `tsx` to run TS directly.
+- Prod: `npm run start` runs Node on built ESM (`dist`).
+
+### Admin UI
+
+- Decide ESM vs CommonJS for [apps/admin-ui/package.json](apps/admin-ui/package.json). If ESM, add `"type": "module"` for consistency with API.
+
+### Rationale
+
+- Explicit `.js` relative imports avoid Node ESM resolution errors after compile.
+- Base strictness improves safety without forcing repo-wide changes today; we can gradually tighten over time.
 * Prisma migrations run (SQLite)
 * Swagger UI loads
 * Admin pages render real data
