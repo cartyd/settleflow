@@ -184,13 +184,18 @@ export async function parseAndSaveImportLines(
             importFileId: document.importFileId,
             documentType: DocumentType.POSTING_TICKET,
           },
+          orderBy: { pageNumber: 'asc' },
         });
         
         let description = isCredit ? 'POSTING TICKET (CREDIT)' : 'POSTING TICKET (DEBIT)';
         let ptNumber: string | undefined;
+        let ptDocumentId = document.id; // Default to Settlement Detail if no PT documents
         
         // Try to extract description from first PT document
         if (ptDocuments.length > 0) {
+          // Use the first posting ticket document's ID so the page link works correctly
+          ptDocumentId = ptDocuments[0].id;
+          
           try {
             const ptText = extractPlainText(ptDocuments[0].rawText);
             // Look for PT NUMBER
@@ -209,9 +214,10 @@ export async function parseAndSaveImportLines(
         
         // Create import line for posting ticket
         // Credits are REVENUE (positive), debits are DEDUCTION (negative)
+        // Use PT document ID so page links point to the posting ticket page, not settlement detail
         await prisma.importLine.create({
           data: {
-            importDocumentId: document.id,
+            importDocumentId: ptDocumentId,
             driverId: null,
             category: 'POSTING TICKET',
             lineType: isCredit ? 'REVENUE' : 'DEDUCTION',
