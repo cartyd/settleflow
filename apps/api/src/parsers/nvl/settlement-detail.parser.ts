@@ -259,15 +259,35 @@ function parseTransactionLine(line: string): ParsedSettlementLine | null {
  *   189.43
  */
 function extractColumnarFormat(summarySection: string): RegExpMatchArray | null {
-  // Find all description lines before CHARGES header
-  const chargesIdx = summarySection.search(/^CHARGES$/m);
-  if (chargesIdx < 0) return null;
+  // In columnar format, the structure is:
+  // DESCRIPTION\nCHARGES\nEARNINGS\nOPEN\n[item names]\n[charge amounts]\n[earning amounts]\n[total amounts]
+  // We need to find where item names start (after all column headers)
   
-  const descriptionsText = summarySection.substring(0, chargesIdx);
-  const amountsText = summarySection.substring(chargesIdx);
+  const lines = summarySection.split('\n').map(l => l.trim()).filter(l => l);
   
-  // Find POSTING TICKETS and its position in the description list
-  const descLines = descriptionsText.split('\n').map(l => l.trim()).filter(l => l);
+  // Find index of DESCRIPTION header
+  const descriptionIdx = lines.findIndex(l => /^DESCRIPTION$/i.test(l));
+  if (descriptionIdx < 0) {
+    console.log('[extractColumnarFormat] DESCRIPTION header not found');
+    return null;
+  }
+  
+  // Find where the amount lines start (first line that looks like a number)
+  const firstAmountIdx = lines.findIndex((l, idx) => idx > descriptionIdx && /^[\d,]*\.\d{2}-?$/.test(l));
+  if (firstAmountIdx < 0) {
+    console.log('[extractColumnarFormat] No amount lines found');
+    return null;
+  }
+  
+  // Extract description items (between column headers and first amount)
+  // Skip known column headers
+  const descLines = lines
+    .slice(descriptionIdx + 1, firstAmountIdx)
+    .filter(l => !/^(CHARGES|EARNINGS|OPEN|TOTAL)$/i.test(l));
+  
+  console.log(`[extractColumnarFormat] Description items: ${JSON.stringify(descLines)}`);
+  
+  // Find POSTING TICKETS position in description items
   const ptIndex = descLines.findIndex(line => /^POSTING\s+TICKETS$/i.test(line));
   
   if (ptIndex < 0) {
@@ -275,32 +295,31 @@ function extractColumnarFormat(summarySection: string): RegExpMatchArray | null 
     return null;
   }
   
-  console.log(`[extractColumnarFormat] Found POSTING TICKETS at index ${ptIndex} in descriptions`);
+  console.log(`[extractColumnarFormat] Found POSTING TICKETS at index ${ptIndex} (0-based)`);
   
-  // Extract amounts from CHARGES, EARNINGS, and OPEN/TOTAL columns
-  // Skip the "CHARGES" header line and extract amounts
-  const amountLines = amountsText.split('\n').map(l => l.trim()).filter(l => l && /^[\d,]*\.\d{2}-?$/.test(l));
+  // Extract all amount lines (starting from firstAmountIdx)
+  const amountLines = lines.slice(firstAmountIdx).filter(l => /^[\d,]*\.\d{2}-?$/.test(l));
   
   console.log(`[extractColumnarFormat] Found ${amountLines.length} amount lines`);
   
-  // The amounts are organized as: [all charges], [all earnings], [all totals]
-  // We need the amount at ptIndex from each section
-  const numItems = descLines.length - 1; // -1 for DESCRIPTION header
+  const numItems = descLines.length;
   
-  if (amountLines.length < ptIndex + 1) {
-    console.log('[extractColumnarFormat] Not enough amount lines');
+  // Validate we have enough amounts for all three columns
+  if (amountLines.length < numItems * 3) {
+    console.log(`[extractColumnarFormat] Not enough amounts: need ${numItems * 3}, got ${amountLines.length}`);
     return null;
   }
   
-  // POSTING TICKETS amounts: charges at ptIndex, earnings at ptIndex + numItems, total at ptIndex + 2*numItems
+  // Amounts are organized as: [all charges], [all earnings], [all totals]
+  // POSTING TICKETS amounts at position: ptIndex, ptIndex + numItems, ptIndex + 2*numItems
   const chargesValue = amountLines[ptIndex] || '.00';
   const earningsValue = amountLines[ptIndex + numItems] || '.00';
-  const totalValue = amountLines[ptIndex + 2 * numItems] || chargesValue; // Fallback to charges if total not found
+  const totalValue = amountLines[ptIndex + 2 * numItems] || chargesValue;
   
-  console.log(`[extractColumnarFormat] charges=${chargesValue}, earnings=${earningsValue}, total=${totalValue}`);
+  console.log(`[extractColumnarFormat] PT at index ${ptIndex}: charges=${chargesValue}, earnings=${earningsValue}, total=${totalValue}`);
   
   // Return in same format as regex match: [fullMatch, charges, earnings, total]
-  return [chargesValue, chargesValue, earningsValue, totalValue] as any as RegExpMatchArray;
+  return [totalValue, chargesValue, earningsValue, totalValue] as any as RegExpMatchArray;
 }
 
 /**
