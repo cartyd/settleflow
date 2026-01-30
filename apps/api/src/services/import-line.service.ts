@@ -3,7 +3,6 @@ import { DocumentType } from '@settleflow/shared-types';
 
 import { parseAdvance } from '../parsers/nvl/advance.parser.js';
 import { parseCreditDebit } from '../parsers/nvl/credit-debit.parser.js';
-import { parsePostingTicket } from '../parsers/nvl/posting-ticket.parser.js';
 import { parseRemittance } from '../parsers/nvl/remittance.parser.js';
 import { parseRevenueDistribution } from '../parsers/nvl/revenue-distribution.parser.js';
 import { parseSettlementDetail } from '../parsers/nvl/settlement-detail.parser.js';
@@ -170,6 +169,71 @@ export async function parseAndSaveImportLines(
           // Accept as-is for now
         }
       }
+      
+      // Create posting ticket import line from Settlement Summary (if available)
+      // This is more reliable than parsing posting ticket documents which have inconsistent formats
+      console.log('[import-line] parseResult.summaryAmounts:', parseResult.summaryAmounts);
+      if (parseResult.summaryAmounts?.postingTickets) {
+        const ptAmount = parseResult.summaryAmounts.postingTickets;
+        const isCredit = parseResult.summaryAmounts.isPostingTicketCredit;
+        
+        // Get posting ticket description from PT documents if available
+        const ptDocuments = await prisma.importDocument.findMany({
+          where: {
+            importFileId: document.importFileId,
+            documentType: DocumentType.POSTING_TICKET,
+          },
+          orderBy: { pageNumber: 'asc' },
+        });
+        
+        let description = isCredit ? 'POSTING TICKET (CREDIT)' : 'POSTING TICKET (DEBIT)';
+        let ptNumber: string | undefined;
+        let ptDocumentId = document.id; // Default to Settlement Detail if no PT documents
+        
+        // Try to extract description from first PT document
+        if (ptDocuments.length > 0) {
+          // Use the first posting ticket document's ID so the page link works correctly
+          ptDocumentId = ptDocuments[0].id;
+          
+          try {
+            const ptText = extractPlainText(ptDocuments[0].rawText);
+            // Look for PT NUMBER
+            const ptNumMatch = ptText.match(/PT\s+NUMBER\s*\n?\s*(\d+)/i);
+            if (ptNumMatch) ptNumber = ptNumMatch[1];
+            
+            // Look for description (OTHER CHARGES, TOLLS, etc.)
+            const descMatch = ptText.match(/(?:OTHER\s+CHARGES|TOLLS[^\n]*)/i);
+            if (descMatch) {
+              description = descMatch[0].trim();
+            }
+          } catch (e) {
+            // Ignore extraction errors, use default description
+          }
+        }
+        
+        // Create import line for posting ticket
+        // Credits are REVENUE (positive), debits are DEDUCTION (negative)
+        // Use PT document ID so page links point to the posting ticket page, not settlement detail
+        await prisma.importLine.create({
+          data: {
+            importDocumentId: ptDocumentId,
+            driverId: null,
+            category: 'POSTING TICKET',
+            lineType: isCredit ? 'REVENUE' : 'DEDUCTION',
+            description,
+            amount: isCredit ? ptAmount : -ptAmount,
+            date: parseResult.settlementDate ? parseISODateLocal(parseResult.settlementDate) : null,
+            reference: ptNumber,
+            rawData: JSON.stringify({
+              ptNumber,
+              amount: ptAmount,
+              isCredit,
+              source: 'settlement_summary',
+            }),
+          },
+        });
+        linesCreated++;
+      }
 
       // Mark document as parsed (validation complete)
       await prisma.importDocument.update({
@@ -189,6 +253,15 @@ export async function parseAndSaveImportLines(
 
       // Create ImportLine records for revenue distribution
       for (const line of parseResult.lines) {
+        console.log('[RD parse]', {
+          pageNumber: document.pageNumber,
+          tripNumber: line.tripNumber,
+          shipper: line.shipperName,
+          origin: line.origin,
+          destination: line.destination,
+          entryDate: line.entryDate,
+          deliveryDate: line.deliveryDate,
+        });
         // Format description as "SHIPPER: ORIGIN → DESTINATION"
         const shipper = line.shipperName || 'Unknown';
         const origin = line.origin || 'Unknown';
@@ -392,36 +465,11 @@ export async function parseAndSaveImportLines(
     }
 
     case DocumentType.POSTING_TICKET: {
-      // Posting Ticket pages are the PRIMARY source for posting ticket deductions.
-      const plainText = extractPlainText(document.rawText);
-      const parseResult = parsePostingTicket(plainText);
-      errors.push(...parseResult.errors);
-
-      // Create ImportLine records for posting tickets
-      for (const line of parseResult.lines) {
-        await prisma.importLine.create({
-          data: {
-            importDocumentId: document.id,
-            driverId: null,
-            category: 'POSTING TICKET',
-            lineType: 'DEDUCTION',
-            description: line.description || 'OTHER CHARGES',
-            amount: line.debitAmount,
-            date: line.date ? parseISODateLocal(line.date) : null,
-            reference: line.ptNumber,
-            accountNumber: line.accountNumber,
-            rawData: JSON.stringify({
-              ptNumber: line.ptNumber,
-              accountNumber: line.accountNumber,
-              debitAmount: line.debitAmount,
-              description: line.description,
-            }),
-          },
-        });
-        linesCreated++;
-      }
-
-      // Mark as parsed (even if 0 lines created)
+      // Posting Ticket documents are NOT parsed individually because they have inconsistent formats.
+      // Instead, posting ticket import lines are created from the Settlement Summary during
+      // Settlement Detail parsing, which provides a reliable single source of truth.
+      // We just mark these documents as parsed so they don't show as "not parsed" errors.
+      
       await prisma.importDocument.update({
         where: { id: document.id },
         data: { parsedAt: new Date() },
@@ -467,12 +515,12 @@ export async function parseImportFile(
 
   // FIRST PASS: Parse supporting documents to create import lines
   // These are the PRIMARY source of transaction data
+  // NOTE: POSTING_TICKET is handled in second pass via Settlement Summary
   for (const document of documents) {
     if (
       document.documentType === DocumentType.REVENUE_DISTRIBUTION ||
       document.documentType === DocumentType.CREDIT_DEBIT ||
-      document.documentType === DocumentType.ADVANCE_ADVICE ||
-      document.documentType === DocumentType.POSTING_TICKET
+      document.documentType === DocumentType.ADVANCE_ADVICE
     ) {
       try {
         const result = await parseAndSaveImportLines(prisma, document.id);
@@ -487,12 +535,14 @@ export async function parseImportFile(
     }
   }
 
-  // SECOND PASS: Parse validation documents (Settlement Detail, Remittance)
-  // Settlement Detail validates that supporting docs match the summary
+  // SECOND PASS: Parse validation documents (Settlement Detail, Remittance, Posting Ticket)
+  // Settlement Detail validates that supporting docs match the summary and creates posting ticket lines
+  // Posting Ticket documents are only parsed to mark them as processed
   for (const document of documents) {
     if (
       document.documentType === DocumentType.SETTLEMENT_DETAIL ||
       document.documentType === DocumentType.REMITTANCE ||
+      document.documentType === DocumentType.POSTING_TICKET ||
       document.documentType === DocumentType.UNKNOWN
     ) {
       try {
@@ -506,6 +556,51 @@ export async function parseImportFile(
         );
       }
     }
+  }
+
+  // After parsing, compute and persist batch financial totals so listings reflect correct NET AMOUNT
+  try {
+    const importFile = await prisma.importFile.findUnique({
+      where: { id: importFileId },
+      select: { batchId: true },
+    });
+
+    if (importFile?.batchId) {
+      // Fetch all import lines for this batch (across all import files)
+      const lines = await prisma.importLine.findMany({
+        where: {
+          importDocument: {
+            importFile: {
+              batchId: importFile.batchId,
+            },
+          },
+        },
+      });
+
+      const totalRevenue = lines
+        .filter((l) => l.lineType === 'REVENUE')
+        .reduce((sum, l) => sum + Math.abs(l.amount), 0);
+      const totalAdvances = lines
+        .filter((l) => l.lineType === 'ADVANCE')
+        .reduce((sum, l) => sum + Math.abs(l.amount), 0);
+      const totalDeductions = lines
+        .filter((l) => l.lineType === 'DEDUCTION')
+        .reduce((sum, l) => sum + Math.abs(l.amount), 0);
+      const netAmount = totalRevenue - totalAdvances - totalDeductions;
+
+      await prisma.settlementBatch.update({
+        where: { id: importFile.batchId },
+        data: {
+          totalRevenue,
+          totalAdvances,
+          totalDeductions,
+          netAmount,
+        },
+      });
+    }
+  } catch (e) {
+    // Non-fatal: totals update should not break parsing flow
+    console.warn('[parseImportFile] Failed to update batch totals:', e);
   }
 
   return {

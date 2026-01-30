@@ -242,6 +242,92 @@ DUE ACCOUNT`;
       const result = parseRevenueDistribution(text);
       expect(result.lines[0].deliveryDate).toBe('2025-11-30');
     });
+
+    it('should extract date appearing after P-code (post-anchored)', () => {
+      const text = `TRIP NUMBER
+1010
+
+ORIGIN DESTINATION
+
+CITY ST DEST MD
+
+P65 12 04 5
+
+NET BALANCE 800.00
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].deliveryDate).toBe('2025-12-04');
+    });
+
+    it('should parse DELIVERY DATE from later 2-digit merged day+year tokens after header (batch a85c0dc1 page 10)', () => {
+      const text = `REVENUE DISTRIBUTION
+REG DT 091025 PAPERS DT 120525 PAY DT 121125 TH
+FOR SERVICE PERFORMED BY
+CICEROS' MOVING & ST/ BIDETTI, DONNY
+BILL OF LADING
+NUMBER
+SUPL
+656474
+SHIPPER NAME
+MCDONALD
+ORIGIN
+BENTON
+ZIP 72019
+AR
+DESTINATION
+CHULA VIST CA
+ZIP 91913
+WEIGHT
+MILES
+5960
+1660
+ACCOUNT
+NUMBER
+TRIP
+NUMBER
+3101
+1855
+TYPE
+GOV
+NVL ENTRY
+DATE
+NVL BATCH
+NUMBER
+12 08 5
+TRN#
+DELIVERY
+DATE
+308
+347989
+CUT*
+RATE
+12
+45
+66`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      // Tokens after header later in the page contain "12" and "45" (merged day+year)
+      expect(result.lines[0].deliveryDate).toBe('2025-12-04');
+    });
+
+    it('should extract DELIVERY DATE when tokens are on separate lines', () => {
+      const text = `TRIP NUMBER
+2020
+
+DELIVERY
+DATE
+12
+04
+5
+
+NET BALANCE 900.00
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].deliveryDate).toBe('2025-12-04');
+    });
   });
 
   describe('Required fields', () => {
@@ -265,6 +351,31 @@ DUE ACCOUNT`;
 
       const result = parseRevenueDistribution(text);
       expect(result.lines[0].netBalance).toBe(1234.56);
+    });
+
+    it('should extract net balance with DUE NVL (single line, thousands separators)', () => {
+      const text = `TRIP NUMBER
+1854
+
+NET BALANCE DUE N/V.L 3,890.63`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0].netBalance).toBe(3890.63);
+    });
+
+    it('should extract net balance when amount appears on later line after DUE NVL', () => {
+      const text = `TRIP NUMBER
+1854
+
+NET BALANCE DUE NVL
+*RATES AND OTHER DETAILS*
+3,890.63
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0].netBalance).toBe(3890.63);
     });
 
     it('should report error when trip number is missing', () => {
@@ -579,6 +690,144 @@ DUE ACCOUNT`;
       if (fuelItem) {
         expect(fuelItem.amount).toBe(-50.0);
       }
+    });
+  });
+
+  describe('Shipper name extraction regression tests', () => {
+    it('should extract shipper from SHIPPER NAME section, not BILL OF LADING header (batch 2485338f page 12)', () => {
+      const text = `TRIP NUMBER
+1854
+
+SHIPPER NAME
+BILL OF LADING
+NUMBER
+SUPL
+356985/357175
+BELLI
+
+ORIGIN
+WESTBOROUG MA
+
+DESTINATION
+AKRON OH
+
+11 19 5 P68
+
+NET BALANCE 3890.63
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0].shipperName).toBe('BELLI');
+      expect(result.lines[0].shipperName).not.toBe('BILL OF LADING');
+    });
+
+    it('should parse RDD with P-code anchor (batch 2485338f page 12)', () => {
+      const text = `TRIP NUMBER
+416
+
+ORIGIN
+CITY TX
+
+11 19 5 P65
+
+NET BALANCE 314.83
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0].deliveryDate).toBe('2025-11-19');
+    });
+
+    it('should handle city names with embedded state codes (batch 2485338f page 13)', () => {
+      const text = `TRIP NUMBER
+416
+
+ORIGIN
+MISSOURI CTX
+
+ZIP 77489
+
+DESTINATION
+GERMANTOWN MD
+
+12 125 P62
+
+NET BALANCE 314.83
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      // Should extract "MISSOURI C, TX" or handle "MISSOURI CTX" correctly
+      expect(result.lines[0].origin).toBeDefined();
+      expect(result.lines[0].origin).toContain('MISSOURI');
+    });
+
+    it('should parse date with merged day+year format (batch 2485338f page 13)', () => {
+      const text = `TRIP NUMBER
+416
+
+ORIGIN
+CITY TX
+
+12 125 P62
+
+NET BALANCE 314.83
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      // "12 125" should be parsed as month=12, day=12, year=5 -> 2025-12-12
+      expect(result.lines[0].deliveryDate).toBe('2025-12-12');
+    });
+
+    it('should parse page 12 date correctly (11 19 5 P68)', () => {
+      const text = `TRIP NUMBER
+1854
+
+SHIPPER NAME
+BELLI
+
+ORIGIN
+WESTBOROUGH MA
+
+DESTINATION
+AKRON OH
+
+11 19 5 P68
+
+NET BALANCE 3890.63
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      // "11 19 5 P68" should be parsed as month=11, day=19, year=5 -> 2025-11-19
+      expect(result.lines[0].deliveryDate).toBe('2025-11-19');
+    });
+
+    it('should parse page 13 date correctly (12 125 P62) and NOT as 01/02', () => {
+      const text = `TRIP NUMBER
+416
+
+ORIGIN
+MISSOURI CTX
+
+ZIP 77489
+
+DESTINATION
+GERMANTOWN MD
+
+12 125 P62
+
+NET BALANCE 314.83
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      // "12 125" should be parsed as month=12, day=12, year=5 -> 2025-12-12
+      // NOT as 2025-01-02 (which would happen if parsed as MM/DD/YY instead)
+      expect(result.lines[0].deliveryDate).toBe('2025-12-12');
+      expect(result.lines[0].deliveryDate).not.toBe('2025-01-02');
     });
   });
 

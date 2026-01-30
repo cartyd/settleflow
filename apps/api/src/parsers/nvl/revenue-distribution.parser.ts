@@ -88,9 +88,9 @@ const NON_CITY_KEYWORDS = /^(ZIP|INTER|REFERENCE|DESTINATION|WEIGHT|MILES|SIT|PA
 // Header keywords to skip when looking for destination cities
 const NON_DESTINATION_KEYWORDS = /^(ZIP|WEIGHT|MILES|SIT|PAY|INTER)/i;
 
-// Section header keywords that aren't shipper names
+// Section header keywords that aren't shipper names (including multi-word patterns)
 const NON_SHIPPER_NAME_KEYWORDS =
-  /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|DESTINATION|ORIGIN|INTER|REFERENCE|ZIP|WEIGHT|MILES)$/i;
+  /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|DESTINATION|ORIGIN|INTER|REFERENCE|ZIP|WEIGHT|MILES|BILL OF LADING)$/i;
 
 // Common non-name words after B/L numbers
 const NON_SHIPPER_NAME_KEYWORDS_SHORT =
@@ -337,7 +337,8 @@ function extractBillOfLading(text: string): string | undefined {
 function extractShipperName(text: string): string | undefined {
   // Format 1: After "SHIPPER NAME" header on next line
   // Pattern: "SHIPPER NAME\nTAYLOR" or "SHIPPER NAME\nHANCOCK"
-  let match = text.match(/SHIPPER\s+NAME\s*\n\s*([A-ZÀ-ÿ\s'-]+?)\s*(?:\n|$)/i);
+  // Capture only up to newline or next header (non-greedy, no internal spaces for multi-word headers)
+  let match = text.match(/SHIPPER\s+NAME\s*\n\s*([A-ZÀ-ÿ'-]+?)\s*(?:\n|$)/i);
   if (match) {
     const name = match[1].trim();
     // Filter out common non-name words and section headers
@@ -396,6 +397,24 @@ function extractEntryDate(text: string, opts?: { decadeBase?: number }): string 
     return parseDate(match[1].trim(), opts);
   }
 
+  // Fallback: allow intervening lines (e.g., NVL BATCH NUMBER) between header and numbers
+  const nvlIdx = text.search(/NVL\s+ENTRY\s*\n\s*DATE/i);
+  if (nvlIdx >= 0) {
+    const seg = text.slice(nvlIdx).split('\n').slice(0, 10);
+    const tokens: string[] = [];
+    for (const line of seg.slice(1)) {
+      const m = line.match(/\b(\d{1,2})\b/g);
+      if (m) tokens.push(...m);
+      if (tokens.length >= 3) break;
+    }
+    if (tokens.length >= 3) {
+      const [mm, dd, y] = tokens.slice(0, 3);
+      if (validateDate(parseInt(mm, 10), parseInt(dd, 10))) {
+        return parseDate(`${mm} ${dd} ${y}`, opts);
+      }
+    }
+  }
+
   return undefined;
 }
 
@@ -442,6 +461,13 @@ function extractOrigin(text: string): string | undefined {
       const cityState = line.match(CITY_STATE_RE);
       if (cityState) {
         return `${cityState[1].trim()}, ${cityState[2]}`;
+      }
+
+      // Special case: OCR may merge city name with state code (e.g., "MISSOURI CTX" -> "MISSOURI C, TX")
+      // Match pattern: city name followed by single letter and state code (e.g., "MISSOURI CTX")
+      const mergedState = line.match(/^([A-ZÀ-ÿ'\-\s]+?)\s+([A-Z])([A-Z]{2})$/i);
+      if (mergedState && STATE_CODE_LINE_RE.test(mergedState[3])) {
+        return `${mergedState[1].trim()} ${mergedState[2]}, ${mergedState[3]}`;
       }
 
       // Check if this is a city (comes right after ORIGIN, before ZIP)
@@ -547,25 +573,36 @@ function extractDestination(text: string): string | undefined {
  * Special handling: OCR may merge day+year ("15" = "1 5")
  */
 function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): string | undefined {
-  const localDecadeBase = detectDecadeBaseAroundOrigin(text) ?? opts?.decadeBase;
+  // Pre-normalize known OCR merge of day+year (e.g., "12 125 P62" => "12 12 5 P62")
+  // Do this on a local copy to avoid altering other parsers' assumptions.
+  const preNormalized = text.replace(
+    /(\b\d{1,2})\s+(\d{3})\s+(P\d{2,3})/g,
+    (_m, mm: string, ddd: string, pcode: string) => `${mm} ${ddd.slice(0, 2)} ${ddd.slice(2)} ${pcode}`
+  );
+  
+  // Debug logging removed for cleaner production parsing
+
+  const localDecadeBase = detectDecadeBaseAroundOrigin(preNormalized) ?? opts?.decadeBase;
   // Strategy 1: Try standard 4-component pattern "MM DD Y P##"
   // Examples: "11 29 5 P65", "12 01 5 P62"
-  let match = text.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})\s+P\d{2,3}/i);
+  let match = preNormalized.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})\s+P\d{2,3}/i);
   if (match) {
     const month = match[1];
     const day = match[2];
     const year = match[3];
 
     if (validateDate(parseInt(month), parseInt(day))) {
-      return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      // Debug logging removed
+      return result;
     }
   }
 
-  // Strategy 2: Handle OCR error where day+year are merged
+  // Strategy 2a: Handle OCR error where 2-digit day+year are merged
   // Pattern: "MM XY P##" where XY is a 2-digit number that should be "X Y"
   // Example: "12 15 P62" should be "12 1 5 P62" (day=1, year=5)
   // This happens when single-digit day (0X) merges with year (Y) → "XY"
-  match = text.match(/(\d{1,2})\s*\n?\s*(\d{2})\s+P\d{2,3}/i);
+  match = preNormalized.match(/(\d{1,2})\s*\n?\s*(\d{2})\s+P\d{2,3}/i);
   if (match) {
     const month = match[1];
     const merged = match[2]; // e.g., "15" should be "1" and "5"
@@ -578,12 +615,37 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     const monthNum = parseInt(month);
     const dayNum = parseInt(day);
     if (validateDate(monthNum, dayNum) && dayNum <= 9) {
-      return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      // Debug logging removed
+      return result;
+    }
+  }
+
+  // Strategy 2b: Handle OCR error where 3-digit day+year are merged
+  // Pattern: "MM DDY P##" where DDY is a 3-digit number that should be "DD Y"
+  // Example: "12 125 P62" should be "12 12 5 P62" (day=12, year=5)
+  // This happens when 2-digit day (DD) merges with year (Y) → "DDY"
+  match = preNormalized.match(/(\d{1,2})\s*\n?\s*(\d{3})\s+P\d{2,3}/i);
+  if (match) {
+    const month = match[1];
+    const merged = match[2]; // e.g., "125" should be "12" and "5"
+
+    // Split the 3-digit merged value: first two digits = day, last digit = year
+    const day = merged.substring(0, 2);
+    const year = merged.substring(2, 3);
+
+    // Validate: month 1-12, day 1-31
+    const monthNum = parseInt(month);
+    const dayNum = parseInt(day);
+    if (validateDate(monthNum, dayNum)) {
+      const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      // Debug logging removed
+      return result;
     }
   }
 
   // Format 3: "MM.DD Y" format (dot separator)
-  const dotMatch = text.match(
+  const dotMatch = preNormalized.match(
     /ORIGIN[^\n]*\n[\s\S]*?([A-Z]{2})\s*\n?(\d{1,2})\.(\d{1,2})\s+(\d{1})/i
   );
   if (dotMatch) {
@@ -593,10 +655,10 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
   }
 
   // Format 4: "MM DD Y" near ORIGIN section with route on same line
-  const originIdx = text.search(/ORIGIN/i);
+  const originIdx = preNormalized.search(/ORIGIN/i);
   if (originIdx >= 0) {
-    const endIdx = Math.min(text.length, originIdx + ORIGIN_SECTION_SCAN_CHARS);
-    const segment = text.slice(originIdx, endIdx);
+    const endIdx = Math.min(preNormalized.length, originIdx + ORIGIN_SECTION_SCAN_CHARS);
+    const segment = preNormalized.slice(originIdx, endIdx);
     // For route line, accept any two-letter state tokens (OCR may produce placeholders in tests)
     const routeMatch = segment.match(
       new RegExp(
@@ -612,10 +674,102 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
   }
 
   // Format 5: DELIVERY DATE header format
-  const headerMatch = text.match(/DELIVERY\s*\n?DATE\s*\n(\d+\s+\d+\s+\d+)/i);
+  const headerMatch = preNormalized.match(/DELIVERY\s*\n?DATE\s*\n(\d+\s+\d+\s+\d+)/i);
   if (headerMatch) {
     return parseDate(headerMatch[1], { decadeBase: localDecadeBase });
   }
+
+  // Strategy 5b: DELIVERY DATE with multiline or noisy tokens after header
+  // Handle cases like:
+  // DELIVERY\nDATE\n12\n04\n5
+  // and noisy cases like digits elsewhere then later lines: 12\n45\n66 ("45" = day 4, year 5)
+  const headerIdx = preNormalized.search(/DELIVERY\s*\n?DATE/i);
+  if (headerIdx >= 0) {
+    // Scan a reasonable window after the header for 1–2 digit numeric tokens
+    const lookaheadText = preNormalized.slice(headerIdx);
+    const lines = lookaheadText.split(/\n/).map((l) => l.trim());
+    // Debug logging removed
+    let started = false;
+    const tokens: string[] = [];
+    for (const line of lines) {
+      if (!started) {
+        if (/^DELIVERY\s*$/i.test(line)) continue;
+        if (/^DATE\s*$/i.test(line)) { started = true; continue; }
+        continue;
+      }
+      // Collect 1–2 digit numbers only; skip longer runs like 308, 347989
+      const smalls = line.match(/\b(\d{1,2})\b/g) || [];
+      for (const t of smalls) {
+        tokens.push(t);
+        if (tokens.length >= 12) break; // cap to avoid runaway
+      }
+      if (tokens.length >= 12) break;
+    }
+
+    // Debug: log tokens collected
+    // Debug logging removed
+
+    // Try to form a date from collected tokens
+    // Strategy A: [mm, dd, y]
+    for (let i = 0; i + 2 < tokens.length; i++) {
+      const mm = tokens[i];
+      const dd = tokens[i + 1];
+      const y = tokens[i + 2].slice(-1);
+      const mNum = parseInt(mm, 10), dNum = parseInt(dd, 10);
+      if (mNum >= 1 && mNum <= 12 && validateDate(mNum, dNum)) {
+        const result = parseDate(`${mm} ${dd} ${y}`, { decadeBase: localDecadeBase });
+        if (result) {
+          // console.log('[RD Parser] Header fallback Strategy A hit:', mm, dd, y, '→', result);
+          return result;
+        }
+      }
+    }
+
+    // Strategy B: [mm, XY] where XY is merged day+year (e.g., 45 => day 4, year 5)
+    for (let i = 0; i + 1 < tokens.length; i++) {
+      const mm = tokens[i];
+      const merged = tokens[i + 1];
+      if (merged.length === 2) {
+        const day = merged[0];
+        const y = merged[1];
+        const mNum = parseInt(mm, 10), dNum = parseInt(day, 10);
+        if (mNum >= 1 && mNum <= 12 && validateDate(mNum, dNum) && dNum <= 9) {
+          const result = parseDate(`${mm} ${day} ${y}`, { decadeBase: localDecadeBase });
+          if (result) {
+            // console.log('[RD Parser] Header fallback Strategy B hit:', mm, merged, '→', result);
+            return result;
+          }
+        }
+      }
+    }
+  }
+
+  // Strategy 6: Date appears AFTER P-code (rare but observed)
+  // Pattern: "P65 12 04 5" or "P62\n12 04 5"
+  let postAnchor = preNormalized.match(/P\d{2,3}\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1})/i);
+  if (postAnchor) {
+    const month = postAnchor[1];
+    const day = postAnchor[2];
+    const year = postAnchor[3];
+    if (validateDate(parseInt(month), parseInt(day))) {
+      const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      // Debug logging removed
+      return result;
+    }
+  }
+
+  // Last-resort fallback: If DELIVERY header exists but no parseable date was found,
+  // use NVL ENTRY DATE so the UI displays a reasonable date instead of blank.
+  if (/DELIVERY\s*\n?DATE/i.test(preNormalized)) {
+    const entry = extractEntryDate(preNormalized, { decadeBase: localDecadeBase });
+    if (entry) {
+      // Debug logging removed
+      return entry;
+    }
+  }
+  
+  // DEBUG: Log if we didn't find a match
+  // Debug logging removed
 
   return undefined;
 }
@@ -711,6 +865,14 @@ function extractServiceItems(text: string): Array<{
 function extractNetBalance(text: string): number | undefined {
   // Try simplest format first: "NET BALANCE 314.83" (single line, no DUE)
   let match = text.match(/NET\s+BALANCE\s+(-?\d+(?:,\d+)*\.\d{2})/i);
+  if (match) {
+    return parseCurrency(match[1]);
+  }
+
+  // Prefer amount that immediately precedes DUE NVL or DUE ACCOUNT
+  // Handles lines like:
+  // "3,890.63\nDUE N.V.L." or "3,890.63\nDUE ACCOUNT"
+  match = text.match(/(-?\d+(?:,\d+)*\.\d{2})\s*\n\s*DUE\s+(?:N[./]?V[./]?L[./]?|ACCOUNT)/i);
   if (match) {
     return parseCurrency(match[1]);
   }
