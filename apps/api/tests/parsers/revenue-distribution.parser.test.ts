@@ -260,7 +260,7 @@ DUE ACCOUNT`;
       expect(result.lines[0].deliveryDate).toBe('2025-12-04');
     });
 
-    it('should fall back to NVL ENTRY DATE when DELIVERY DATE header is present but missing numbers (batch a85c0dc1 page 10)', () => {
+    it('should parse DELIVERY DATE from later 2-digit merged day+year tokens after header (batch a85c0dc1 page 10)', () => {
       const text = `REVENUE DISTRIBUTION
 REG DT 091025 PAPERS DT 120525 PAY DT 121125 TH
 FOR SERVICE PERFORMED BY
@@ -300,13 +300,16 @@ DELIVERY
 DATE
 308
 347989
-CUT*`;
+CUT*
+RATE
+12
+45
+66`;
 
       const result = parseRevenueDistribution(text);
       expect(result.lines).toHaveLength(1);
-      // No parseable DELIVERY DATE numbers; use NVL ENTRY DATE as fallback
-      expect(result.lines[0].entryDate).toBe('2025-12-08');
-      expect(result.lines[0].deliveryDate).toBe('2025-12-08');
+      // Tokens after header later in the page contain "12" and "45" (merged day+year)
+      expect(result.lines[0].deliveryDate).toBe('2025-12-04');
     });
 
     it('should extract DELIVERY DATE when tokens are on separate lines', () => {

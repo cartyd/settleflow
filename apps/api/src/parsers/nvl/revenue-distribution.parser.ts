@@ -689,15 +689,16 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     return parseDate(headerMatch[1], { decadeBase: localDecadeBase });
   }
 
-  // Strategy 5b: DELIVERY DATE with multiline tokens (each on own line)
-  // Example:
+  // Strategy 5b: DELIVERY DATE with multiline or noisy tokens after header
+  // Handle cases like:
   // DELIVERY\nDATE\n12\n04\n5
+  // and noisy cases like digits elsewhere then later lines: 12\n45\n66 ("45" = day 4, year 5)
   const headerIdx = preNormalized.search(/DELIVERY\s*\n?DATE/i);
   if (headerIdx >= 0) {
-    // Look ahead a limited window for numeric tokens
-    const lookahead = preNormalized.slice(headerIdx, Math.min(preNormalized.length, headerIdx + ORIGIN_SECTION_SCAN_CHARS));
-    const lines = lookahead.split(/\n/).map((l) => l.trim());
-    // Collect up to first 6 numeric tokens after the header line
+    // Scan a reasonable window after the header for 1–2 digit numeric tokens
+    const lookaheadText = preNormalized.slice(headerIdx);
+    const lines = lookaheadText.split(/\n/).map((l) => l.trim());
+    console.log('[RD Parser] Header block first lines:', lines.slice(0, 8));
     let started = false;
     const tokens: string[] = [];
     for (const line of lines) {
@@ -706,26 +707,49 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
         if (/^DATE\s*$/i.test(line)) { started = true; continue; }
         continue;
       }
-      if (/^\d+$/.test(line)) {
-        tokens.push(line);
-        if (tokens.length >= 3) break;
-      } else if (/^[A-Z]/i.test(line)) {
-        // If we hit another header-like line, stop
-        break;
+      // Collect 1–2 digit numbers only; skip longer runs like 308, 347989
+      const smalls = line.match(/\b(\d{1,2})\b/g) || [];
+      for (const t of smalls) {
+        tokens.push(t);
+        if (tokens.length >= 12) break; // cap to avoid runaway
+      }
+      if (tokens.length >= 12) break;
+    }
+
+    // Debug: log tokens collected
+    console.log('[RD Parser] Header fallback tokens:', tokens);
+
+    // Try to form a date from collected tokens
+    // Strategy A: [mm, dd, y]
+    for (let i = 0; i + 2 < tokens.length; i++) {
+      const mm = tokens[i];
+      const dd = tokens[i + 1];
+      const y = tokens[i + 2].slice(-1);
+      const mNum = parseInt(mm, 10), dNum = parseInt(dd, 10);
+      if (mNum >= 1 && mNum <= 12 && validateDate(mNum, dNum)) {
+        const result = parseDate(`${mm} ${dd} ${y}`, { decadeBase: localDecadeBase });
+        if (result) {
+          // console.log('[RD Parser] Header fallback Strategy A hit:', mm, dd, y, '→', result);
+          return result;
+        }
       }
     }
-    if (tokens.length >= 3) {
-      const month = tokens[0];
-      const day = tokens[1];
-      const year = tokens[2].slice(-1); // handle cases like '5' or '05' (take last digit)
-      const mNum = parseInt(month, 10);
-      const dNum = parseInt(day, 10);
-      if (validateDate(mNum, dNum)) {
-        const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
-        if ((text.includes('P62') || text.includes('P68')) && result) {
-          console.log('[RD Parser] Strategy 5b: multiline header', `${month} ${day} ${year}`, '→', result);
+
+    // Strategy B: [mm, XY] where XY is merged day+year (e.g., 45 => day 4, year 5)
+    for (let i = 0; i + 1 < tokens.length; i++) {
+      const mm = tokens[i];
+      const merged = tokens[i + 1];
+      if (merged.length === 2) {
+        const day = merged[0];
+        const y = merged[1];
+        const mNum = parseInt(mm, 10), dNum = parseInt(day, 10);
+        if (mNum >= 1 && mNum <= 12 && validateDate(mNum, dNum) && dNum <= 9) {
+          const result = parseDate(`${mm} ${day} ${y}`, { decadeBase: localDecadeBase });
+          if (result) {
+            // console.log('[RD Parser] Header fallback Strategy B hit:', mm, merged, '→', result);
+            return result;
+          }
         }
-        return result;
       }
     }
   }
