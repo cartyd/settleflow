@@ -264,13 +264,15 @@ function extractSettlementSummary(text: string): SettlementSummaryAmounts | unde
   console.log('[extractSettlementSummary] Summary section (first 500 chars):', summarySection.substring(0, 500));
   
   // Try same-line format first: "POSTING TICKETS    10.00    .00    10.00"
-  const sameLinePattern = /POSTING\s+TICKETS\s+([\d,]+\.\d{2}-?)\s+([\d,]+\.\d{2}-?)\s+([\d,]+\.\d{2}-?)/i;
+  // Allow optional leading digits before decimal: \.00 or 10.00
+  const sameLinePattern = /POSTING\s+TICKETS\s+([\d,]*\.\d{2}-?)\s+([\d,]*\.\d{2}-?)\s+([\d,]*\.\d{2}-?)/i;
   let match = summarySection.match(sameLinePattern);
   
   if (!match) {
     console.log('[extractSettlementSummary] Same-line pattern did not match, trying multi-line');
     // Try multi-line format: POSTING TICKETS on one line, amounts on next lines
-    const multiLinePattern = /POSTING\s+TICKETS\s*\n\s*([\d,]+\.\d{2}-?)\s*\n\s*([\d,]+\.\d{2}-?)\s*\n\s*([\d,]+\.\d{2}-?)/i;
+    // Allow optional leading digits: \.00 or 10.00
+    const multiLinePattern = /POSTING\s+TICKETS\s*\n\s*([\d,]*\.\d{2}-?)\s*\n\s*([\d,]*\.\d{2}-?)\s*\n\s*([\d,]*\.\d{2}-?)/i;
     match = summarySection.match(multiLinePattern);
     if (!match) {
       console.log('[extractSettlementSummary] Multi-line pattern also did not match');
