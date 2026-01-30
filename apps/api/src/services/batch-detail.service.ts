@@ -198,7 +198,8 @@ export async function getBatchDetailData(
   // - Posting Ticket DEBITS (lineType === 'DEDUCTION')
   // This excludes other DEDUCTION line types that may come from Settlement Detail
   const creditDebitLines = allLines.filter((l) => l.documentType === 'CREDIT_DEBIT');
-  const postingTicketLines = allLines.filter((l) => l.documentType === 'POSTING_TICKET');
+  // Posting tickets are identified by category, not documentType (they come from SETTLEMENT_DETAIL)
+  const postingTicketLines = allLines.filter((l) => l.category === 'POSTING TICKET');
   const postingTicketDebitLines = postingTicketLines.filter((l) => l.lineType === 'DEDUCTION');
   const deductionLines = [...creditDebitLines, ...postingTicketDebitLines];
 
