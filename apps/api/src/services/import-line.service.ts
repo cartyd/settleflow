@@ -550,6 +550,51 @@ export async function parseImportFile(
     }
   }
 
+  // After parsing, compute and persist batch financial totals so listings reflect correct NET AMOUNT
+  try {
+    const importFile = await prisma.importFile.findUnique({
+      where: { id: importFileId },
+      select: { batchId: true },
+    });
+
+    if (importFile?.batchId) {
+      // Fetch all import lines for this batch (across all import files)
+      const lines = await prisma.importLine.findMany({
+        where: {
+          importDocument: {
+            importFile: {
+              batchId: importFile.batchId,
+            },
+          },
+        },
+      });
+
+      const totalRevenue = lines
+        .filter((l) => l.lineType === 'REVENUE')
+        .reduce((sum, l) => sum + Math.abs(l.amount), 0);
+      const totalAdvances = lines
+        .filter((l) => l.lineType === 'ADVANCE')
+        .reduce((sum, l) => sum + Math.abs(l.amount), 0);
+      const totalDeductions = lines
+        .filter((l) => l.lineType === 'DEDUCTION')
+        .reduce((sum, l) => sum + Math.abs(l.amount), 0);
+      const netAmount = totalRevenue - totalAdvances - totalDeductions;
+
+      await prisma.settlementBatch.update({
+        where: { id: importFile.batchId },
+        data: {
+          totalRevenue,
+          totalAdvances,
+          totalDeductions,
+          netAmount,
+        },
+      });
+    }
+  } catch (e) {
+    // Non-fatal: totals update should not break parsing flow
+    console.warn('[parseImportFile] Failed to update batch totals:', e);
+  }
+
   return {
     importFileId,
     documentsProcessed: documents.length,

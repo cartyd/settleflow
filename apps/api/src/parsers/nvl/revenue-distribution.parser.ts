@@ -397,6 +397,24 @@ function extractEntryDate(text: string, opts?: { decadeBase?: number }): string 
     return parseDate(match[1].trim(), opts);
   }
 
+  // Fallback: allow intervening lines (e.g., NVL BATCH NUMBER) between header and numbers
+  const nvlIdx = text.search(/NVL\s+ENTRY\s*\n\s*DATE/i);
+  if (nvlIdx >= 0) {
+    const seg = text.slice(nvlIdx).split('\n').slice(0, 10);
+    const tokens: string[] = [];
+    for (const line of seg.slice(1)) {
+      const m = line.match(/\b(\d{1,2})\b/g);
+      if (m) tokens.push(...m);
+      if (tokens.length >= 3) break;
+    }
+    if (tokens.length >= 3) {
+      const [mm, dd, y] = tokens.slice(0, 3);
+      if (validateDate(parseInt(mm, 10), parseInt(dd, 10))) {
+        return parseDate(`${mm} ${dd} ${y}`, opts);
+      }
+    }
+  }
+
   return undefined;
 }
 
@@ -561,6 +579,12 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     /(\b\d{1,2})\s+(\d{3})\s+(P\d{2,3})/g,
     (_m, mm: string, ddd: string, pcode: string) => `${mm} ${ddd.slice(0, 2)} ${ddd.slice(2)} ${pcode}`
   );
+  
+  // DEBUG: Log what's being extracted
+  if (text.includes('P62') || text.includes('P68')) {
+    console.log('[RD Parser] extractDeliveryDate input:', text.substring(Math.max(0, text.indexOf('ORIGIN')), Math.min(text.length, text.indexOf('ORIGIN') + 200)));
+    console.log('[RD Parser] preNormalized:', preNormalized.substring(Math.max(0, preNormalized.indexOf('ORIGIN')), Math.min(preNormalized.length, preNormalized.indexOf('ORIGIN') + 200)));
+  }
 
   const localDecadeBase = detectDecadeBaseAroundOrigin(preNormalized) ?? opts?.decadeBase;
   // Strategy 1: Try standard 4-component pattern "MM DD Y P##"
@@ -572,7 +596,11 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     const year = match[3];
 
     if (validateDate(parseInt(month), parseInt(day))) {
-      return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      if ((text.includes('P62') || text.includes('P68')) && result) {
+        console.log('[RD Parser] Strategy 1: matched', `${month} ${day} ${year}`, '→', result);
+      }
+      return result;
     }
   }
 
@@ -593,7 +621,11 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     const monthNum = parseInt(month);
     const dayNum = parseInt(day);
     if (validateDate(monthNum, dayNum) && dayNum <= 9) {
-      return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      if ((text.includes('P62') || text.includes('P68')) && result) {
+        console.log('[RD Parser] Strategy 2a: matched', merged, '→', `${month} ${day} ${year}`, '→', result);
+      }
+      return result;
     }
   }
 
@@ -614,7 +646,11 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     const monthNum = parseInt(month);
     const dayNum = parseInt(day);
     if (validateDate(monthNum, dayNum)) {
-      return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      if ((text.includes('P62') || text.includes('P68')) && result) {
+        console.log('[RD Parser] Strategy 2b: matched', merged, '→', `${month} ${day} ${year}`, '→', result);
+      }
+      return result;
     }
   }
 
@@ -651,6 +687,78 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
   const headerMatch = preNormalized.match(/DELIVERY\s*\n?DATE\s*\n(\d+\s+\d+\s+\d+)/i);
   if (headerMatch) {
     return parseDate(headerMatch[1], { decadeBase: localDecadeBase });
+  }
+
+  // Strategy 5b: DELIVERY DATE with multiline tokens (each on own line)
+  // Example:
+  // DELIVERY\nDATE\n12\n04\n5
+  const headerIdx = preNormalized.search(/DELIVERY\s*\n?DATE/i);
+  if (headerIdx >= 0) {
+    // Look ahead a limited window for numeric tokens
+    const lookahead = preNormalized.slice(headerIdx, Math.min(preNormalized.length, headerIdx + ORIGIN_SECTION_SCAN_CHARS));
+    const lines = lookahead.split(/\n/).map((l) => l.trim());
+    // Collect up to first 6 numeric tokens after the header line
+    let started = false;
+    const tokens: string[] = [];
+    for (const line of lines) {
+      if (!started) {
+        if (/^DELIVERY\s*$/i.test(line)) continue;
+        if (/^DATE\s*$/i.test(line)) { started = true; continue; }
+        continue;
+      }
+      if (/^\d+$/.test(line)) {
+        tokens.push(line);
+        if (tokens.length >= 3) break;
+      } else if (/^[A-Z]/i.test(line)) {
+        // If we hit another header-like line, stop
+        break;
+      }
+    }
+    if (tokens.length >= 3) {
+      const month = tokens[0];
+      const day = tokens[1];
+      const year = tokens[2].slice(-1); // handle cases like '5' or '05' (take last digit)
+      const mNum = parseInt(month, 10);
+      const dNum = parseInt(day, 10);
+      if (validateDate(mNum, dNum)) {
+        const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+        if ((text.includes('P62') || text.includes('P68')) && result) {
+          console.log('[RD Parser] Strategy 5b: multiline header', `${month} ${day} ${year}`, '→', result);
+        }
+        return result;
+      }
+    }
+  }
+
+  // Strategy 6: Date appears AFTER P-code (rare but observed)
+  // Pattern: "P65 12 04 5" or "P62\n12 04 5"
+  let postAnchor = preNormalized.match(/P\d{2,3}\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1})/i);
+  if (postAnchor) {
+    const month = postAnchor[1];
+    const day = postAnchor[2];
+    const year = postAnchor[3];
+    if (validateDate(parseInt(month), parseInt(day))) {
+      const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+      if ((text.includes('P62') || text.includes('P68')) && result) {
+        console.log('[RD Parser] Strategy 6: post-anchored', `${month} ${day} ${year}`, '→', result);
+      }
+      return result;
+    }
+  }
+
+  // Last-resort fallback: If DELIVERY header exists but no parseable date was found,
+  // use NVL ENTRY DATE so the UI displays a reasonable date instead of blank.
+  if (/DELIVERY\s*\n?DATE/i.test(preNormalized)) {
+    const entry = extractEntryDate(preNormalized, { decadeBase: localDecadeBase });
+    if (entry) {
+      console.log('[RD Parser] Fallback: using NVL ENTRY DATE due to missing DELIVERY date →', entry);
+      return entry;
+    }
+  }
+  
+  // DEBUG: Log if we didn't find a match
+  if (text.includes('P62') || text.includes('P68')) {
+    console.log('[RD Parser] extractDeliveryDate result: undefined (no pattern matched)');
   }
 
   return undefined;

@@ -42,10 +42,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
       lstripBlocks: true,
       onConfigure: (env: nunjucks.Environment) => {
         // Add date filter
-        env.addFilter('date', (dateString: string, format: string) => {
-          const date = new Date(dateString);
-          if (isNaN(date.getTime())) return dateString;
-
+        env.addFilter('date', (dateInput: string | Date, format: string) => {
           const months = [
             'Jan',
             'Feb',
@@ -62,6 +59,36 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
           ];
 
           const pad2 = (n: number) => String(n).padStart(2, '0');
+
+          // Treat pure YYYY-MM-DD strings as date-only to avoid TZ shifts
+          if (typeof dateInput === 'string') {
+            const dateOnlyMatch = dateInput.match(/^\d{4}-\d{2}-\d{2}$/);
+            if (dateOnlyMatch) {
+              const [y, m, d] = dateInput.split('-').map((s) => parseInt(s, 10));
+              const monthIdx = m - 1; // 0-based
+
+              if (format === 'MMM D') {
+                return `${months[monthIdx]} ${d}`;
+              }
+              if (format === 'MMM D, YYYY') {
+                return `${months[monthIdx]} ${d}, ${y}`;
+              }
+              if (format === 'MM/DD/YYYY') {
+                return `${pad2(m)}/${pad2(d)}/${y}`;
+              }
+              // If a time-bearing format is requested but input has date-only,
+              // fall back to a sensible date-only representation.
+              if (format === 'MMM D, YYYY h:mm A') {
+                return `${months[monthIdx]} ${d}, ${y} 12:00 AM`;
+              }
+              return dateInput;
+            }
+          }
+
+          // Fallback to native Date for timestamps and full ISO strings
+          const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+          if (isNaN(date.getTime())) return String(dateInput ?? '');
+
           const hours = date.getHours();
           const minutes = pad2(date.getMinutes());
           const ampm = hours >= 12 ? 'PM' : 'AM';
@@ -79,7 +106,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
           if (format === 'MM/DD/YYYY') {
             return `${pad2(date.getMonth() + 1)}/${pad2(date.getDate())}/${date.getFullYear()}`;
           }
-          return dateString;
+          return String(dateInput ?? '');
         });
 
         // Add number filter

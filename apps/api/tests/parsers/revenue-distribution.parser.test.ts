@@ -242,6 +242,89 @@ DUE ACCOUNT`;
       const result = parseRevenueDistribution(text);
       expect(result.lines[0].deliveryDate).toBe('2025-11-30');
     });
+
+    it('should extract date appearing after P-code (post-anchored)', () => {
+      const text = `TRIP NUMBER
+1010
+
+ORIGIN DESTINATION
+
+CITY ST DEST MD
+
+P65 12 04 5
+
+NET BALANCE 800.00
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].deliveryDate).toBe('2025-12-04');
+    });
+
+    it('should fall back to NVL ENTRY DATE when DELIVERY DATE header is present but missing numbers (batch a85c0dc1 page 10)', () => {
+      const text = `REVENUE DISTRIBUTION
+REG DT 091025 PAPERS DT 120525 PAY DT 121125 TH
+FOR SERVICE PERFORMED BY
+CICEROS' MOVING & ST/ BIDETTI, DONNY
+BILL OF LADING
+NUMBER
+SUPL
+656474
+SHIPPER NAME
+MCDONALD
+ORIGIN
+BENTON
+ZIP 72019
+AR
+DESTINATION
+CHULA VIST CA
+ZIP 91913
+WEIGHT
+MILES
+5960
+1660
+ACCOUNT
+NUMBER
+TRIP
+NUMBER
+3101
+1855
+TYPE
+GOV
+NVL ENTRY
+DATE
+NVL BATCH
+NUMBER
+12 08 5
+TRN#
+DELIVERY
+DATE
+308
+347989
+CUT*`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      // No parseable DELIVERY DATE numbers; use NVL ENTRY DATE as fallback
+      expect(result.lines[0].entryDate).toBe('2025-12-08');
+      expect(result.lines[0].deliveryDate).toBe('2025-12-08');
+    });
+
+    it('should extract DELIVERY DATE when tokens are on separate lines', () => {
+      const text = `TRIP NUMBER
+2020
+
+DELIVERY
+DATE
+12
+04
+5
+
+NET BALANCE 900.00
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines[0].deliveryDate).toBe('2025-12-04');
+    });
   });
 
   describe('Required fields', () => {
@@ -609,6 +692,23 @@ DUE ACCOUNT`;
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].shipperName).toBe('BELLI');
       expect(result.lines[0].shipperName).not.toBe('BILL OF LADING');
+    });
+
+    it('should parse RDD with P-code anchor (batch 2485338f page 12)', () => {
+      const text = `TRIP NUMBER
+416
+
+ORIGIN
+CITY TX
+
+11 19 5 P65
+
+NET BALANCE 314.83
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0].deliveryDate).toBe('2025-11-19');
     });
 
     it('should handle city names with embedded state codes (batch 2485338f page 13)', () => {
