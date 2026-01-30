@@ -34,6 +34,11 @@ export interface ParsedSettlementLine {
   rawLine: string;
 }
 
+export interface SettlementSummaryAmounts {
+  postingTickets?: number;
+  isPostingTicketCredit: boolean; // true if amount has trailing minus (revenue)
+}
+
 export interface SettlementDetailParseResult {
   accountNumber?: string;
   accountName?: string;
@@ -42,6 +47,7 @@ export interface SettlementDetailParseResult {
   settlementDate?: string;
   lines: ParsedSettlementLine[];
   checkTotal?: number;
+  summaryAmounts?: SettlementSummaryAmounts;
   errors: string[];
 }
 
@@ -238,6 +244,40 @@ function parseTransactionLine(line: string): ParsedSettlementLine | null {
 }
 
 /**
+ * Extract Settlement Summary amounts (specifically POSTING TICKETS)
+ * Format: "POSTING TICKETS    10.00    .00    10.00"
+ * or: "POSTING TICKETS    .00    253.17-    253.17-"
+ */
+function extractSettlementSummary(text: string): SettlementSummaryAmounts | undefined {
+  // Look for SETTLEMENT SUMMARY section
+  const summaryIdx = text.search(/SETTLEMENT\s+SUMMARY/i);
+  if (summaryIdx < 0) return undefined;
+  
+  // Look for POSTING TICKETS line in the summary
+  // Format: POSTING TICKETS followed by amounts (CHARGES, EARNINGS, OPEN/TOTAL)
+  // Example: "POSTING TICKETS    10.00    .00    10.00" (charge/debit)
+  // Example: "POSTING TICKETS    .00    253.17-    253.17-" (earning/credit)
+  const postingPattern = /POSTING\s+TICKETS\s+([\d,]+\.\d{2}-?)\s+([\d,]+\.\d{2}-?)\s+([\d,]+\.\d{2}-?)/i;
+  const match = text.substring(summaryIdx).match(postingPattern);
+  
+  if (!match) return undefined;
+  
+  const charges = parseSignedCurrency(match[1]);
+  const earnings = parseSignedCurrency(match[2]);
+  const total = parseSignedCurrency(match[3]);
+  
+  // If earnings is negative (has trailing minus), it's a credit/revenue
+  // If charges is positive (no trailing minus), it's a debit/charge
+  const isCredit = earnings < 0;
+  
+  // Use the absolute value of the total
+  return {
+    postingTickets: Math.abs(total),
+    isPostingTicketCredit: isCredit,
+  };
+}
+
+/**
  * Extract header information from the settlement detail document
  */
 function extractHeaderInfo(text: string): {
@@ -345,6 +385,9 @@ export function parseSettlementDetail(ocrText: string): SettlementDetailParseRes
 
   // Extract header information
   const headerInfo = extractHeaderInfo(normalizedText);
+  
+  // Extract Settlement Summary amounts (for posting tickets)
+  const summaryAmounts = extractSettlementSummary(normalizedText);
 
   // Split text into lines and parse each one
   const textLines = normalizedText.split('\n');
@@ -379,6 +422,7 @@ export function parseSettlementDetail(ocrText: string): SettlementDetailParseRes
   return {
     ...headerInfo,
     lines,
+    summaryAmounts,
     errors,
   };
 }
