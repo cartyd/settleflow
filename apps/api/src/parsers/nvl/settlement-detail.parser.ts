@@ -244,6 +244,66 @@ function parseTransactionLine(line: string): ParsedSettlementLine | null {
 }
 
 /**
+ * Extract POSTING TICKETS from columnar format Settlement Summary
+ * In this format, all descriptions are listed first, then all charges, then earnings, then open/total
+ * Example:
+ *   DESCRIPTION
+ *   REVENUE DISTRIBUTION
+ *   COMDATA
+ *   POSTING TICKETS  <-- Find this position (e.g. 3rd item)
+ *   OTHER
+ *   CHARGES
+ *   .00
+ *   675.50
+ *   10.00  <-- Get value at same position (3rd)
+ *   189.43
+ */
+function extractColumnarFormat(summarySection: string): RegExpMatchArray | null {
+  // Find all description lines before CHARGES header
+  const chargesIdx = summarySection.search(/^CHARGES$/m);
+  if (chargesIdx < 0) return null;
+  
+  const descriptionsText = summarySection.substring(0, chargesIdx);
+  const amountsText = summarySection.substring(chargesIdx);
+  
+  // Find POSTING TICKETS and its position in the description list
+  const descLines = descriptionsText.split('\n').map(l => l.trim()).filter(l => l);
+  const ptIndex = descLines.findIndex(line => /^POSTING\s+TICKETS$/i.test(line));
+  
+  if (ptIndex < 0) {
+    console.log('[extractColumnarFormat] POSTING TICKETS not found in descriptions');
+    return null;
+  }
+  
+  console.log(`[extractColumnarFormat] Found POSTING TICKETS at index ${ptIndex} in descriptions`);
+  
+  // Extract amounts from CHARGES, EARNINGS, and OPEN/TOTAL columns
+  // Skip the "CHARGES" header line and extract amounts
+  const amountLines = amountsText.split('\n').map(l => l.trim()).filter(l => l && /^[\d,]*\.\d{2}-?$/.test(l));
+  
+  console.log(`[extractColumnarFormat] Found ${amountLines.length} amount lines`);
+  
+  // The amounts are organized as: [all charges], [all earnings], [all totals]
+  // We need the amount at ptIndex from each section
+  const numItems = descLines.length - 1; // -1 for DESCRIPTION header
+  
+  if (amountLines.length < ptIndex + 1) {
+    console.log('[extractColumnarFormat] Not enough amount lines');
+    return null;
+  }
+  
+  // POSTING TICKETS amounts: charges at ptIndex, earnings at ptIndex + numItems, total at ptIndex + 2*numItems
+  const chargesValue = amountLines[ptIndex] || '.00';
+  const earningsValue = amountLines[ptIndex + numItems] || '.00';
+  const totalValue = amountLines[ptIndex + 2 * numItems] || chargesValue; // Fallback to charges if total not found
+  
+  console.log(`[extractColumnarFormat] charges=${chargesValue}, earnings=${earningsValue}, total=${totalValue}`);
+  
+  // Return in same format as regex match: [fullMatch, charges, earnings, total]
+  return [chargesValue, chargesValue, earningsValue, totalValue] as any as RegExpMatchArray;
+}
+
+/**
  * Extract Settlement Summary amounts (specifically POSTING TICKETS)
  * Format can be on same line: "POSTING TICKETS    10.00    .00    10.00"
  * Or on separate lines:
@@ -283,7 +343,15 @@ function extractSettlementSummary(text: string): SettlementSummaryAmounts | unde
     const multiLinePattern = /POSTING\s+TICKETS\s*\n\s*([\d,]*\.\d{2}-?)\s*\n\s*([\d,]*\.\d{2}-?)\s*\n\s*([\d,]*\.\d{2}-?)/i;
     match = summarySection.match(multiLinePattern);
     if (!match) {
-      console.log('[extractSettlementSummary] Multi-line pattern also did not match');
+      console.log('[extractSettlementSummary] Multi-line pattern did not match, trying columnar format');
+      // Try columnar format: DESCRIPTION column lists items, then CHARGES/EARNINGS/OPEN columns follow
+      // Find POSTING TICKETS in description list, count position, then find corresponding amount
+      match = extractColumnarFormat(summarySection);
+      if (match) {
+        console.log('[extractSettlementSummary] Columnar format matched:', match[0]);
+      } else {
+        console.log('[extractSettlementSummary] Columnar format also did not match');
+      }
     } else {
       console.log('[extractSettlementSummary] Multi-line pattern matched:', match[0]);
     }
