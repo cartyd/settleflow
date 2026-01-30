@@ -98,17 +98,21 @@ function tryTotalChargePattern(normalizedText: string): number | undefined {
   const bounded = normalizedText.substring(headerIdx, headerIdx + ADVANCE_TOTAL_CHARGE_SCAN_SPAN);
   const lines = bounded.split('\n');
 
-  // Inspect a few lines after header; select right-most amount token if present
-  for (let k = 1; k < Math.min(lines.length, 5); k++) {
+  // Collect all amounts from lines after the header
+  // The TOTAL CHARGE is typically the last amount in this section
+  let lastAmount: number | undefined = undefined;
+  
+  for (let k = 1; k < Math.min(lines.length, 10); k++) {
     const line = lines[k];
     const matches = Array.from(line.matchAll(CURRENCY_AMOUNT_GLOBAL_RE));
     if (matches.length > 0) {
+      // If multiple amounts on one line, take the rightmost
       const rightMost = matches[matches.length - 1][0];
-      return parseCurrency(rightMost);
+      lastAmount = parseCurrency(rightMost);
     }
   }
 
-  return undefined;
+  return lastAmount;
 }
 
 /**

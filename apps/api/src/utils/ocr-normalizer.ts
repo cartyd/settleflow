@@ -73,8 +73,9 @@ function normalizeGeminiText(text: string): string {
       .replace(/TRIP\s*\n\s*NUMBER\s*\n\s*(\d+)/gi, 'TRIP NUMBER $1')
 
       // Fix split amounts that may be broken across lines
-      .replace(/(\d+),?\s*\n\s*(\d{3})\s*\.\s*(\d{2})/g, '$1,$2.$3')
-      .replace(/(\d+)\s*\.\s*\n\s*(\d{2})/g, '$1.$2')
+      // Only join if the first part looks like a thousands group (1-3 digits)
+      .replace(/(\d{1,3}),?\s*\n\s*(\d{3})\s*\.\s*(\d{2})/g, '$1,$2.$3')
+      .replace(/(\d{1,3})\s*\.\s*\n\s*(\d{2})/g, '$1.$2')
 
       // Fix split dates
       .replace(/(\d{2})\/\s*\n\s*(\d{2})\/\s*\n\s*(\d{2})/g, '$1/$2/$3')
