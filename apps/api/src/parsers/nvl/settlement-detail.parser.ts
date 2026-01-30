@@ -245,20 +245,29 @@ function parseTransactionLine(line: string): ParsedSettlementLine | null {
 
 /**
  * Extract Settlement Summary amounts (specifically POSTING TICKETS)
- * Format: "POSTING TICKETS    10.00    .00    10.00"
- * or: "POSTING TICKETS    .00    253.17-    253.17-"
+ * Format can be on same line: "POSTING TICKETS    10.00    .00    10.00"
+ * Or on separate lines:
+ *   POSTING TICKETS
+ *   10.00
+ *   .00
+ *   10.00
  */
 function extractSettlementSummary(text: string): SettlementSummaryAmounts | undefined {
   // Look for SETTLEMENT SUMMARY section
   const summaryIdx = text.search(/SETTLEMENT\s+SUMMARY/i);
   if (summaryIdx < 0) return undefined;
   
-  // Look for POSTING TICKETS line in the summary
-  // Format: POSTING TICKETS followed by amounts (CHARGES, EARNINGS, OPEN/TOTAL)
-  // Example: "POSTING TICKETS    10.00    .00    10.00" (charge/debit)
-  // Example: "POSTING TICKETS    .00    253.17-    253.17-" (earning/credit)
-  const postingPattern = /POSTING\s+TICKETS\s+([\d,]+\.\d{2}-?)\s+([\d,]+\.\d{2}-?)\s+([\d,]+\.\d{2}-?)/i;
-  const match = text.substring(summaryIdx).match(postingPattern);
+  const summarySection = text.substring(summaryIdx);
+  
+  // Try same-line format first: "POSTING TICKETS    10.00    .00    10.00"
+  const sameLinePattern = /POSTING\s+TICKETS\s+([\d,]+\.\d{2}-?)\s+([\d,]+\.\d{2}-?)\s+([\d,]+\.\d{2}-?)/i;
+  let match = summarySection.match(sameLinePattern);
+  
+  if (!match) {
+    // Try multi-line format: POSTING TICKETS on one line, amounts on next lines
+    const multiLinePattern = /POSTING\s+TICKETS\s*\n\s*([\d,]+\.\d{2}-?)\s*\n\s*([\d,]+\.\d{2}-?)\s*\n\s*([\d,]+\.\d{2}-?)/i;
+    match = summarySection.match(multiLinePattern);
+  }
   
   if (!match) return undefined;
   
