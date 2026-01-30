@@ -261,7 +261,14 @@ function extractSettlementSummary(text: string): SettlementSummaryAmounts | unde
   }
   
   const summarySection = text.substring(summaryIdx, summaryIdx + 2000); // Limit for debugging
-  console.log('[extractSettlementSummary] Summary section (first 500 chars):', summarySection.substring(0, 500));
+  
+  // Find POSTING TICKETS and log surrounding text
+  const ptIdx = summarySection.search(/POSTING\s+TICKETS/i);
+  if (ptIdx >= 0) {
+    const ptContext = summarySection.substring(ptIdx, ptIdx + 150);
+    console.log('[extractSettlementSummary] POSTING TICKETS context (with escapes):');
+    console.log(JSON.stringify(ptContext));
+  }
   
   // Try same-line format first: "POSTING TICKETS    10.00    .00    10.00"
   // Allow optional leading digits before decimal: \.00 or 10.00
