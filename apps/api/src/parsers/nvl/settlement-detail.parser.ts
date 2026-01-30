@@ -255,18 +255,30 @@ function parseTransactionLine(line: string): ParsedSettlementLine | null {
 function extractSettlementSummary(text: string): SettlementSummaryAmounts | undefined {
   // Look for SETTLEMENT SUMMARY section
   const summaryIdx = text.search(/SETTLEMENT\s+SUMMARY/i);
-  if (summaryIdx < 0) return undefined;
+  if (summaryIdx < 0) {
+    console.log('[extractSettlementSummary] SETTLEMENT SUMMARY section not found');
+    return undefined;
+  }
   
-  const summarySection = text.substring(summaryIdx);
+  const summarySection = text.substring(summaryIdx, summaryIdx + 2000); // Limit for debugging
+  console.log('[extractSettlementSummary] Summary section (first 500 chars):', summarySection.substring(0, 500));
   
   // Try same-line format first: "POSTING TICKETS    10.00    .00    10.00"
   const sameLinePattern = /POSTING\s+TICKETS\s+([\d,]+\.\d{2}-?)\s+([\d,]+\.\d{2}-?)\s+([\d,]+\.\d{2}-?)/i;
   let match = summarySection.match(sameLinePattern);
   
   if (!match) {
+    console.log('[extractSettlementSummary] Same-line pattern did not match, trying multi-line');
     // Try multi-line format: POSTING TICKETS on one line, amounts on next lines
     const multiLinePattern = /POSTING\s+TICKETS\s*\n\s*([\d,]+\.\d{2}-?)\s*\n\s*([\d,]+\.\d{2}-?)\s*\n\s*([\d,]+\.\d{2}-?)/i;
     match = summarySection.match(multiLinePattern);
+    if (!match) {
+      console.log('[extractSettlementSummary] Multi-line pattern also did not match');
+    } else {
+      console.log('[extractSettlementSummary] Multi-line pattern matched:', match[0]);
+    }
+  } else {
+    console.log('[extractSettlementSummary] Same-line pattern matched:', match[0]);
   }
   
   if (!match) return undefined;

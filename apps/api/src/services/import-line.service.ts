@@ -173,6 +173,7 @@ export async function parseAndSaveImportLines(
       
       // Create posting ticket import line from Settlement Summary (if available)
       // This is more reliable than parsing posting ticket documents which have inconsistent formats
+      console.log('[import-line] parseResult.summaryAmounts:', parseResult.summaryAmounts);
       if (parseResult.summaryAmounts?.postingTickets) {
         const ptAmount = parseResult.summaryAmounts.postingTickets;
         const isCredit = parseResult.summaryAmounts.isPostingTicketCredit;
