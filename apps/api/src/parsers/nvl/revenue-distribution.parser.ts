@@ -555,10 +555,17 @@ function extractDestination(text: string): string | undefined {
  * Special handling: OCR may merge day+year ("15" = "1 5")
  */
 function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): string | undefined {
-  const localDecadeBase = detectDecadeBaseAroundOrigin(text) ?? opts?.decadeBase;
+  // Pre-normalize known OCR merge of day+year (e.g., "12 125 P62" => "12 12 5 P62")
+  // Do this on a local copy to avoid altering other parsers' assumptions.
+  const preNormalized = text.replace(
+    /(\b\d{1,2})\s+(\d{3})\s+(P\d{2,3})/g,
+    (_m, mm: string, ddd: string, pcode: string) => `${mm} ${ddd.slice(0, 2)} ${ddd.slice(2)} ${pcode}`
+  );
+
+  const localDecadeBase = detectDecadeBaseAroundOrigin(preNormalized) ?? opts?.decadeBase;
   // Strategy 1: Try standard 4-component pattern "MM DD Y P##"
   // Examples: "11 29 5 P65", "12 01 5 P62"
-  let match = text.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})\s+P\d{2,3}/i);
+  let match = preNormalized.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1})\s+P\d{2,3}/i);
   if (match) {
     const month = match[1];
     const day = match[2];
@@ -573,7 +580,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
   // Pattern: "MM XY P##" where XY is a 2-digit number that should be "X Y"
   // Example: "12 15 P62" should be "12 1 5 P62" (day=1, year=5)
   // This happens when single-digit day (0X) merges with year (Y) → "XY"
-  match = text.match(/(\d{1,2})\s*\n?\s*(\d{2})\s+P\d{2,3}/i);
+  match = preNormalized.match(/(\d{1,2})\s*\n?\s*(\d{2})\s+P\d{2,3}/i);
   if (match) {
     const month = match[1];
     const merged = match[2]; // e.g., "15" should be "1" and "5"
@@ -594,7 +601,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
   // Pattern: "MM DDY P##" where DDY is a 3-digit number that should be "DD Y"
   // Example: "12 125 P62" should be "12 12 5 P62" (day=12, year=5)
   // This happens when 2-digit day (DD) merges with year (Y) → "DDY"
-  match = text.match(/(\d{1,2})\s*\n?\s*(\d{3})\s+P\d{2,3}/i);
+  match = preNormalized.match(/(\d{1,2})\s*\n?\s*(\d{3})\s+P\d{2,3}/i);
   if (match) {
     const month = match[1];
     const merged = match[2]; // e.g., "125" should be "12" and "5"
@@ -612,7 +619,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
   }
 
   // Format 3: "MM.DD Y" format (dot separator)
-  const dotMatch = text.match(
+  const dotMatch = preNormalized.match(
     /ORIGIN[^\n]*\n[\s\S]*?([A-Z]{2})\s*\n?(\d{1,2})\.(\d{1,2})\s+(\d{1})/i
   );
   if (dotMatch) {
@@ -622,10 +629,10 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
   }
 
   // Format 4: "MM DD Y" near ORIGIN section with route on same line
-  const originIdx = text.search(/ORIGIN/i);
+  const originIdx = preNormalized.search(/ORIGIN/i);
   if (originIdx >= 0) {
-    const endIdx = Math.min(text.length, originIdx + ORIGIN_SECTION_SCAN_CHARS);
-    const segment = text.slice(originIdx, endIdx);
+    const endIdx = Math.min(preNormalized.length, originIdx + ORIGIN_SECTION_SCAN_CHARS);
+    const segment = preNormalized.slice(originIdx, endIdx);
     // For route line, accept any two-letter state tokens (OCR may produce placeholders in tests)
     const routeMatch = segment.match(
       new RegExp(
@@ -641,7 +648,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
   }
 
   // Format 5: DELIVERY DATE header format
-  const headerMatch = text.match(/DELIVERY\s*\n?DATE\s*\n(\d+\s+\d+\s+\d+)/i);
+  const headerMatch = preNormalized.match(/DELIVERY\s*\n?DATE\s*\n(\d+\s+\d+\s+\d+)/i);
   if (headerMatch) {
     return parseDate(headerMatch[1], { decadeBase: localDecadeBase });
   }

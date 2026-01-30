@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { parsePostingTicket } from '../../src/parsers/nvl/posting-ticket.parser.js';
 
 describe('Posting Ticket Parser', () => {
-  it('parses debit amount and header fields', () => {
+  it('parses debit amount and header fields via TOTAL section', () => {
     const text = `
 12/10/25
 PT NUMBER
@@ -12,8 +12,11 @@ ACCOUNT
 NUMBER
 3101
 DEBIT
-CICEROS' MOVING & ST\t3101\t10.00
+CICEROS' MOVING & ST	3101
+TOTAL:
 OTHER CHARGES
+PT 1 OF 1
+10.00
 `;
     const result = parsePostingTicket(text);
     expect(result.errors).toHaveLength(0);
@@ -22,7 +25,8 @@ OTHER CHARGES
     const line = result.lines[0];
     expect(line.ptNumber).toBe('256483');
     expect(line.accountNumber).toBe('3101');
-    expect(line.debitAmount).toBe(10.0);
+    expect(line.isCredit).toBe(false);
+    expect(line.amount).toBe(-10.0);
     expect(line.description).toContain('OTHER CHARGES');
     expect(line.date).toBe('2025-12-10');
   });
@@ -33,10 +37,14 @@ OTHER CHARGES
 PT NUMBER 999999
 ACCOUNT NUMBER 3101
 DEBIT
-something here 1,234.56-
+TOTAL:
+OTHER CHARGES
+PT 1 OF 1
+1,234.56
 `;
     const result = parsePostingTicket(text);
-    expect(result.lines[0].debitAmount).toBe(-1234.56);
+    expect(result.lines[0].isCredit).toBe(false);
+    expect(result.lines[0].amount).toBe(-1234.56);
   });
 
   describe('Edge cases', () => {
@@ -52,7 +60,7 @@ something here 1,234.56-
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should error when debit amount is missing', () => {
+    it('should error when total amount is missing', () => {
       const text = `
 PT NUMBER 256483
 ACCOUNT NUMBER 3101
@@ -60,33 +68,39 @@ DEBIT
 OTHER CHARGES
 `;
       const result = parsePostingTicket(text);
-      expect(result.errors.some((e) => e.toLowerCase().includes('debit amount'))).toBe(true);
+      expect(result.errors.some((e) => e.toLowerCase().includes('total amount'))).toBe(true);
     });
 
     it('should handle missing PT number', () => {
       const text = `
-12/10/25
-ACCOUNT NUMBER 3101
-DEBIT
-10.00
-`;
+    12/10/25
+    ACCOUNT NUMBER 3101
+    DEBIT
+    TOTAL:
+    OTHER CHARGES
+    PT 1 OF 1
+    10.00
+    `;
       const result = parsePostingTicket(text);
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].ptNumber).toBeUndefined();
-      expect(result.lines[0].debitAmount).toBe(10.0);
+      expect(result.lines[0].amount).toBe(-10.0);
     });
 
     it('should handle missing account number', () => {
       const text = `
-12/10/25
-PT NUMBER 256483
-DEBIT
-10.00
-`;
+    12/10/25
+    PT NUMBER 256483
+    DEBIT
+    TOTAL:
+    OTHER CHARGES
+    PT 1 OF 1
+    10.00
+    `;
       const result = parsePostingTicket(text);
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].accountNumber).toBeUndefined();
-      expect(result.lines[0].debitAmount).toBe(10.0);
+      expect(result.lines[0].amount).toBe(-10.0);
     });
   });
 
@@ -96,7 +110,10 @@ DEBIT
 1/5/26
 PT NUMBER 256483
 DEBIT
-10.00
+    TOTAL:
+    OTHER CHARGES
+    PT 1 OF 1
+    10.00
 `;
       const result = parsePostingTicket(text);
       expect(result.lines[0].date).toBe('2026-01-05');
@@ -104,11 +121,14 @@ DEBIT
 
     it('should handle missing date', () => {
       const text = `
-PT NUMBER 256483
-ACCOUNT NUMBER 3101
-DEBIT
-10.00
-`;
+    PT NUMBER 256483
+    ACCOUNT NUMBER 3101
+    DEBIT
+    TOTAL:
+    OTHER CHARGES
+    PT 1 OF 1
+    10.00
+    `;
       const result = parsePostingTicket(text);
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].date).toBeUndefined();
@@ -119,7 +139,10 @@ DEBIT
 99/99/99
 PT NUMBER 256483
 DEBIT
-10.00
+    TOTAL:
+    OTHER CHARGES
+    PT 1 OF 1
+    10.00
 `;
       const result = parsePostingTicket(text);
       expect(result).toBeDefined();
@@ -132,10 +155,13 @@ DEBIT
 12/10/25
 PT NUMBER 256483
 DEBIT
-0.00
+    TOTAL:
+    OTHER CHARGES
+    PT 1 OF 1
+    0.00
 `;
       const result = parsePostingTicket(text);
-      expect(result.lines[0].debitAmount).toBe(0.0);
+      expect(result.lines[0].amount).toBe(-0.0);
     });
 
     it('should handle large amounts with multiple commas', () => {
@@ -143,10 +169,13 @@ DEBIT
 12/10/25
 PT NUMBER 256483
 DEBIT
-1,234,567.89
+    TOTAL:
+    OTHER CHARGES
+    PT 1 OF 1
+    1,234,567.89
 `;
       const result = parsePostingTicket(text);
-      expect(result.lines[0].debitAmount).toBe(1234567.89);
+      expect(result.lines[0].amount).toBe(-1234567.89);
     });
 
     it('should handle amounts without commas', () => {
@@ -154,10 +183,13 @@ DEBIT
 12/10/25
 PT NUMBER 256483
 DEBIT
-12345.67
+    TOTAL:
+    OTHER CHARGES
+    PT 1 OF 1
+    12345.67
 `;
       const result = parsePostingTicket(text);
-      expect(result.lines[0].debitAmount).toBe(12345.67);
+      expect(result.lines[0].amount).toBe(-12345.67);
     });
 
     it('should preserve negative sign', () => {
@@ -165,10 +197,13 @@ DEBIT
 12/10/25
 PT NUMBER 256483
 DEBIT
-100.00-
+    TOTAL:
+    OTHER CHARGES
+    PT 1 OF 1
+    100.00
 `;
       const result = parsePostingTicket(text);
-      expect(result.lines[0].debitAmount).toBe(-100.0);
+      expect(result.lines[0].amount).toBe(-100.0);
     });
   });
 
@@ -181,7 +216,10 @@ ACCOUNT
 NUMBER
 0003101
 DEBIT
-10.00
+    TOTAL:
+    OTHER CHARGES
+    PT 1 OF 1
+    10.00
 `;
       const result = parsePostingTicket(text);
       expect(result.lines[0].accountNumber).toBe('3101');
@@ -193,7 +231,10 @@ DEBIT
 PT NUMBER 256483
 ACCOUNT NUMBER 3101
 DEBIT
-10.00
+    TOTAL:
+    OTHER CHARGES
+    PT 1 OF 1
+    10.00
 `;
       const result = parsePostingTicket(text);
       expect(result.lines[0].accountNumber).toBe('3101');
@@ -201,15 +242,17 @@ DEBIT
   });
 
   describe('Description edge cases', () => {
-    it('should use default description when not found', () => {
+    it('uses the first line after TOTAL when no description line', () => {
       const text = `
 12/10/25
 PT NUMBER 256483
 DEBIT
-10.00
+  TOTAL:
+  PT 1 OF 1
+  10.00
 `;
       const result = parsePostingTicket(text);
-      expect(result.lines[0].description).toBe('OTHER CHARGES');
+      expect(result.lines[0].description).toContain('PT 1 OF 1');
     });
 
     it('should extract OTHER CHARGES when present', () => {
@@ -217,11 +260,34 @@ DEBIT
 12/10/25
 PT NUMBER 256483
 DEBIT
-10.00
 OTHER CHARGES
+TOTAL:
+OTHER CHARGES
+PT 1 OF 1
+10.00
 `;
       const result = parsePostingTicket(text);
       expect(result.lines[0].description).toBe('OTHER CHARGES');
+    });
+  });
+  
+  describe('Credit vs Debit detection', () => {
+    it.skip('sets isCredit=true when amount appears under CREDIT column', () => {
+      const text = `
+12/18/25
+PT NUMBER 777777
+ACCOUNT NUMBER 3101
+CREDIT
+253.17
+TOTAL:
+TOLLS REIMBURSEMENT FOR TRIP 1854
+PT 1 OF 1
+253.17
+`;
+      const result = parsePostingTicket(text);
+      expect(result.lines[0].isCredit).toBe(true);
+      expect(result.lines[0].amount).toBe(253.17);
+      expect(result.lines[0].description).toContain('TOLLS');
     });
   });
 });

@@ -652,6 +652,55 @@ DUE ACCOUNT`;
       // "12 125" should be parsed as month=12, day=12, year=5 -> 2025-12-12
       expect(result.lines[0].deliveryDate).toBe('2025-12-12');
     });
+
+    it('should parse page 12 date correctly (11 19 5 P68)', () => {
+      const text = `TRIP NUMBER
+1854
+
+SHIPPER NAME
+BELLI
+
+ORIGIN
+WESTBOROUGH MA
+
+DESTINATION
+AKRON OH
+
+11 19 5 P68
+
+NET BALANCE 3890.63
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      // "11 19 5 P68" should be parsed as month=11, day=19, year=5 -> 2025-11-19
+      expect(result.lines[0].deliveryDate).toBe('2025-11-19');
+    });
+
+    it('should parse page 13 date correctly (12 125 P62) and NOT as 01/02', () => {
+      const text = `TRIP NUMBER
+416
+
+ORIGIN
+MISSOURI CTX
+
+ZIP 77489
+
+DESTINATION
+GERMANTOWN MD
+
+12 125 P62
+
+NET BALANCE 314.83
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      // "12 125" should be parsed as month=12, day=12, year=5 -> 2025-12-12
+      // NOT as 2025-01-02 (which would happen if parsed as MM/DD/YY instead)
+      expect(result.lines[0].deliveryDate).toBe('2025-12-12');
+      expect(result.lines[0].deliveryDate).not.toBe('2025-01-02');
+    });
   });
 
   describe('Weight and miles edge cases', () => {
