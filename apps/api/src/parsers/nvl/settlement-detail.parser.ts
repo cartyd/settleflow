@@ -272,7 +272,8 @@ function extractSettlementSummary(text: string): SettlementSummaryAmounts | unde
   
   // Try same-line format first: "POSTING TICKETS    10.00    .00    10.00"
   // Allow optional leading digits before decimal: \.00 or 10.00
-  const sameLinePattern = /POSTING\s+TICKETS\s+([\d,]*\.\d{2}-?)\s+([\d,]*\.\d{2}-?)\s+([\d,]*\.\d{2}-?)/i;
+  // Use [ \t]+ instead of \s+ to NOT match newlines
+  const sameLinePattern = /POSTING[ \t]+TICKETS[ \t]+([\d,]*\.\d{2}-?)[ \t]+([\d,]*\.\d{2}-?)[ \t]+([\d,]*\.\d{2}-?)/i;
   let match = summarySection.match(sameLinePattern);
   
   if (!match) {
