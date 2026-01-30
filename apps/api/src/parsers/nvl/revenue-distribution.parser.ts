@@ -580,11 +580,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     (_m, mm: string, ddd: string, pcode: string) => `${mm} ${ddd.slice(0, 2)} ${ddd.slice(2)} ${pcode}`
   );
   
-  // DEBUG: Log what's being extracted
-  if (text.includes('P62') || text.includes('P68')) {
-    console.log('[RD Parser] extractDeliveryDate input:', text.substring(Math.max(0, text.indexOf('ORIGIN')), Math.min(text.length, text.indexOf('ORIGIN') + 200)));
-    console.log('[RD Parser] preNormalized:', preNormalized.substring(Math.max(0, preNormalized.indexOf('ORIGIN')), Math.min(preNormalized.length, preNormalized.indexOf('ORIGIN') + 200)));
-  }
+  // Debug logging removed for cleaner production parsing
 
   const localDecadeBase = detectDecadeBaseAroundOrigin(preNormalized) ?? opts?.decadeBase;
   // Strategy 1: Try standard 4-component pattern "MM DD Y P##"
@@ -597,9 +593,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
 
     if (validateDate(parseInt(month), parseInt(day))) {
       const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
-      if ((text.includes('P62') || text.includes('P68')) && result) {
-        console.log('[RD Parser] Strategy 1: matched', `${month} ${day} ${year}`, '→', result);
-      }
+      // Debug logging removed
       return result;
     }
   }
@@ -622,9 +616,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     const dayNum = parseInt(day);
     if (validateDate(monthNum, dayNum) && dayNum <= 9) {
       const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
-      if ((text.includes('P62') || text.includes('P68')) && result) {
-        console.log('[RD Parser] Strategy 2a: matched', merged, '→', `${month} ${day} ${year}`, '→', result);
-      }
+      // Debug logging removed
       return result;
     }
   }
@@ -647,9 +639,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     const dayNum = parseInt(day);
     if (validateDate(monthNum, dayNum)) {
       const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
-      if ((text.includes('P62') || text.includes('P68')) && result) {
-        console.log('[RD Parser] Strategy 2b: matched', merged, '→', `${month} ${day} ${year}`, '→', result);
-      }
+      // Debug logging removed
       return result;
     }
   }
@@ -698,7 +688,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     // Scan a reasonable window after the header for 1–2 digit numeric tokens
     const lookaheadText = preNormalized.slice(headerIdx);
     const lines = lookaheadText.split(/\n/).map((l) => l.trim());
-    console.log('[RD Parser] Header block first lines:', lines.slice(0, 8));
+    // Debug logging removed
     let started = false;
     const tokens: string[] = [];
     for (const line of lines) {
@@ -717,7 +707,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     }
 
     // Debug: log tokens collected
-    console.log('[RD Parser] Header fallback tokens:', tokens);
+    // Debug logging removed
 
     // Try to form a date from collected tokens
     // Strategy A: [mm, dd, y]
@@ -763,9 +753,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     const year = postAnchor[3];
     if (validateDate(parseInt(month), parseInt(day))) {
       const result = parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
-      if ((text.includes('P62') || text.includes('P68')) && result) {
-        console.log('[RD Parser] Strategy 6: post-anchored', `${month} ${day} ${year}`, '→', result);
-      }
+      // Debug logging removed
       return result;
     }
   }
@@ -775,15 +763,13 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
   if (/DELIVERY\s*\n?DATE/i.test(preNormalized)) {
     const entry = extractEntryDate(preNormalized, { decadeBase: localDecadeBase });
     if (entry) {
-      console.log('[RD Parser] Fallback: using NVL ENTRY DATE due to missing DELIVERY date →', entry);
+      // Debug logging removed
       return entry;
     }
   }
   
   // DEBUG: Log if we didn't find a match
-  if (text.includes('P62') || text.includes('P68')) {
-    console.log('[RD Parser] extractDeliveryDate result: undefined (no pattern matched)');
-  }
+  // Debug logging removed
 
   return undefined;
 }
@@ -879,6 +865,14 @@ function extractServiceItems(text: string): Array<{
 function extractNetBalance(text: string): number | undefined {
   // Try simplest format first: "NET BALANCE 314.83" (single line, no DUE)
   let match = text.match(/NET\s+BALANCE\s+(-?\d+(?:,\d+)*\.\d{2})/i);
+  if (match) {
+    return parseCurrency(match[1]);
+  }
+
+  // Prefer amount that immediately precedes DUE NVL or DUE ACCOUNT
+  // Handles lines like:
+  // "3,890.63\nDUE N.V.L." or "3,890.63\nDUE ACCOUNT"
+  match = text.match(/(-?\d+(?:,\d+)*\.\d{2})\s*\n\s*DUE\s+(?:N[./]?V[./]?L[./]?|ACCOUNT)/i);
   if (match) {
     return parseCurrency(match[1]);
   }

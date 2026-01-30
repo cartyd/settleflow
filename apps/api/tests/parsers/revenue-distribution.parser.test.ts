@@ -353,6 +353,31 @@ DUE ACCOUNT`;
       expect(result.lines[0].netBalance).toBe(1234.56);
     });
 
+    it('should extract net balance with DUE NVL (single line, thousands separators)', () => {
+      const text = `TRIP NUMBER
+1854
+
+NET BALANCE DUE N/V.L 3,890.63`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0].netBalance).toBe(3890.63);
+    });
+
+    it('should extract net balance when amount appears on later line after DUE NVL', () => {
+      const text = `TRIP NUMBER
+1854
+
+NET BALANCE DUE NVL
+*RATES AND OTHER DETAILS*
+3,890.63
+DUE ACCOUNT`;
+
+      const result = parseRevenueDistribution(text);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0].netBalance).toBe(3890.63);
+    });
+
     it('should report error when trip number is missing', () => {
       const text = `NET BALANCE 100.00`;
 

@@ -3,7 +3,6 @@ import { DocumentType } from '@settleflow/shared-types';
 
 import { parseAdvance } from '../parsers/nvl/advance.parser.js';
 import { parseCreditDebit } from '../parsers/nvl/credit-debit.parser.js';
-import { parsePostingTicket } from '../parsers/nvl/posting-ticket.parser.js';
 import { parseRemittance } from '../parsers/nvl/remittance.parser.js';
 import { parseRevenueDistribution } from '../parsers/nvl/revenue-distribution.parser.js';
 import { parseSettlementDetail } from '../parsers/nvl/settlement-detail.parser.js';
@@ -254,6 +253,15 @@ export async function parseAndSaveImportLines(
 
       // Create ImportLine records for revenue distribution
       for (const line of parseResult.lines) {
+        console.log('[RD parse]', {
+          pageNumber: document.pageNumber,
+          tripNumber: line.tripNumber,
+          shipper: line.shipperName,
+          origin: line.origin,
+          destination: line.destination,
+          entryDate: line.entryDate,
+          deliveryDate: line.deliveryDate,
+        });
         // Format description as "SHIPPER: ORIGIN → DESTINATION"
         const shipper = line.shipperName || 'Unknown';
         const origin = line.origin || 'Unknown';

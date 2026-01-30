@@ -5,12 +5,9 @@
  * or deductions (DEBIT column - miscellaneous charges)
  */
 import { normalizeOcrText, detectOcrProvider } from '../../utils/ocr-normalizer.js';
-import { POSTING_TICKET_DEBIT_SECTION_SPAN } from '../constants.js';
 import { parseSlashDate } from '../utils/date-parser.js';
 import {
-  parseSignedCurrency,
   parseCurrency,
-  CURRENCY_AMOUNT_PATTERN,
   removeLeadingZeros,
 } from '../utils/string-utils.js';
 

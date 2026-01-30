@@ -159,14 +159,16 @@
                             {% set driverLast = line.driverLastName or line.driverName or '-' %}
                             {% set driverFirst = line.driverFirstName or '' %}
                             {% set deliveryDate = line.deliveryDate or '-' %}
-                            {% set revenueTotal = revenueTotal + (line.amount | abs) %}
+                            {# For Revenue Distribution, display NET BALANCE as the amount #}
+                            {% set rdAmount = line.netBalance or line.amount %}
+                            {% set revenueTotal = revenueTotal + (rdAmount | abs) %}
                             <tr>
                                 <td><a href="#page-{{ line.pageNumber }}" class="page-link">{{ line.pageNumber }}</a></td>
                                 <td>{{ line.tripNumber or '-' }}</td>
                                 <td>{{ shipper }}: {{ origin }} → {{ destination }}</td>
                                 <td>{{ driverLast }}{{ (', ' + driverFirst) if driverFirst else '' }}</td>
                                 <td>{{ deliveryDate | date('MM/DD/YYYY') if deliveryDate != '-' else '-' }}</td>
-                                <td class="amount-cell positive">${{ line.amount | abs | number(2) }}</td>
+                                <td class="amount-cell positive">${{ rdAmount | abs | number(2) }}</td>
                             </tr>
                         {% endfor %}
                     </tbody>

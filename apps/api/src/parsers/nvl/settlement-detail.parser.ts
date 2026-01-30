@@ -380,7 +380,6 @@ function extractSettlementSummary(text: string): SettlementSummaryAmounts | unde
   
   if (!match) return undefined;
   
-  const charges = parseSignedCurrency(match[1]);
   const earnings = parseSignedCurrency(match[2]);
   const total = parseSignedCurrency(match[3]);
   

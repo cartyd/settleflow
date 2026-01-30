@@ -33,6 +33,7 @@ export interface BatchLineItem {
   category: string;
   description: string;
   amount: number;
+  netBalance?: number;
   date: string | null;
   reference?: string | null;
   tripNumber?: string | null;
@@ -204,7 +205,6 @@ export async function getBatchDetailData(
   const deductionLines = [...creditDebitLines, ...postingTicketDebitLines];
 
   // Revenue includes posting ticket credits
-  const postingTicketCreditLines = postingTicketLines.filter((l) => l.lineType === 'REVENUE');
   const totalRevenue = revenueLines.reduce((sum, l) => sum + Math.abs(l.amount), 0);
   const totalAdvances = advanceLines.reduce((sum, l) => sum + Math.abs(l.amount), 0);
   const totalDeductions = deductionLines.reduce((sum, l) => sum + Math.abs(l.amount), 0);
@@ -287,6 +287,9 @@ function formatLineItem(line: any): BatchLineItem {
       item.driverFirstName = rawData.driverFirstName;
       item.driverLastName = rawData.driverLastName;
       item.deliveryDate = rawData.deliveryDate;
+      if (typeof rawData.netBalance === 'number') {
+        item.netBalance = rawData.netBalance;
+      }
     } catch (e) {
       // Ignore parsing errors
     }
