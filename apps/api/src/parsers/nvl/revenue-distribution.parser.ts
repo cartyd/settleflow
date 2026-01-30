@@ -88,9 +88,9 @@ const NON_CITY_KEYWORDS = /^(ZIP|INTER|REFERENCE|DESTINATION|WEIGHT|MILES|SIT|PA
 // Header keywords to skip when looking for destination cities
 const NON_DESTINATION_KEYWORDS = /^(ZIP|WEIGHT|MILES|SIT|PAY|INTER)/i;
 
-// Section header keywords that aren't shipper names
+// Section header keywords that aren't shipper names (including multi-word patterns)
 const NON_SHIPPER_NAME_KEYWORDS =
-  /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|DESTINATION|ORIGIN|INTER|REFERENCE|ZIP|WEIGHT|MILES)$/i;
+  /^(TYPE|NVL|NUMBER|ENTITY|INVOICE|COD|TRN|GOV|BILL|LADING|SUPL|DESTINATION|ORIGIN|INTER|REFERENCE|ZIP|WEIGHT|MILES|BILL OF LADING)$/i;
 
 // Common non-name words after B/L numbers
 const NON_SHIPPER_NAME_KEYWORDS_SHORT =
@@ -337,7 +337,8 @@ function extractBillOfLading(text: string): string | undefined {
 function extractShipperName(text: string): string | undefined {
   // Format 1: After "SHIPPER NAME" header on next line
   // Pattern: "SHIPPER NAME\nTAYLOR" or "SHIPPER NAME\nHANCOCK"
-  let match = text.match(/SHIPPER\s+NAME\s*\n\s*([A-ZÀ-ÿ\s'-]+?)\s*(?:\n|$)/i);
+  // Capture only up to newline or next header (non-greedy, no internal spaces for multi-word headers)
+  let match = text.match(/SHIPPER\s+NAME\s*\n\s*([A-ZÀ-ÿ'-]+?)\s*(?:\n|$)/i);
   if (match) {
     const name = match[1].trim();
     // Filter out common non-name words and section headers
@@ -442,6 +443,13 @@ function extractOrigin(text: string): string | undefined {
       const cityState = line.match(CITY_STATE_RE);
       if (cityState) {
         return `${cityState[1].trim()}, ${cityState[2]}`;
+      }
+
+      // Special case: OCR may merge city name with state code (e.g., "MISSOURI CTX" -> "MISSOURI C, TX")
+      // Match pattern: city name followed by single letter and state code (e.g., "MISSOURI CTX")
+      const mergedState = line.match(/^([A-ZÀ-ÿ'\-\s]+?)\s+([A-Z])([A-Z]{2})$/i);
+      if (mergedState && STATE_CODE_LINE_RE.test(mergedState[3])) {
+        return `${mergedState[1].trim()} ${mergedState[2]}, ${mergedState[3]}`;
       }
 
       // Check if this is a city (comes right after ORIGIN, before ZIP)
@@ -561,7 +569,7 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     }
   }
 
-  // Strategy 2: Handle OCR error where day+year are merged
+  // Strategy 2a: Handle OCR error where 2-digit day+year are merged
   // Pattern: "MM XY P##" where XY is a 2-digit number that should be "X Y"
   // Example: "12 15 P62" should be "12 1 5 P62" (day=1, year=5)
   // This happens when single-digit day (0X) merges with year (Y) → "XY"
@@ -578,6 +586,27 @@ function extractDeliveryDate(text: string, opts?: { decadeBase?: number }): stri
     const monthNum = parseInt(month);
     const dayNum = parseInt(day);
     if (validateDate(monthNum, dayNum) && dayNum <= 9) {
+      return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
+    }
+  }
+
+  // Strategy 2b: Handle OCR error where 3-digit day+year are merged
+  // Pattern: "MM DDY P##" where DDY is a 3-digit number that should be "DD Y"
+  // Example: "12 125 P62" should be "12 12 5 P62" (day=12, year=5)
+  // This happens when 2-digit day (DD) merges with year (Y) → "DDY"
+  match = text.match(/(\d{1,2})\s*\n?\s*(\d{3})\s+P\d{2,3}/i);
+  if (match) {
+    const month = match[1];
+    const merged = match[2]; // e.g., "125" should be "12" and "5"
+
+    // Split the 3-digit merged value: first two digits = day, last digit = year
+    const day = merged.substring(0, 2);
+    const year = merged.substring(2, 3);
+
+    // Validate: month 1-12, day 1-31
+    const monthNum = parseInt(month);
+    const dayNum = parseInt(day);
+    if (validateDate(monthNum, dayNum)) {
       return parseDate(`${month} ${day} ${year}`, { decadeBase: localDecadeBase });
     }
   }
